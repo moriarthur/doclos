@@ -4,6 +4,16 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// Explicitly import entities for Webpack compatibility
+import { User } from '../modules/auth/entities/user.entity';
+import { Customer } from '../modules/documents/entities/customer.entity';
+import { Document } from '../modules/documents/entities/document.entity';
+import { Invoice } from '../modules/documents/entities/invoice.entity';
+import { InvoiceItem } from '../modules/documents/entities/invoice-item.entity';
+import { FieldExtraction } from '../modules/documents/entities/field-extraction.entity';
+import { Job } from '../modules/jobs/entities/job.entity';
+import { AuditLog } from '../modules/jobs/entities/audit-log.entity';
+
 // Load .env file early for TypeORM configuration
 // From dist/apps/backend/database, we need to go up 4 levels to reach project root
 // From src/apps/backend/database during dev, we need to go up 3 levels
@@ -36,7 +46,17 @@ export const dataSourceOptions: DataSourceOptions = {
   username: username || process.env.DB_USERNAME,
   password: password || process.env.DB_PASSWORD,
   database: database || process.env.DB_NAME,
-  entities: [__dirname + '/**/*.entity{.ts,.js}'],
+  // Explicitly list entities for Webpack compatibility
+  entities: [
+    User,
+    Customer,
+    Document,
+    Invoice,
+    InvoiceItem,
+    FieldExtraction,
+    Job,
+    AuditLog,
+  ],
   migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
   synchronize: process.env.NODE_ENV !== 'production', // Use migrations in production
   logging: process.env.NODE_ENV === 'development',

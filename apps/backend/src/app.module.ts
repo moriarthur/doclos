@@ -12,6 +12,10 @@ import { dataSourceOptions } from './database/data-source';
 
 // Part 1: System Architecture - Root application module
 
+// Parse Redis URL to extract password for Upstash
+const redisUrl = process.env.REDIS_URL || '';
+const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
+
 @Module({
   imports: [
     // Configuration - loads .env file
@@ -23,11 +27,13 @@ import { dataSourceOptions } from './database/data-source';
     // Database - TypeORM with PostgreSQL
     TypeOrmModule.forRoot(dataSourceOptions),
 
-    // Queue - BullMQ with Redis
+    // Queue - BullMQ with Redis (Upstash with TLS)
     BullModule.forRoot({
       redis: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),
+        password: redisPassword,
+        tls: process.env.REDIS_URL?.startsWith('rediss://') ? {} : undefined,
       },
     }),
 

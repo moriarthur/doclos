@@ -25,7 +25,26 @@
       "Bash(node -e \"const dotenv = require\\('dotenv'\\); dotenv.config\\({ path: '.env' }\\); const url = process.env.DATABASE_URL; console.log\\('DATABASE_URL:', url\\); const match = url.match\\(/postgres:\\\\/\\\\/\\([^:]+\\):\\([^@]+\\)@\\([^:]+\\):\\(\\\\d+\\)\\\\/\\(.+\\)/\\); if \\(match\\) { console.log\\('Parsed - host:', match[3], 'port:', match[4], 'database:', match[5]\\); }\")",
       "Bash(curl -s http://localhost:3001/api/v1 2>&1 || echo \"Server might be starting...\")",
       "Bash(sleep 10 && curl -s http://localhost:3001/api/v1 2>&1 || echo \"Waiting for server...\")",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "mcp__plugin_serena_serena__read_memory",
+      "mcp__plugin_serena_serena__get_symbols_overview",
+      "Bash(curl -s http://localhost:3001/api/v1)",
+      "Bash(curl:*)",
+      "Bash(PGPASSWORD=\"***REMOVED***\" psql -h db.dkyauhncczoyvmoftbhy.supabase.co -p 5432 -U postgres -d postgres -c \"\\\\dt\")",
+      "Bash(nslookup db.dkyauhncczoyvmoftbhy.supabase.co)",
+      "Bash(host db.dkyauhncczoyvmoftbhy.supabase.co)",
+      "Bash(dig db.dkyauhncczoyvmoftbhy.supabase.co)",
+      "Bash(node:*)",
+      "Bash(dig:*)",
+      "Bash(psql --version)",
+      "Bash(brew list:*)",
+      "Bash(brew services:*)",
+      "Bash(find /Users/unlxud/Projects/Doclos/apps/backend/dist -name *.entity.js)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3Yjk3NGQ2NC00ZjMxLTQ0MDctYTdjZi0xMjg4Y2JmNWZmNTUiLCJpYXQiOjE3NzQwMTY4NzQsImV4cCI6MTc3NDAxNzc3NH0.-Knm_VIpRVVdE9oZgwjd5tSbryKzLKJ0rhC2-_eZX_E\" curl -s http://localhost:3001/api/v1/documents -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(find /Users/unlxud/Projects/Doclos -name *.pdf -o -name *.png -o -name *.jpg)"
     ]
   }
 }
