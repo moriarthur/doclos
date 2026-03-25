@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
@@ -16,6 +16,8 @@ import { S3Service } from '../storage/services/s3.service';
 
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     @InjectRepository(Document)
     private documentsRepository: Repository<Document>,
@@ -134,14 +136,35 @@ export class DocumentsService {
   }
 
   async getDocument(documentId: string, userId: string) {
-    const document = await this.documentsRepository.findOne({
-      where: { id: documentId, user_id: userId },
-      relations: ['invoice', 'customer'],
-    });
+    try {
+      this.logger.log(`[getDocument] Fetching document ${documentId} for user ${userId}`);
 
-    if (!document) {
-      throw new NotFoundException('Document not found');
-    }
+      // Use query builder for more control
+      const document = await this.documentsRepository
+        .createQueryBuilder('document')
+        .leftJoinAndSelect('document.customer', 'customer')
+        .leftJoinAndSelect('document.invoice', 'invoice')
+        .where('document.id = :documentId', { documentId })
+        .andWhere('document.user_id = :userId', { userId })
+        .getOne();
+
+      this.logger.log(`[getDocument] Document found: ${!!document}`);
+      if (document) {
+        this.logger.log(`[getDocument] Document.invoiceId: ${document.invoiceId}`);
+        this.logger.log(`[getDocument] Document.invoice: ${!!document.invoice}`);
+        this.logger.log(`[getDocument] Document.customer: ${!!document.customer}`);
+      } else {
+        this.logger.warn(`[getDocument] Document NOT FOUND - checking if document exists at all`);
+        const docWithoutUser = await this.documentsRepository.findOne({
+          where: { id: documentId },
+        });
+        this.logger.log(`[getDocument] Document exists (ignoring user): ${!!docWithoutUser}`);
+        if (docWithoutUser) {
+          this.logger.log(`[getDocument] Document user_id: ${docWithoutUser.user_id}`);
+          this.logger.log(`[getDocument] Requested user_id: ${userId}`);
+        }
+        throw new NotFoundException('Document not found');
+      }
 
     // Get signed URL from S3 (Part 7: Security & GDPR - Signed URLs expire after 24h)
     const fileUrl = await this.s3Service.getSignedUrl(document.s3_key);
@@ -165,13 +188,28 @@ export class DocumentsService {
             invoice_number: extractionMap['invoice_number'],
             amount_total: extractionMap['amount_total'],
             currency: document.invoice.currency,
-            invoice_date: document.invoice.invoice_date?.toISOString().split('T')[0],
-            due_date: document.invoice.due_date?.toISOString().split('T')[0],
+            invoice_date: document.invoice.invoice_date
+              ? typeof document.invoice.invoice_date === 'string'
+                  ? document.invoice.invoice_date
+                  : new Date(document.invoice.invoice_date).toISOString().split('T')[0]
+              : undefined,
+            due_date: document.invoice.due_date
+              ? typeof document.invoice.due_date === 'string'
+                  ? document.invoice.due_date
+                  : new Date(document.invoice.due_date).toISOString().split('T')[0]
+              : undefined,
             supplier_name: extractionMap['supplier_name'],
             supplier_address: extractionMap['supplier_address'],
           }
         : undefined,
     };
+    } catch (error) {
+      this.logger.error(`[getDocument] ERROR: ${error instanceof Error ? error.message : String(error)}`);
+      if (error instanceof Error && error.stack) {
+        this.logger.error(`[getDocument] Stack: ${error.stack}`);
+      }
+      throw error;
+    }
   }
 
   async validateDocument(documentId: string, userId: string, fields: Record<string, unknown>) {

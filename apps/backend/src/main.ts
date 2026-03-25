@@ -12,10 +12,13 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api/v1');
 
-  // CORS
+  // CORS - More permissive configuration for development
+  const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
   app.enableCors({
-    origin: configService.get('FRONTEND_URL') || 'http://localhost:3000',
+    origin: [frontendUrl, 'http://localhost:3000', 'http://127.0.0.1:3000'],
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   });
 
   // Validation

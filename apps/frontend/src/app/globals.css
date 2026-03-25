@@ -1,0 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Serif+4:wght@400;500;600;700&family=Noto+Serif:wght@400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: rgb(229 226 218);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: rgb(250 249 247);
+    color: rgb(28 25 23);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .dark body {
+    background-color: rgb(26 25 21);
+    color: rgb(250 249 247);
+  }
+
+  /* Elegant selection color */
+  ::selection {
+    background-color: rgb(217 119 95);
+    color: white;
+  }
+
+  /* Focus styles */
+  *:focus-visible {
+    outline: 2px solid rgb(217 119 95);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Elegant card with subtle shadow */
+  .card {
+    background-color: rgb(255 255 255);
+    border-radius: 0.75rem;
+    border: 1px solid rgb(229 226 218);
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+    transition: all 0.2s ease;
+  }
+
+  .dark .card {
+    background-color: rgb(36 34 30);
+    border-color: rgb(58 56 50);
+  }
+
+  .card:hover {
+    box-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.08);
+  }
+
+  /* Elegant badge styles */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.025em;
+  }
+
+  .badge-uploaded { background-color: rgb(234 244 242); color: rgb(20 184 166); }
+  .badge-processing { background-color: rgb(254 252 232); color: rgb(161 98 7); }
+  .badge-parsed { background-color: rgb(240 253 244); color: rgb(34 197 94); }
+  .badge-needs_validation { background-color: rgb(255 237 213); color: rgb(154 52 18); }
+  .badge-validated { background-color: rgb(236 253 245); color: rgb(5 122 54); }
+  .badge-error { background-color: rgb(254 226 226); color: rgb(220 38 38); }
+
+  /* Subtle gradient background */
+  .gradient-bg {
+    background: linear-gradient(135deg, rgb(250 249 247) 0%, rgb(245 243 238) 100%);
+  }
+
+  .dark .gradient-bg {
+    background: linear-gradient(135deg, rgb(26 25 21) 0%, rgb(32 31 27) 100%);
+  }
+
+  /* Elegant divider */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgb(229 226 218), transparent);
+  }
+
+  .dark .divider {
+    background: linear-gradient(90deg, transparent, rgb(58 56 50), transparent);
+  }
+}
+
+@layer utilities {
+  /* Staggered animation delays */
+  .delay-75 { animation-delay: 75ms; }
+  .delay-100 { animation-delay: 100ms; }
+  .delay-150 { animation-delay: 150ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-400 { animation-delay: 400ms; }
+  .delay-500 { animation-delay: 500ms; }
+
+  /* Custom scrollbar - elegant */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgb(196 167 125);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(180 151 109);
+  }
+
+  /* Text gradient for headings */
+  .text-gradient {
+    background: linear-gradient(135deg, rgb(28 25 23) 0%, rgb(217 119 95) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .dark .text-gradient {
+    background: linear-gradient(135deg, rgb(250 249 247) 0%, rgb(232 164 144) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}

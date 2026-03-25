@@ -228,6 +228,9 @@ export class DocumentProcessor {
       invoice.validated = confidence.overall >= autoAcceptThreshold;
       await this.invoicesRepository.save(invoice);
 
+      // Link invoice to document
+      document.invoiceId = invoice.id;
+
       // Create invoice items if present
       if (normalizedExtraction.items && normalizedExtraction.items.length > 0) {
         for (const item of normalizedExtraction.items) {

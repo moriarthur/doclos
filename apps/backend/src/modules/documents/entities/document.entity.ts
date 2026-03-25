@@ -42,8 +42,11 @@ export class Document extends BaseEntity {
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
+  @Column({ name: 'invoiceId', nullable: true })
+  invoiceId?: string;
+
   @OneToOne(() => Invoice, { nullable: true, cascade: true })
-  @JoinColumn()
+  @JoinColumn({ name: 'invoiceId' })
   invoice?: Invoice;
 
   @Column({ type: 'enum', enum: DocumentType, nullable: true })
