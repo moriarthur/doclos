@@ -49,3 +49,13 @@ temp/
 
  # Redis dump
 dump.rdb
+
+# Tesseract language data
+*.traineddata
+
+# Test directories
+tets files/
+test files/
+
+# Claude memory
+.claude/projects/
