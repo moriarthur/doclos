@@ -2,7 +2,29 @@
 
 > Project: Document automation SaaS for small businesses and German Mittelstand
 > Status: **Backend + Frontend MVP Complete** | Production ready
-> Last Updated: 2026-03-26
+> Last Updated: 2026-03-31
+
+---
+
+## Session Summary (2026-03-31)
+
+**Completed:**
+- ✅ Enhanced CORS configuration for development (multiple origins)
+- ✅ Fixed PostgreSQL DATE serialization bug (500 error on detail page)
+- ✅ Added NestJS Logger for structured error logging
+- ✅ Cleaned up error state UI (removed duplicate "Neu verarbeiten" buttons)
+- ✅ Updated .gitignore for sensitive files (.env, .claude/projects/)
+
+**Current State:**
+- Frontend: http://localhost:3000
+- Backend: http://localhost:3001/api/v1
+- Full document flow working: Upload → OCR → AI Extract → View → Validate
+
+**Next Session Tasks:**
+1. Implement PDF viewer in document detail page
+2. Add invoice line items display in detail view
+3. Implement Search API (full-text search)
+4. Implement Excel export worker
 
 ---
 
@@ -372,15 +394,16 @@ English, German (i18n via next-i18next) - TODO: Not implemented yet
 
 ## Next Session Priorities
 
-1. **Build Next.js frontend** - Setup Next.js with TypeScript, TailwindCSS, shadcn/ui
-2. **Document upload UI** - Drag & drop file upload component
-3. **Document dashboard** - List view with filters and search
-4. **Validation UI** - Side-by-side comparison for manual validation
-5. **Implement Search API** - Full-text search across documents
-6. **Implement Excel export** - Streaming export for accounting
+1. **PDF Viewer** - Implement PDF.js in document detail page (currently placeholder)
+2. **Line Items Display** - Show invoice items table in detail view
+3. **Search API** - Full-text search across documents
+4. **Excel Export** - Streaming export for accounting
+5. **German Translations** - Consistent German UI (currently mixed DE/EN)
+6. **Production Deployment** - Vercel frontend + Railway/Render backend
 
 ---
 
 ## Memory Files
 
 - **Auto memory**: `~/.claude/projects/-Users-unlxud-Projects-Doclos/memory/MEMORY.md`
+- **Session 2026-03-31**: `memory/session-2026-03-31.md` (Bug fixes, UI cleanup)

@@ -183,6 +183,8 @@ export class DocumentsService {
       id: document.id,
       status: document.status,
       file_url: fileUrl,
+      mime_type: document.mime_type,
+      original_filename: document.original_filename,
       invoice: document.invoice
         ? {
             invoice_number: extractionMap['invoice_number'],
@@ -282,5 +284,18 @@ export class DocumentsService {
     });
 
     return { status: document.status };
+  }
+
+  async getDocumentFile(documentId: string, userId: string) {
+    const document = await this.documentsRepository.findOne({
+      where: { id: documentId, user_id: userId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    const buffer = await this.s3Service.downloadFile(document.s3_key);
+    return { buffer, mimeType: document.mime_type, filename: document.original_filename };
   }
 }

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { documentsApi, authApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
+import { DocumentViewer } from '@/components/DocumentViewer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -15,7 +16,6 @@ import {
   Calendar,
   Euro,
   RefreshCw,
-  Check,
   Loader2,
   Building2,
   Settings,
@@ -33,12 +33,26 @@ export default function DocumentDetailPage() {
   const docId = params.id as string;
   const [isEditing, setIsEditing] = useState(false);
   const [editedFields, setEditedFields] = useState<Record<string, string>>({});
+  const [showSpinner, setShowSpinner] = useState(false);
+  const hasLoadedOnce = useRef(false);
 
-  const { data: document, isLoading, error, refetch } = useQuery({
+  const { data: document, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['document', docId],
     queryFn: () => documentsApi.getDetail(docId),
     enabled: !!docId,
   });
+
+  const minSpinRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    if (isFetching) {
+      if (hasLoadedOnce.current) setShowSpinner(true);
+      clearTimeout(minSpinRef.current);
+    } else {
+      hasLoadedOnce.current = true;
+      minSpinRef.current = setTimeout(() => setShowSpinner(false), 1500);
+    }
+    return () => clearTimeout(minSpinRef.current);
+  }, [isFetching]);
 
   const validateMutation = useMutation({
     mutationFn: (fields: Record<string, string>) =>
@@ -156,17 +170,6 @@ export default function DocumentDetailPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {document.status === 'error' && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => reprocessMutation.mutate()}
-                  isLoading={reprocessMutation.isPending}
-                >
-                  <RefreshCw className="h-4 w-4 mr-1" />
-                  Neu verarbeiten
-                </Button>
-              )}
               {document.status === 'needs_validation' && (
                 <>
                   {isEditing ? (
@@ -204,9 +207,11 @@ export default function DocumentDetailPage() {
                   )}
                 </>
               )}
-              <Button variant="ghost" size="sm" onClick={() => refetch()}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
+              {document.status !== 'error' && (
+                <Button variant="ghost" size="sm" onClick={() => refetch()}>
+                  <RefreshCw className={`h-4 w-4 animate-spin transition-opacity duration-300 ${showSpinner ? 'opacity-100' : 'opacity-0'}`} />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -251,23 +256,12 @@ export default function DocumentDetailPage() {
               </CardHeader>
               <CardContent>
                 {document.file_url ? (
-                  <div className="aspect-[3/4] bg-muted rounded-xl flex items-center justify-center">
-                    <div className="text-center p-8">
-                      <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                      <p className="font-medium text-foreground mb-2">PDF-Vorschau</p>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Dokumentansicht wird geladen...
-                      </p>
-                      <a
-                        href={document.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline text-sm inline-block"
-                      >
-                        In neuem Tab öffnen
-                      </a>
-                    </div>
-                  </div>
+                  <DocumentViewer
+                    url={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/documents/${docId}/file`}
+                    mimeType={document.mime_type || 'application/pdf'}
+                    error={document.status === 'error'}
+                    reprocessing={document.status === 'processing' || reprocessMutation.isPending || (reprocessMutation.isSuccess && document.status === 'error')}
+                  />
                 ) : (
                   <div className="aspect-[3/4] bg-muted rounded-xl flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

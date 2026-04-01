@@ -6,12 +6,14 @@ import {
   Param,
   Body,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors,
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -60,6 +62,19 @@ export class DocumentsController {
   @Get(':id')
   async getDocument(@Param('id') id: string, @CurrentUser() user: User) {
     return this.documentsService.getDocument(id, user.id);
+  }
+
+  @Get(':id/file')
+  async getDocumentFile(
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const { buffer, mimeType, filename } = await this.documentsService.getDocumentFile(id, user.id);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
   }
 
   @Patch(':id/validate')
