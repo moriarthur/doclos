@@ -12,7 +12,7 @@ import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, type LoginFormData } from '@/lib/validation';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 
 // Force dynamic rendering for this page since it uses useSearchParams
 export const dynamic = 'force-dynamic';
@@ -23,6 +23,7 @@ function LoginForm() {
   const [apiError, setApiError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
@@ -125,15 +126,26 @@ function LoginForm() {
                 <label className="block text-sm font-medium mb-2.5 text-foreground" htmlFor="password">
                   Passwort
                 </label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="•••••••••"
-                  {...register('password')}
-                  error={errors.password?.message}
-                  autoComplete="current-password"
-                  className="py-3"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="•••••••••"
+                    {...register('password')}
+                    error={errors.password?.message}
+                    autoComplete="current-password"
+                    className="py-3 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-5 -translate-y-1/2 text-border hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
                 {password && password.length >= 1 && password.length < 12 && !errors.password && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     Mindestens 12 Zeichen erforderlich

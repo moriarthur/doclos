@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { documentsApi, authApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { DocumentViewer } from '@/components/DocumentViewer';
@@ -24,35 +24,37 @@ import {
   X,
   Save,
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
+  Trash2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/AlertDialog';
 
 export default function DocumentDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const docId = params.id as string;
   const [isEditing, setIsEditing] = useState(false);
   const [editedFields, setEditedFields] = useState<Record<string, string>>({});
-  const [showSpinner, setShowSpinner] = useState(false);
-  const hasLoadedOnce = useRef(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
 
-  const { data: document, isLoading, isFetching, error, refetch } = useQuery({
+  const { data: document, isLoading, error, refetch } = useQuery({
     queryKey: ['document', docId],
     queryFn: () => documentsApi.getDetail(docId),
     enabled: !!docId,
   });
-
-  const minSpinRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => {
-    if (isFetching) {
-      if (hasLoadedOnce.current) setShowSpinner(true);
-      clearTimeout(minSpinRef.current);
-    } else {
-      hasLoadedOnce.current = true;
-      minSpinRef.current = setTimeout(() => setShowSpinner(false), 1500);
-    }
-    return () => clearTimeout(minSpinRef.current);
-  }, [isFetching]);
 
   const validateMutation = useMutation({
     mutationFn: (fields: Record<string, string>) =>
@@ -81,6 +83,40 @@ export default function DocumentDetailPage() {
     },
     onError: (err) => {
       console.error('Reprocess failed:', authApi.getErrorMessage(err));
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () => documentsApi.updateStatus(docId, 'archived'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['document', docId] });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      router.push('/archive');
+    },
+    onError: (err) => {
+      console.error('Archive failed:', authApi.getErrorMessage(err));
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => documentsApi.delete(docId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      router.push('/');
+    },
+    onError: (err) => {
+      console.error('Delete failed:', authApi.getErrorMessage(err));
+    },
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: () => documentsApi.unarchive(docId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['document', docId] });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+    },
+    onError: (err) => {
+      console.error('Unarchive failed:', authApi.getErrorMessage(err));
     },
   });
 
@@ -207,11 +243,46 @@ export default function DocumentDetailPage() {
                   )}
                 </>
               )}
-              {document.status !== 'error' && (
-                <Button variant="ghost" size="sm" onClick={() => refetch()}>
-                  <RefreshCw className={`h-4 w-4 animate-spin transition-opacity duration-300 ${showSpinner ? 'opacity-100' : 'opacity-0'}`} />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => reprocessMutation.mutate()}
+                disabled={reprocessMutation.isPending}
+                title="Neu verarbeiten"
+              >
+                <RefreshCw className={`h-4 w-4 ${reprocessMutation.isPending ? 'animate-spin' : ''} transition-opacity`} />
+              </Button>
+              {document.status !== 'archived' ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => archiveMutation.mutate()}
+                  disabled={archiveMutation.isPending}
+                  title="Archivieren"
+                >
+                  <Archive className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => unarchiveMutation.mutate()}
+                  disabled={unarchiveMutation.isPending}
+                  title="Wiederherstellen"
+                >
+                  <ArchiveRestore className="h-4 w-4" />
                 </Button>
               )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteDialog(true)}
+                disabled={deleteMutation.isPending}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                title="Löschen"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
           </div>
 
@@ -510,6 +581,27 @@ export default function DocumentDetailPage() {
           </div>
         </div>
       </main>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialog} onOpenChange={setDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dokument löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dies wird das Dokument dauerhaft löschen. Diese Aktion kann nicht rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMutation.mutate()}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

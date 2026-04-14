@@ -55,6 +55,9 @@ export class Document extends BaseEntity {
   @Column({ type: 'enum', enum: DocumentStatus, default: DocumentStatus.UPLOADED })
   status: DocumentStatus;
 
+  @Column({ name: 'previous_status', type: 'enum', enum: DocumentStatus, nullable: true })
+  previous_status: DocumentStatus | null;
+
   @Column({ name: 'original_filename' })
   original_filename: string;
 

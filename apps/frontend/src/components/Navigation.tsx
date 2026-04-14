@@ -12,6 +12,7 @@ import {
   X,
   Moon,
   Sun,
+  Archive,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { authApi } from '@/lib/api-client';
@@ -19,6 +20,7 @@ import { authApi } from '@/lib/api-client';
 const navItems = [
   { name: 'Dokumente', href: '/', icon: FileText },
   { name: 'Upload', href: '/upload', icon: Upload },
+  { name: 'Archiv', href: '/archive', icon: Archive },
   { name: 'Einstellungen', href: '/settings', icon: Settings },
 ];
 

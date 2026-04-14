@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -89,5 +90,20 @@ export class DocumentsController {
   @Post(':id/reprocess')
   async reprocessDocument(@Param('id') id: string, @CurrentUser() user: User) {
     return this.documentsService.reprocessDocument(id, user.id);
+  }
+
+  @Patch(':id')
+  async updateDocumentStatus(
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+    @Body('status') status: string,
+  ) {
+    return this.documentsService.updateDocumentStatus(id, user.id, status);
+  }
+
+  @Delete(':id')
+  async deleteDocument(@Param('id') id: string, @CurrentUser() user: User) {
+    await this.documentsService.deleteDocument(id, user.id);
+    return { message: 'Document deleted successfully' };
   }
 }

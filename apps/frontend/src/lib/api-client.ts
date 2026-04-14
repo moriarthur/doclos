@@ -230,6 +230,22 @@ export const documentsApi = {
     const response = await apiClient.post(`/documents/${id}/reprocess`);
     return response.data;
   },
+
+  updateStatus: async (id: string, status: string) => {
+    const response = await apiClient.patch(`/documents/${id}`, { status });
+    return response.data;
+  },
+
+  unarchive: async (id: string) => {
+    // Special call to unarchive - backend will restore previous status
+    const response = await apiClient.patch(`/documents/${id}`, { status: 'unarchive' });
+    return response.data;
+  },
+
+  delete: async (id: string) => {
+    const response = await apiClient.delete(`/documents/${id}`);
+    return response.data;
+  },
 };
 
 export const jobsApi = {

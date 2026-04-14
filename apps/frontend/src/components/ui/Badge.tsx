@@ -4,7 +4,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: 'default' | 'uploaded' | 'processing' | 'parsed' | 'needs_validation' | 'validated' | 'error';
+  variant?: 'default' | 'uploaded' | 'processing' | 'parsed' | 'needs_validation' | 'validated' | 'error' | 'archived';
 }
 
 function Badge({ className, variant = 'default', ...props }: BadgeProps) {
@@ -16,6 +16,7 @@ function Badge({ className, variant = 'default', ...props }: BadgeProps) {
     needs_validation: 'bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
     validated: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
     error: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    archived: 'bg-gray-50 text-gray-600 dark:bg-gray-800/50 dark:text-gray-500',
   };
 
   return (

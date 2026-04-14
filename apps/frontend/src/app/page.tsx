@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { documentsApi, authApi } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/Navigation';
@@ -18,15 +18,30 @@ import {
   Euro,
   Sparkles,
   Loader2,
+  Archive,
+  Trash2,
+  MoreVertical,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/AlertDialog';
 
 export default function DashboardPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
 
   // Check authentication before showing content
   useEffect(() => {
@@ -44,14 +59,61 @@ export default function DashboardPage() {
 
   const { data: documents, isLoading, error } = useQuery({
     queryKey: ['documents', statusFilter],
-    queryFn: () => documentsApi.list({ status: statusFilter || undefined }),
+    queryFn: () => {
+      // Exclude archived documents from default view
+      if (statusFilter === 'archived') {
+        return documentsApi.list({ status: 'archived' });
+      }
+      if (statusFilter) {
+        return documentsApi.list({ status: statusFilter });
+      }
+      // Default: show all except archived
+      return documentsApi.list({ status: undefined });
+    },
     enabled: !isCheckingAuth, // Only fetch after auth check
   });
 
-  const filteredDocuments = documents?.data.filter((doc) =>
-    doc.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.id.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const filteredDocuments = documents?.data
+    .filter((doc) => {
+      // Exclude archived documents from default view
+      if (!statusFilter && doc.status === 'archived') return false;
+      return true;
+    })
+    .filter((doc) =>
+      doc.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      doc.id.toLowerCase().includes(searchQuery.toLowerCase())
+    ) || [];
+
+  const archiveMutation = useMutation({
+    mutationFn: (id: string) => documentsApi.updateStatus(id, 'archived'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => documentsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      setDeleteDialog(null);
+    },
+  });
+
+  const handleArchive = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    archiveMutation.mutate(id);
+  };
+
+  const handleDelete = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleteDialog(id);
+  };
+
+  const confirmDelete = (id: string) => {
+    deleteMutation.mutate(id);
+  };
 
   // Show loading overlay while checking auth
   if (isCheckingAuth) {
@@ -224,8 +286,30 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        {/* Chevron */}
-                        <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 transition-all flex-shrink-0 ml-4" />
+                        {/* Actions */}
+                        <div className="flex items-center gap-1 ml-4">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => handleArchive(doc.id, e)}
+                            disabled={archiveMutation.isPending}
+                            className="gap-1.5"
+                            title="Archivieren"
+                          >
+                            <Archive className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => handleDelete(doc.id, e)}
+                            disabled={deleteMutation.isPending}
+                            className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            title="Löschen"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 transition-all flex-shrink-0" />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -235,6 +319,27 @@ export default function DashboardPage() {
           )}
         </div>
       </main>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dokument löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dies wird das Dokument dauerhaft löschen. Diese Aktion kann nicht rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteDialog && confirmDelete(deleteDialog)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Document, DocumentStatus, DocumentType } from './entities/document.enti
 import { Invoice } from './entities/invoice.entity';
 import { FieldExtraction } from './entities/field-extraction.entity';
 import { AuditLog } from '../jobs/entities/audit-log.entity';
+import { Job } from '../jobs/entities/job.entity';
 import { S3Service } from '../storage/services/s3.service';
 
 // Part 3: AI Pipeline - Document processing workflow
@@ -27,6 +28,8 @@ export class DocumentsService {
     private fieldExtractionsRepository: Repository<FieldExtraction>,
     @InjectRepository(AuditLog)
     private auditLogsRepository: Repository<AuditLog>,
+    @InjectRepository(Job)
+    private jobsRepository: Repository<Job>,
     @InjectQueue('documents') private documentsQueue: Queue,
     private s3Service: S3Service,
   ) {}
@@ -297,5 +300,103 @@ export class DocumentsService {
 
     const buffer = await this.s3Service.downloadFile(document.s3_key);
     return { buffer, mimeType: document.mime_type, filename: document.original_filename };
+  }
+
+  async updateDocumentStatus(documentId: string, userId: string, status: string) {
+    const document = await this.documentsRepository.findOne({
+      where: { id: documentId, user_id: userId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    const oldStatus = document.status;
+
+    // Handle special "unarchive" status value
+    if (status === 'unarchive') {
+      if (oldStatus !== DocumentStatus.ARCHIVED) {
+        throw new BadRequestException('Document is not archived');
+      }
+      // Restore previous status
+      document.status = document.previous_status || DocumentStatus.PARSED;
+      document.previous_status = null;
+    }
+    // Handle archiving: save current status before changing
+    else if (status === DocumentStatus.ARCHIVED && oldStatus !== DocumentStatus.ARCHIVED) {
+      document.previous_status = oldStatus;
+      document.status = DocumentStatus.ARCHIVED;
+    }
+    // Handle normal status change (but don't allow changing from archived directly)
+    else if (oldStatus === DocumentStatus.ARCHIVED) {
+      throw new BadRequestException('Cannot change status directly from archived. Use unarchive first.');
+    }
+    // Validate status for normal changes
+    else {
+      const validStatuses = Object.values(DocumentStatus);
+      if (!validStatuses.includes(status as DocumentStatus)) {
+        throw new BadRequestException(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+      }
+      document.status = status as DocumentStatus;
+    }
+
+    await this.documentsRepository.save(document);
+
+    // Write audit log
+    await this.auditLogsRepository.save({
+      entity_type: 'document',
+      entity_id: documentId,
+      user_id: userId,
+      action: 'status_update',
+      old_value: { status: oldStatus },
+      new_value: { status: document.status },
+    });
+
+    return { status: document.status };
+  }
+
+  async deleteDocument(documentId: string, userId: string) {
+    const document = await this.documentsRepository.findOne({
+      where: { id: documentId, user_id: userId },
+      relations: ['invoice', 'customer'],
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    // Delete file from S3
+    try {
+      await this.s3Service.deleteFile(document.s3_key);
+      this.logger.log(`Deleted file from S3: ${document.s3_key}`);
+    } catch (error) {
+      this.logger.error(`Failed to delete file from S3: ${document.s3_key}`, error);
+      // Continue with database deletion even if S3 deletion fails
+    }
+
+    // Delete related jobs first (foreign key constraint)
+    const jobs = await this.jobsRepository.find({
+      where: { document_id: documentId },
+    });
+    if (jobs.length > 0) {
+      await this.jobsRepository.remove(jobs);
+      this.logger.log(`Deleted ${jobs.length} related jobs`);
+    }
+
+    // Delete related records (invoice, field extractions) will be handled by CASCADE
+    await this.documentsRepository.remove(document);
+
+    // Write audit log
+    await this.auditLogsRepository.save({
+      entity_type: 'document',
+      entity_id: documentId,
+      user_id: userId,
+      action: 'delete',
+      old_value: {
+        filename: document.original_filename,
+        status: document.status,
+      },
+      new_value: undefined,
+    });
   }
 }
