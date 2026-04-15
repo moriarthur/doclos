@@ -61,6 +61,7 @@ const config: Config = {
         'slide-down': 'slideDown 0.4s ease-out',
         'scale-in': 'scaleIn 0.3s ease-out',
         'shimmer': 'shimmer 2s linear infinite',
+        'slow-blink': 'slowBlink 2s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -82,6 +83,10 @@ const config: Config = {
         shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
+        },
+        slowBlink: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.3' },
         },
       },
     },

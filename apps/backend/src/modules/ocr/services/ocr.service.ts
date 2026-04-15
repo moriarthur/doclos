@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { PdfService } from './pdf.service';
 import { ImagePreprocessingService } from './image-preprocessing.service';
 import { TesseractService } from './tesseract.service';
+import { Job } from '../../jobs/entities/job.entity';
 
 // Part 3: AI Pipeline - Complete OCR pipeline
 // Orchestrates text extraction from various document types
@@ -38,17 +41,21 @@ export class OcrService {
     private pdfService: PdfService,
     private imagePreprocessingService: ImagePreprocessingService,
     private tesseractService: TesseractService,
+    @InjectRepository(Job)
+    private jobsRepository: Repository<Job>,
   ) {}
 
   /**
    * Process a document and extract all text
    * @param fileBuffer - Document file buffer (PDF or image)
    * @param mimeType - MIME type of the document
+   * @param jobRecord - Optional job record for progress tracking
    * @returns OCR result with text and confidence
    */
   async processDocument(
     fileBuffer: Buffer,
     mimeType: string,
+    jobRecord?: any,
   ): Promise<OcrResult> {
     const startTime = Date.now();
 
@@ -57,9 +64,9 @@ export class OcrService {
 
       // Determine processing method based on MIME type
       if (mimeType === 'application/pdf') {
-        return await this.processPdf(fileBuffer, startTime);
+        return await this.processPdf(fileBuffer, startTime, jobRecord);
       } else if (mimeType.startsWith('image/')) {
-        return await this.processImage(fileBuffer, startTime);
+        return await this.processImage(fileBuffer, startTime, jobRecord);
       } else {
         throw new Error(`Unsupported MIME type: ${mimeType}`);
       }
@@ -73,9 +80,10 @@ export class OcrService {
    * Process a PDF document
    * @param buffer - PDF file buffer
    * @param startTime - Processing start time
+   * @param jobRecord - Optional job record for progress tracking
    * @returns OCR result
    */
-  private async processPdf(buffer: Buffer, startTime: number): Promise<OcrResult> {
+  private async processPdf(buffer: Buffer, startTime: number, jobRecord?: any): Promise<OcrResult> {
     this.logger.log('Processing PDF document');
 
     // Get PDF metadata
@@ -117,24 +125,44 @@ export class OcrService {
       // Process each page with OCR
       const results: Array<{ pageNumber: number; text: string; confidence: number }> = [];
       const allTexts: string[] = [];
-      
+
+      // Warn for large PDFs
+      if (pageImages.length > 20) {
+        this.logger.warn(`Large PDF detected (${pageImages.length} pages). OCR may take 10-30+ seconds per page.`);
+      }
+
       for (let i = 0; i < pageImages.length; i++) {
-        this.logger.debug(`Processing page ${i + 1}/${pageImages.length}`);
-        
+        const startTime = Date.now();
+        this.logger.log(`Processing page ${i + 1}/${pageImages.length}...`);
+
+        // Update job progress
+        if (jobRecord) {
+          jobRecord.progress = {
+            stage: 'ocr',
+            message: `Processing page ${i + 1}/${pageImages.length}...`,
+            current: i + 1,
+            total: pageImages.length,
+          };
+          await this.jobsRepository.save(jobRecord);
+        }
+
         // Preprocess image
         const preprocessed = await this.imagePreprocessingService.preprocessImage(
           pageImages[i],
         );
-        
+
         // Perform OCR
         const ocrResult = await this.tesseractService.performOcr(preprocessed);
-        
+
+        const pageTime = Date.now() - startTime;
+        this.logger.log(`Page ${i + 1}/${pageImages.length} complete in ${pageTime}ms (confidence: ${(ocrResult.confidence * 100).toFixed(1)}%)`);
+
         results.push({
           pageNumber: i + 1,
           text: ocrResult.text,
           confidence: ocrResult.confidence,
         });
-        
+
         allTexts.push(ocrResult.text);
       }
       
@@ -181,9 +209,10 @@ export class OcrService {
    * Process an image document
    * @param buffer - Image file buffer
    * @param startTime - Processing start time
+   * @param jobRecord - Optional job record for progress tracking (not used for images)
    * @returns OCR result
    */
-  private async processImage(buffer: Buffer, startTime: number): Promise<OcrResult> {
+  private async processImage(buffer: Buffer, startTime: number, jobRecord?: any): Promise<OcrResult> {
     this.logger.log('Processing image document');
 
     // Preprocess image
@@ -196,6 +225,11 @@ export class OcrService {
     const normalizedText = this.normalizeText(ocrResult.text);
 
     const processingTime = Date.now() - startTime;
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    if (jobRecord) {
+      // Images are fast, no progress tracking needed
+    }
 
     return {
       text: normalizedText,

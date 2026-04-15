@@ -38,4 +38,12 @@ export class Job extends BaseEntity {
 
   @Column({ type: 'text', nullable: true })
   last_error: string;
+
+  @Column({ type: 'json', nullable: true })
+  progress: {
+    current?: number;
+    total?: number;
+    message?: string;
+    stage?: 'downloading' | 'ocr' | 'classifying' | 'extracting' | 'completed';
+  };
 }

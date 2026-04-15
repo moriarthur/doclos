@@ -72,13 +72,18 @@ export class DocumentProcessor {
       // Part 3: AI Pipeline - Actual processing pipeline
       // 1. Download file from S3
       this.logger.log(`Downloading file from S3: ${document.s3_key}`);
+      jobRecord.progress = { stage: 'downloading', message: 'Downloading file...' };
+      await this.jobsRepository.save(jobRecord);
       const fileBuffer = await this.s3Service.downloadFile(document.s3_key);
 
       // 2. Extract text / OCR
       this.logger.log('Starting OCR processing');
+      jobRecord.progress = { stage: 'ocr', message: 'Starting OCR...', current: 0, total: 0 };
+      await this.jobsRepository.save(jobRecord);
       const ocrResult = await this.ocrService.processDocument(
         fileBuffer,
         document.mime_type,
+        jobRecord,
       );
 
       this.logger.log(
@@ -93,6 +98,8 @@ export class DocumentProcessor {
 
       // 3. Classify document type using LLM
       this.logger.log('Classifying document type');
+      jobRecord.progress = { stage: 'classifying', message: 'Classifying document type...' };
+      await this.jobsRepository.save(jobRecord);
       const classification = await this.documentClassifierService.classifyDocument(
         ocrResult.text,
       );

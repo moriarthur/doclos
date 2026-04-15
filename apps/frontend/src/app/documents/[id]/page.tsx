@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { documentsApi, authApi } from '@/lib/api-client';
+import { documentsApi, jobsApi, authApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { DocumentViewer } from '@/components/DocumentViewer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
+import { CancelableLoader } from '@/components/ui/CancelableLoader';
 import { formatDate, getStatusLabel } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -16,7 +17,6 @@ import {
   Calendar,
   Euro,
   RefreshCw,
-  Loader2,
   Building2,
   Settings,
   Package,
@@ -54,7 +54,32 @@ export default function DocumentDetailPage() {
     queryKey: ['document', docId],
     queryFn: () => documentsApi.getDetail(docId),
     enabled: !!docId,
+    refetchInterval: (data: any) => {
+      // Auto-poll every 2 seconds when document is processing
+      return data?.status === 'processing' ? 2000 : false;
+    },
   });
+
+  const { data: jobProgress } = useQuery({
+    queryKey: ['job', docId],
+    queryFn: () => jobsApi.getDocumentJob(docId),
+    enabled: !!docId && document?.status === 'processing',
+    refetchInterval: 1000, // Poll every second for job progress
+  });
+
+  const cancelJobMutation = useMutation({
+    mutationFn: (jobId: string) => jobsApi.cancelJob(jobId),
+    onSuccess: () => {
+      // Refetch document to get updated status
+      refetch();
+    },
+  });
+
+  const handleCancelProcessing = () => {
+    if (jobProgress?.id) {
+      cancelJobMutation.mutate(jobProgress.id);
+    }
+  };
 
   const validateMutation = useMutation({
     mutationFn: (fields: Record<string, string>) =>
@@ -72,14 +97,8 @@ export default function DocumentDetailPage() {
   const reprocessMutation = useMutation({
     mutationFn: () => documentsApi.reprocess(docId),
     onSuccess: () => {
-      // Poll for status updates
-      const interval = setInterval(() => {
-        refetch();
-      }, 2000);
-      // Stop polling after 2 minutes or when status changes
-      setTimeout(() => {
-        clearInterval(interval);
-      }, 120000);
+      // Refetch to get latest status immediately
+      refetch();
     },
     onError: (err) => {
       console.error('Reprocess failed:', authApi.getErrorMessage(err));
@@ -143,7 +162,7 @@ export default function DocumentDetailPage() {
       <div className="flex">
         <Navigation />
         <main className="flex-1 md:ml-64 min-h-screen flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <CancelableLoader size="md" />
         </main>
       </div>
     );
@@ -332,10 +351,11 @@ export default function DocumentDetailPage() {
                     mimeType={document.mime_type || 'application/pdf'}
                     error={document.status === 'error'}
                     reprocessing={document.status === 'processing' || reprocessMutation.isPending || (reprocessMutation.isSuccess && document.status === 'error')}
+                    onCancelReprocess={document.status === 'processing' || reprocessMutation.isPending ? handleCancelProcessing : undefined}
                   />
                 ) : (
                   <div className="aspect-[3/4] bg-muted rounded-xl flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <CancelableLoader size="md" />
                   </div>
                 )}
               </CardContent>
@@ -560,16 +580,22 @@ export default function DocumentDetailPage() {
                 <CardContent>
                   <div className="space-y-4">
                     {[
-                      { label: 'Hochgeladen', done: true },
-                      { label: 'OCR-Verarbeitung', done: ['processing', 'parsed', 'needs_validation', 'validated'].includes(document.status) },
-                      { label: 'AI-Extraktion', done: ['parsed', 'needs_validation', 'validated'].includes(document.status) },
-                      { label: 'Validiert', done: document.status === 'validated' },
+                      { label: 'Hochgeladen', done: true, inProgress: false },
+                      {
+                        label: jobProgress?.progress?.stage === 'ocr'
+                          ? `OCR-Verarbeitung (${jobProgress.progress.current}/${jobProgress.progress.total})`
+                          : 'OCR-Verarbeitung',
+                        done: ['processing', 'parsed', 'needs_validation', 'validated'].includes(document.status),
+                        inProgress: document.status === 'processing' && jobProgress?.progress?.stage === 'ocr',
+                      },
+                      { label: 'AI-Extraktion', done: ['parsed', 'needs_validation', 'validated'].includes(document.status), inProgress: document.status === 'processing' && jobProgress?.progress?.stage === 'classifying' },
+                      { label: 'Validiert', done: document.status === 'validated', inProgress: false },
                     ].map((step, i) => (
                       <div key={i} className="flex items-center gap-4">
                         <div className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                          step.done ? 'bg-primary' : 'bg-muted'
+                          step.done ? 'bg-primary' : step.inProgress ? 'bg-primary animate-slow-blink' : 'bg-muted'
                         }`}></div>
-                        <span className={`text-sm ${step.done ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        <span className={`text-sm ${step.done || step.inProgress ? 'text-foreground' : 'text-muted-foreground'}`}>
                           {step.label}
                         </span>
                       </div>

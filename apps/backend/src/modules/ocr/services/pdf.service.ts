@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import pdfParse from 'pdf-parse';
 
 // Part 3: AI Pipeline - PDF text extraction
 // Handles extracting text from PDFs (both text and scanned)
@@ -12,44 +13,54 @@ export class PdfService {
    * @param buffer - PDF file buffer
    * @returns Extracted text and metadata
    */
-  async extractText(_buffer: Buffer): Promise<{
+  async extractText(buffer: Buffer): Promise<{
     text: string;
     pageTexts: string[];
     pageCount: number;
     hasEmbeddedText: boolean;
   }> {
     try {
-      // For now, return a placeholder
-      // TODO: Implement pdf-parse or pdfjs extraction
-      
       this.logger.log('Extracting text from PDF');
-      
-      // Mock implementation
+
+      const data = await pdfParse(buffer);
+
+      // Check if PDF has actual text content
+      const hasText = Boolean(data.text && data.text.trim().length > 50);
+
+      this.logger.log(`PDF extraction complete - Pages: ${data.numpages}, Has text: ${hasText}`);
+
       return {
-        text: 'Mock PDF text content',
-        pageTexts: ['Mock page 1 text'],
-        pageCount: 1,
-        hasEmbeddedText: true,
+        text: data.text || '',
+        pageTexts: [], // pdf-parse doesn't provide per-page text easily
+        pageCount: data.numpages,
+        hasEmbeddedText: hasText,
       };
     } catch (error) {
       this.logger.error(`Failed to extract PDF text: ${error instanceof Error ? error.message : String(error)}`);
-      throw error;
+      // Return empty result on error - will fall back to OCR
+      return {
+        text: '',
+        pageTexts: [],
+        pageCount: 1,
+        hasEmbeddedText: false,
+      };
     }
   }
 
   /**
    * Convert PDF pages to images
-   * @param buffer - PDF file buffer
+   * @param _buffer - PDF file buffer (not used yet)
    * @returns Array of image buffers (one per page)
    */
   async pdfToImages(_buffer: Buffer): Promise<Buffer[]> {
     try {
-      // TODO: Implement PDF to image conversion using Poppler or pdf-to-img
-      
       this.logger.log('Converting PDF to images');
-      
-      // Mock implementation
-      return [Buffer.from('mock image data')];
+
+      // For now, use a simpler approach - use pdfjs-dist directly
+      // This will be implemented separately
+      // For now, throw an error to force OCR fallback
+      throw new Error('PDF to image conversion not yet implemented - using OCR fallback');
+
     } catch (error) {
       this.logger.error(`Failed to convert PDF to images: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
@@ -61,7 +72,7 @@ export class PdfService {
    * @param buffer - PDF file buffer
    * @returns PDF metadata
    */
-  async getMetadata(_buffer: Buffer): Promise<{
+  async getMetadata(buffer: Buffer): Promise<{
     pageCount: number;
     title?: string;
     author?: string;
@@ -73,15 +84,25 @@ export class PdfService {
     modificationDate?: Date;
   }> {
     try {
-      // TODO: Implement PDF metadata extraction using pdf-parse
-      
+      const data = await pdfParse(buffer);
+
       return {
-        pageCount: 1,
-        title: 'Mock PDF',
+        pageCount: data.numpages,
+        title: data.info?.Title,
+        author: data.info?.Author,
+        subject: data.info?.Subject,
+        keywords: data.info?.Keywords,
+        creator: data.info?.Creator,
+        producer: data.info?.Producer,
+        creationDate: data.info?.CreationDate ? new Date(data.info.CreationDate) : undefined,
+        modificationDate: data.info?.ModDate ? new Date(data.info.ModDate) : undefined,
       };
     } catch (error) {
       this.logger.error(`Failed to get PDF metadata: ${error instanceof Error ? error.message : String(error)}`);
-      throw error;
+      // Return default metadata on error
+      return {
+        pageCount: 1,
+      };
     }
   }
 }

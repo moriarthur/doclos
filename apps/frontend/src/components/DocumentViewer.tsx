@@ -1,17 +1,19 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Loader2, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { CancelableLoader } from '@/components/ui/CancelableLoader';
 
 interface DocumentViewerProps {
   url: string;
   mimeType: string;
   error?: boolean;
   reprocessing?: boolean;
+  onCancelReprocess?: () => void;
 }
 
-export function DocumentViewer({ url, mimeType, error: isErrorDoc = false, reprocessing = false }: DocumentViewerProps) {
+export function DocumentViewer({ url, mimeType, error: isErrorDoc = false, reprocessing = false, onCancelReprocess }: DocumentViewerProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -45,7 +47,7 @@ export function DocumentViewer({ url, mimeType, error: isErrorDoc = false, repro
   if (loading) {
     return (
       <div className="aspect-[3/4] bg-muted rounded-xl flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <CancelableLoader size="md" />
       </div>
     );
   }
@@ -65,15 +67,15 @@ export function DocumentViewer({ url, mimeType, error: isErrorDoc = false, repro
   }
 
   if (mimeType.startsWith('image/')) {
-    return <ImageViewer blobUrl={blobUrl} isErrorDoc={isErrorDoc} reprocessing={reprocessing} />;
+    return <ImageViewer blobUrl={blobUrl} isErrorDoc={isErrorDoc} reprocessing={reprocessing} onCancelReprocess={onCancelReprocess} />;
   }
 
-  return <PdfViewer blobUrl={blobUrl} isErrorDoc={isErrorDoc} reprocessing={reprocessing} />;
+  return <PdfViewer blobUrl={blobUrl} isErrorDoc={isErrorDoc} reprocessing={reprocessing} onCancelReprocess={onCancelReprocess} />;
 }
 
 /* ─── Image Viewer ─── */
 
-function ImageViewer({ blobUrl, isErrorDoc, reprocessing }: { blobUrl: string; isErrorDoc: boolean; reprocessing: boolean }) {
+function ImageViewer({ blobUrl, isErrorDoc, reprocessing, onCancelReprocess }: { blobUrl: string; isErrorDoc: boolean; reprocessing: boolean; onCancelReprocess?: () => void }) {
   const [zoom, setZoom] = useState(1);
   const isBlocked = isErrorDoc || reprocessing;
 
@@ -93,7 +95,7 @@ function ImageViewer({ blobUrl, isErrorDoc, reprocessing }: { blobUrl: string; i
       </div>
 
       {isErrorDoc && !reprocessing && <ErrorOverlay />}
-      {reprocessing && <ReprocessingOverlay />}
+      {reprocessing && <ReprocessingOverlay onCancel={onCancelReprocess} />}
 
       {!isBlocked && (
         <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
@@ -112,7 +114,7 @@ function ImageViewer({ blobUrl, isErrorDoc, reprocessing }: { blobUrl: string; i
 
 /* ─── PDF Viewer ─── */
 
-function PdfViewer({ blobUrl, isErrorDoc, reprocessing }: { blobUrl: string; isErrorDoc: boolean; reprocessing: boolean }) {
+function PdfViewer({ blobUrl, isErrorDoc, reprocessing, onCancelReprocess }: { blobUrl: string; isErrorDoc: boolean; reprocessing: boolean; onCancelReprocess?: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -182,7 +184,7 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing }: { blobUrl: string; isE
       </div>
 
       {isErrorDoc && !reprocessing && <ErrorOverlay />}
-      {reprocessing && <ReprocessingOverlay />}
+      {reprocessing && <ReprocessingOverlay onCancel={onCancelReprocess} />}
 
       {!isBlocked && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
@@ -211,14 +213,16 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing }: { blobUrl: string; isE
 
 /* ─── Overlays ─── */
 
-function ReprocessingOverlay() {
+function ReprocessingOverlay({ onCancel }: { onCancel?: () => void }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center z-10">
       <div className="text-center p-8 bg-background/70 backdrop-blur-sm rounded-2xl">
-        <Loader2 className="h-16 w-16 mx-auto mb-4 animate-spin text-primary" />
-        <p className="font-medium text-foreground mb-2">Wird neu verarbeitet...</p>
+        <div className="relative inline-block">
+          <CancelableLoader size="lg" onCancel={onCancel} />
+        </div>
+        <p className="font-medium text-foreground mb-2 mt-6">Wird neu verarbeitet...</p>
         <p className="text-sm text-muted-foreground">
-          Das Dokument wird erneut analysiert.
+          {onCancel ? 'Hover zum Abbrechen' : 'Das Dokument wird erneut analysiert.'}
         </p>
       </div>
     </div>

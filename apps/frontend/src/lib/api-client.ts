@@ -253,4 +253,14 @@ export const jobsApi = {
     const response = await apiClient.get(`/jobs/${id}`);
     return response.data;
   },
+
+  getDocumentJob: async (documentId: string) => {
+    const response = await apiClient.get(`/jobs?document_id=${documentId}`);
+    return response.data;
+  },
+
+  cancelJob: async (jobId: string) => {
+    const response = await apiClient.delete(`/jobs/${jobId}`);
+    return response.data;
+  },
 };
