@@ -42,7 +42,9 @@ export class AiService {
     this.apiKey = this.configService.get('GLM_API_KEY') || '';
     this.baseUrl = this.configService.get('GLM_BASE_URL') || 'https://open.bigmodel.cn/api/paas/v4';
     this.model = this.configService.get('GLM_MODEL') || 'glm-4-flash';
-    this.maxTokens = 4096;
+    // glm-4.7-flash is a reasoning model: thinking tokens consume this budget too
+    // 16384 gives enough room for reasoning + JSON extraction output
+    this.maxTokens = 16384;
 
     if (!this.apiKey) {
       this.logger.warn('GLM_API_KEY not set - AI features will be disabled');
@@ -74,43 +76,61 @@ export class AiService {
 
       messages.push({ role: 'user', content: prompt });
 
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.model,
-          messages,
-          max_tokens: this.maxTokens,
-          temperature: 0.3, // Lower temperature for more consistent extraction
-        }),
-      });
+      const controller = new AbortController();
+      const timeout = 120000; // 120s - reasoning models need more time
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.error(`GLM API error: ${response.status} - ${errorText}`);
-        throw new Error(`GLM API request failed: ${response.status}`);
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        const response = await fetch(`${this.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.model,
+            messages,
+            max_tokens: this.maxTokens,
+            temperature: 0.3, // Lower temperature for more consistent extraction
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          this.logger.error(`GLM API error: ${response.status} - ${errorText}`);
+          throw new Error(`GLM API request failed: ${response.status}`);
+        }
+
+        const data = (await response.json()) as ChatCompletionResponse;
+
+        if (!data.choices || data.choices.length === 0) {
+          throw new Error('No response from GLM API');
+        }
+
+        const text = data.choices[0].message.content;
+        const usage = {
+          inputTokens: data.usage.prompt_tokens,
+          outputTokens: data.usage.completion_tokens,
+        };
+
+        this.logger.debug(
+          `GLM response received - Input: ${usage.inputTokens}, Output: ${usage.outputTokens} tokens`,
+        );
+
+        return { text, usage };
+      } catch (error) {
+        clearTimeout(timeoutId);
+
+        if (error instanceof Error && error.name === 'AbortError') {
+          this.logger.error('GLM API request timed out after 120s');
+          throw new Error('AI request timed out - please try again');
+        }
+        throw error;
       }
-
-      const data = (await response.json()) as ChatCompletionResponse;
-
-      if (!data.choices || data.choices.length === 0) {
-        throw new Error('No response from GLM API');
-      }
-
-      const text = data.choices[0].message.content;
-      const usage = {
-        inputTokens: data.usage.prompt_tokens,
-        outputTokens: data.usage.completion_tokens,
-      };
-
-      this.logger.debug(
-        `GLM response received - Input: ${usage.inputTokens}, Output: ${usage.outputTokens} tokens`,
-      );
-
-      return { text, usage };
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(`GLM API error: ${error.message}`);

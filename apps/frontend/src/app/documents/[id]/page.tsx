@@ -54,9 +54,9 @@ export default function DocumentDetailPage() {
     queryKey: ['document', docId],
     queryFn: () => documentsApi.getDetail(docId),
     enabled: !!docId,
-    refetchInterval: (data: any) => {
-      // Auto-poll every 2 seconds when document is processing
-      return data?.status === 'processing' ? 2000 : false;
+    refetchInterval: (query) => {
+      // TanStack Query v5: callback receives Query object, not data
+      return query.state.data?.status === 'processing' ? 2000 : false;
     },
   });
 
