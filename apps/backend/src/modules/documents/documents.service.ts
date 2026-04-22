@@ -71,10 +71,16 @@ export class DocumentsService {
     });
     await this.documentsRepository.save(document);
 
-    // Add to processing queue
-    await this.documentsQueue.add('process-document', {
+    // Set status to processing immediately for responsive UI
+    document.status = DocumentStatus.PROCESSING;
+    await this.documentsRepository.save(document);
+
+    // Add to processing queue (worker will handle the rest)
+    this.documentsQueue.add('process-document', {
       documentId: document.id,
       userId,
+    }).catch((err) => {
+      this.logger.error(`Failed to queue document ${document.id}: ${err.message}`);
     });
 
     return {

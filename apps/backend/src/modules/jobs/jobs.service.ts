@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job, JobStatus } from './entities/job.entity';
 import { AuditLog } from './entities/audit-log.entity';
+import { Document, DocumentStatus } from '../documents/entities/document.entity';
 
 // Part 4: API Specification - Job status tracking
 
@@ -13,6 +14,8 @@ export class JobsService {
     private jobsRepository: Repository<Job>,
     @InjectRepository(AuditLog)
     private auditLogsRepository: Repository<AuditLog>,
+    @InjectRepository(Document)
+    private documentsRepository: Repository<Document>,
   ) {}
 
   async getJobStatus(jobId: string) {
@@ -96,24 +99,40 @@ export class JobsService {
       throw new Error('Cannot cancel a job that is not processing or pending');
     }
 
-    // Update job status to failed with cancellation message
     job.status = JobStatus.FAILED;
     job.last_error = 'Cancelled by user';
     await this.jobsRepository.save(job);
 
-    // If job has a document, update document status to error
     if (job.document_id) {
-      const { Document } = require('../documents/entities/document.entity');
-      const { DataSource } = require('../../../database/data-source');
-      const documentRepository = DataSource.getRepository(Document);
-
-      await documentRepository.update(
+      await this.documentsRepository.update(
         { id: job.document_id },
-        { status: 'error' }
+        { status: DocumentStatus.ERROR },
       );
     }
 
     return { message: 'Job cancelled successfully' };
+  }
+
+  async cancelByDocument(documentId: string) {
+    const job = await this.jobsRepository.findOne({
+      where: { document_id: documentId },
+      order: { created_at: 'DESC' },
+    });
+
+    // Cancel active job if one exists
+    if (job && (job.status === JobStatus.PROCESSING || job.status === JobStatus.PENDING)) {
+      job.status = JobStatus.FAILED;
+      job.last_error = 'Cancelled by user';
+      await this.jobsRepository.save(job);
+    }
+
+    // Always reset document to error
+    await this.documentsRepository.update(
+      { id: documentId },
+      { status: DocumentStatus.ERROR },
+    );
+
+    return { message: 'Document processing cancelled' };
   }
 
   async getAuditLogs(entityId?: string) {

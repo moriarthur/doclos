@@ -84,26 +84,74 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle token refresh
+// Handle token refresh on 401
+let isRefreshing = false;
+let refreshPromise: Promise<any> | null = null;
+
 apiClient.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      // Don't redirect for auth endpoints (login/register should handle their own errors)
-      const isAuthEndpoint = error.config?.url?.includes('/auth/login') ||
-                             error.config?.url?.includes('/auth/register');
+  async (error: AxiosError & { config?: any }) => {
+    const originalRequest = error.config;
 
-      if (!isAuthEndpoint) {
-        // Token expired - clear and redirect to login
-        if (typeof window !== 'undefined') {
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      const isAuthEndpoint = originalRequest?.url?.includes('/auth/login') ||
+                             originalRequest?.url?.includes('/auth/register') ||
+                             originalRequest?.url?.includes('/auth/refresh');
+
+      if (isAuthEndpoint) {
+        return Promise.reject(error);
+      }
+
+      originalRequest._retry = true;
+
+      // Try to refresh the token
+      if (!isRefreshing) {
+        isRefreshing = true;
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (refreshToken) {
+          refreshPromise = apiClient.post('/auth/refresh', { refresh_token: refreshToken })
+            .then((res) => {
+              const { access_token, refresh_token } = res.data;
+              localStorage.setItem('access_token', access_token);
+              localStorage.setItem('refresh_token', refresh_token);
+              setCookie('access_token', access_token);
+              setCookie('refresh_token', refresh_token);
+              return res;
+            })
+            .catch(() => {
+              // Refresh failed — clear tokens
+              localStorage.removeItem('access_token');
+              localStorage.removeItem('refresh_token');
+              deleteCookie('access_token');
+              deleteCookie('refresh_token');
+              window.location.href = '/login';
+              return Promise.reject(error);
+            })
+            .finally(() => {
+              isRefreshing = false;
+              refreshPromise = null;
+            });
+        } else {
           localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
           deleteCookie('access_token');
-          deleteCookie('refresh_token');
           window.location.href = '/login';
+          return Promise.reject(error);
         }
       }
+
+      // Wait for the refresh to complete, then retry the original request
+      try {
+        await refreshPromise;
+        const token = localStorage.getItem('access_token');
+        if (token) {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+        }
+        return apiClient(originalRequest);
+      } catch {
+        return Promise.reject(error);
+      }
     }
+
     return Promise.reject(error);
   }
 );
@@ -261,6 +309,11 @@ export const jobsApi = {
 
   cancelJob: async (jobId: string) => {
     const response = await apiClient.delete(`/jobs/${jobId}`);
+    return response.data;
+  },
+
+  cancelByDocument: async (documentId: string) => {
+    const response = await apiClient.delete(`/jobs?document_id=${documentId}`);
     return response.data;
   },
 };

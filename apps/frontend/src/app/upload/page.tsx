@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { documentsApi, authApi } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/Navigation';
@@ -46,12 +46,13 @@ function truncateFileName(filename: string, maxLength: number = 25): string {
 
 export default function UploadPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [dragActive, setDragActive] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
-  const [uploadedDocId, setUploadedDocId] = useState<string | null>(null);
+  const [uploadedDocIds, setUploadedDocIds] = useState<string[]>([]);
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
   const [currentUploadIndex, setCurrentUploadIndex] = useState<number | null>(null);
 
@@ -70,14 +71,12 @@ export default function UploadPage() {
   }, [router]);
 
   const uploadMutation = useMutation({
-    mutationFn: ({ file, index }: { file: File; index: number }) =>
+    mutationFn: ({ file }: { file: File; index: number }) =>
       documentsApi.upload(file),
     onSuccess: (data, variables) => {
       setUploadProgress((prev) => ({ ...prev, [variables.index]: 100 }));
-      setUploadedDocId(data.document_id);
-      setTimeout(() => {
-        router.push(`/documents/${data.document_id}`);
-      }, 1500);
+      setUploadedDocIds((prev) => [...prev, data.document_id]);
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
     },
     onError: (err, variables) => {
       const errorMsg = authApi.getErrorMessage(err);
@@ -261,7 +260,7 @@ export default function UploadPage() {
           {/* Upload Area */}
           <Card className="mb-8 animate-scale-in w-full overflow-hidden">
             <CardContent className="p-4 md:p-8">
-              {!uploadedDocId ? (
+              {!uploadedDocIds.length ? (
                 <>
                   <div
                     className={`relative border-2 border-dashed rounded-2xl p-6 md:p-10 lg:p-16 text-center transition-all duration-300 w-full ${
@@ -409,18 +408,32 @@ export default function UploadPage() {
                     <Check className="h-10 w-10 text-green-600" />
                   </div>
                   <h3 className="font-serif text-2xl font-semibold mb-3 text-foreground">
-                    Erfolgreich hochgeladen!
+                    {uploadedDocIds.length === 1
+                      ? 'Erfolgreich hochgeladen!'
+                      : `${uploadedDocIds.length} Dokumente hochgeladen!`}
                   </h3>
-                  <p className="text-muted-foreground">
-                    Das Dokument wird verarbeitet. Sie werden weitergeleitet...
+                  <p className="text-muted-foreground mb-6">
+                    {uploadedDocIds.length === 1
+                      ? 'Das Dokument wird verarbeitet.'
+                      : 'Die Dokumente werden verarbeitet.'}
                   </p>
+                  <div className="flex items-center justify-center gap-3">
+                    {uploadedDocIds.length === 1 && (
+                      <Button variant="secondary" onClick={() => router.push(`/documents/${uploadedDocIds[0]}`)}>
+                        Dokument anzeigen
+                      </Button>
+                    )}
+                    <Button onClick={() => router.push('/')}>
+                      Zur Übersicht
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
           </Card>
 
           {/* File Errors */}
-          {Object.keys(fileErrors).length > 0 && !uploadedDocId && (
+          {Object.keys(fileErrors).length > 0 && !uploadedDocIds.length && (
             <Card className="border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-900/10 animate-slide-up">
               <CardContent className="p-5">
                 <div className="flex items-start gap-3">
@@ -441,7 +454,7 @@ export default function UploadPage() {
           )}
 
           {/* Upload Error */}
-          {uploadMutation.error && !uploadedDocId && (
+          {uploadMutation.error && !uploadedDocIds.length && (
             <Card className="border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-900/10 animate-slide-up">
               <CardContent className="p-5">
                 <div className="flex items-start gap-3">

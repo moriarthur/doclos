@@ -58,7 +58,8 @@ export default function ArchivePage() {
 
   const unarchiveMutation = useMutation({
     mutationFn: (id: string) => documentsApi.unarchive(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['document', id] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
     },
   });

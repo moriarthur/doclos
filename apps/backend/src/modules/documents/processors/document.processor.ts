@@ -51,13 +51,25 @@ export class DocumentProcessor {
 
     this.logger.log(`Processing document: ${documentId}`);
 
-    // Create job record
-    const jobRecord = this.jobsRepository.create({
-      job_type: 'process_document' as any,
-      status: JobStatus.PROCESSING,
-      document_id: documentId,
+    // Find or create job record (avoid duplicates for reprocessing)
+    let jobRecord = await this.jobsRepository.findOne({
+      where: { document_id: documentId, status: JobStatus.PROCESSING },
+      order: { created_at: 'DESC' },
     });
-    await this.jobsRepository.save(jobRecord);
+    if (!jobRecord) {
+      jobRecord = this.jobsRepository.create({
+        job_type: 'process_document' as any,
+        status: JobStatus.PROCESSING,
+        document_id: documentId,
+      });
+      await this.jobsRepository.save(jobRecord);
+    }
+
+    // Helper: check if job was cancelled by user
+    const isCancelled = async () => {
+      const fresh = await this.jobsRepository.findOne({ where: { id: jobRecord.id } });
+      return fresh?.status === JobStatus.FAILED && fresh?.last_error === 'Cancelled by user';
+    };
 
     try {
       const document = await this.documentsRepository.findOne({ where: { id: documentId } });
@@ -69,12 +81,16 @@ export class DocumentProcessor {
       document.status = DocumentStatus.PROCESSING;
       await this.documentsRepository.save(document);
 
-      // Part 3: AI Pipeline - Actual processing pipeline
       // 1. Download file from S3
       this.logger.log(`Downloading file from S3: ${document.s3_key}`);
       jobRecord.progress = { stage: 'downloading', message: 'Downloading file...' };
       await this.jobsRepository.save(jobRecord);
       const fileBuffer = await this.s3Service.downloadFile(document.s3_key);
+
+      if (await isCancelled()) {
+        this.logger.log(`Job cancelled after download: ${documentId}`);
+        return;
+      }
 
       // 2. Extract text / OCR
       this.logger.log('Starting OCR processing');
@@ -85,6 +101,11 @@ export class DocumentProcessor {
         document.mime_type,
         jobRecord,
       );
+
+      if (await isCancelled()) {
+        this.logger.log(`Job cancelled after OCR: ${documentId}`);
+        return;
+      }
 
       this.logger.log(
         `OCR complete - Category: ${ocrResult.documentCategory}, Confidence: ${(
@@ -103,6 +124,11 @@ export class DocumentProcessor {
       const classification = await this.documentClassifierService.classifyDocument(
         ocrResult.text,
       );
+
+      if (await isCancelled()) {
+        this.logger.log(`Job cancelled after classification: ${documentId}`);
+        return;
+      }
 
       document.type = classification.type;
       await this.documentsRepository.save(document);
@@ -127,6 +153,12 @@ export class DocumentProcessor {
 
       this.logger.log(`Document processed: ${documentId}`);
     } catch (error) {
+      // Don't overwrite cancellation status
+      if (await isCancelled()) {
+        this.logger.log(`Job was cancelled, skipping error handling: ${documentId}`);
+        return;
+      }
+
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`Error processing document: ${errorMessage}`);
 

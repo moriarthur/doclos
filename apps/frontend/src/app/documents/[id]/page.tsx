@@ -67,18 +67,17 @@ export default function DocumentDetailPage() {
     refetchInterval: 1000, // Poll every second for job progress
   });
 
-  const cancelJobMutation = useMutation({
-    mutationFn: (jobId: string) => jobsApi.cancelJob(jobId),
+  const cancelByDocumentMutation = useMutation({
+    mutationFn: () => jobsApi.cancelByDocument(docId),
     onSuccess: () => {
-      // Refetch document to get updated status
-      refetch();
+      queryClient.invalidateQueries({ queryKey: ['document', docId] });
+      queryClient.invalidateQueries({ queryKey: ['job', docId] });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
     },
   });
 
   const handleCancelProcessing = () => {
-    if (jobProgress?.id) {
-      cancelJobMutation.mutate(jobProgress.id);
-    }
+    cancelByDocumentMutation.mutate();
   };
 
   const validateMutation = useMutation({
@@ -306,7 +305,7 @@ export default function DocumentDetailPage() {
           </div>
 
           {/* Error Alert */}
-          {document.status === 'error' && (
+          {document.status === 'error' && !reprocessMutation.isPending && !reprocessMutation.isSuccess && (
             <Card className="border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-900/10 animate-slide-up mb-6">
               <CardContent className="p-5">
                 <div className="flex items-start gap-3">
@@ -350,7 +349,8 @@ export default function DocumentDetailPage() {
                     url={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/documents/${docId}/file`}
                     mimeType={document.mime_type || 'application/pdf'}
                     error={document.status === 'error'}
-                    reprocessing={document.status === 'processing' || reprocessMutation.isPending || (reprocessMutation.isSuccess && document.status === 'error')}
+                    reprocessing={document.status === 'processing' || reprocessMutation.isPending}
+                    isReprocess={reprocessMutation.isPending || reprocessMutation.isSuccess}
                     onCancelReprocess={document.status === 'processing' || reprocessMutation.isPending ? handleCancelProcessing : undefined}
                   />
                 ) : (
@@ -578,29 +578,50 @@ export default function DocumentDetailPage() {
                   <CardTitle className="text-lg">Verarbeitungsstatus</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {[
-                      { label: 'Hochgeladen', done: true, inProgress: false },
+                  {(() => {
+                    const stage = jobProgress?.progress?.stage;
+                    const isProcessing = document.status === 'processing';
+                    const ocrDone = ['parsed', 'needs_validation', 'validated'].includes(document.status)
+                      || (isProcessing && ['classifying', 'extracting'].includes(stage));
+                    const aiDone = ['parsed', 'needs_validation', 'validated'].includes(document.status)
+                      && !isProcessing;
+                    const steps = [
+                      { label: 'Hochgeladen', done: true, active: false },
                       {
-                        label: jobProgress?.progress?.stage === 'ocr'
+                        label: stage === 'ocr' && isProcessing && jobProgress?.progress
                           ? `OCR-Verarbeitung (${jobProgress.progress.current}/${jobProgress.progress.total})`
                           : 'OCR-Verarbeitung',
-                        done: ['processing', 'parsed', 'needs_validation', 'validated'].includes(document.status),
-                        inProgress: document.status === 'processing' && jobProgress?.progress?.stage === 'ocr',
+                        done: ocrDone,
+                        active: isProcessing && (!stage || stage === 'downloading' || stage === 'ocr'),
                       },
-                      { label: 'AI-Extraktion', done: ['parsed', 'needs_validation', 'validated'].includes(document.status), inProgress: document.status === 'processing' && jobProgress?.progress?.stage === 'classifying' },
-                      { label: 'Validiert', done: document.status === 'validated', inProgress: false },
-                    ].map((step, i) => (
-                      <div key={i} className="flex items-center gap-4">
-                        <div className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                          step.done ? 'bg-primary' : step.inProgress ? 'bg-primary animate-slow-blink' : 'bg-muted'
-                        }`}></div>
-                        <span className={`text-sm ${step.done || step.inProgress ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          {step.label}
-                        </span>
+                      {
+                        label: stage === 'classifying' && isProcessing ? 'AI-Klassifizierung...' : 'AI-Extraktion',
+                        done: aiDone,
+                        active: isProcessing && (stage === 'classifying' || stage === 'extracting'),
+                      },
+                      { label: 'Validiert', done: document.status === 'validated', active: false },
+                    ];
+                    return (
+                      <div className="space-y-4">
+                        {steps.map((step, i) => (
+                          <div key={i} className="flex items-center gap-4">
+                            {step.done ? (
+                              <svg className="h-4 w-4 flex-shrink-0 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            ) : step.active ? (
+                              <div className="h-2 w-2 rounded-full flex-shrink-0 bg-primary animate-slow-blink" />
+                            ) : (
+                              <div className="h-2 w-2 rounded-full flex-shrink-0 bg-muted" />
+                            )}
+                            <span className={`text-sm ${step.done || step.active ? 'text-foreground' : 'text-muted-foreground'}`}>
+                              {step.label}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </div>

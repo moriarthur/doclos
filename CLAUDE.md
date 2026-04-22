@@ -2,7 +2,27 @@
 
 > Project: Document automation SaaS for small businesses and German Mittelstand
 > Status: **Backend + Frontend MVP Complete** | Production ready
-> Last Updated: 2026-03-31
+> Last Updated: 2026-04-21
+
+---
+
+## Session Summary (2026-04-20)
+
+**Completed:**
+- ✅ Fixed AI extraction timeout (reasoning model token budget)
+- ✅ Fixed real-time polling (TanStack Query v5 refetchInterval API)
+
+**Current State:**
+- Frontend: http://localhost:3000
+- Backend: http://localhost:3001/api/v1
+- Full document flow working: Upload → OCR → AI Extract → View → Validate
+- Uncommitted: Responsive PDF rendering (fit-to-container, resize-aware)
+
+**Next Session Tasks:**
+1. Implement Search API (full-text search)
+2. Implement Excel export worker
+3. Add invoice line items display in detail view
+4. German translations (consistent DE UI)
 
 ---
 

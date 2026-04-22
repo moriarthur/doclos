@@ -86,14 +86,16 @@ export default function DashboardPage() {
 
   const archiveMutation = useMutation({
     mutationFn: (id: string) => documentsApi.updateStatus(id, 'archived'),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['document', id] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => documentsApi.delete(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['document', id] });
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       setDeleteDialog(null);
     },
