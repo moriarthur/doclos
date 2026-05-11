@@ -251,6 +251,9 @@ export class DocumentsService {
       if (fields.due_date) {
         document.invoice.due_date = new Date(String(fields.due_date));
       }
+      if (fields.currency) {
+        document.invoice.currency = String(fields.currency);
+      }
       document.invoice.validated = true;
       await this.invoicesRepository.save(document.invoice);
     }

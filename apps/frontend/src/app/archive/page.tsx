@@ -7,7 +7,7 @@ import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatDate, formatCurrency, getStatusLabel } from '@/lib/utils';
+import { formatDate, formatAmount, getStatusLabel } from '@/lib/utils';
 import {
   FileText,
   Search,
@@ -210,7 +210,7 @@ export default function ArchivePage() {
                               )}
                               {doc.amount && (
                                 <span className="flex items-center gap-1.5 font-medium">
-                                  {formatCurrency(doc.amount, doc.currency)}
+                                  {formatAmount(doc.amount, doc.currency).formatted}
                                 </span>
                               )}
                               <span className="text-xs uppercase tracking-wide">

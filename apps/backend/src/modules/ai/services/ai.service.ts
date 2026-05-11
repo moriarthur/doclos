@@ -57,28 +57,13 @@ export class AiService {
    * @param systemPrompt - Optional system prompt
    * @returns Response text
    */
-  async sendMessage(
-    prompt: string,
-    systemPrompt?: string,
+  private async fetchWithRetry(
+    messages: ChatMessage[],
+    retries = 5,
   ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
-    if (!this.apiKey) {
-      throw new Error('GLM_API_KEY not configured');
-    }
-
-    try {
-      this.logger.debug(`Sending message to GLM (${this.model})`);
-
-      const messages: ChatMessage[] = [];
-
-      if (systemPrompt) {
-        messages.push({ role: 'system', content: systemPrompt });
-      }
-
-      messages.push({ role: 'user', content: prompt });
-
+    for (let attempt = 1; attempt <= retries; attempt++) {
       const controller = new AbortController();
-      const timeout = 120000; // 120s - reasoning models need more time
-
+      const timeout = 120000;
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
       try {
@@ -92,12 +77,19 @@ export class AiService {
             model: this.model,
             messages,
             max_tokens: this.maxTokens,
-            temperature: 0.3, // Lower temperature for more consistent extraction
+            temperature: 0.3,
           }),
           signal: controller.signal,
         });
 
         clearTimeout(timeoutId);
+
+        if (response.status === 429 && attempt < retries) {
+          const delay = Math.pow(2, attempt) * 3000;
+          this.logger.warn(`GLM 429 rate limit, retry ${attempt}/${retries} in ${delay}ms`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -131,6 +123,31 @@ export class AiService {
         }
         throw error;
       }
+    }
+
+    throw new Error('GLM API request failed: 429');
+  }
+
+  async sendMessage(
+    prompt: string,
+    systemPrompt?: string,
+  ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
+    if (!this.apiKey) {
+      throw new Error('GLM_API_KEY not configured');
+    }
+
+    try {
+      this.logger.debug(`Sending message to GLM (${this.model})`);
+
+      const messages: ChatMessage[] = [];
+
+      if (systemPrompt) {
+        messages.push({ role: 'system', content: systemPrompt });
+      }
+
+      messages.push({ role: 'user', content: prompt });
+
+      return await this.fetchWithRetry(messages);
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(`GLM API error: ${error.message}`);

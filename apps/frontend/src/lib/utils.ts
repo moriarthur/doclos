@@ -23,6 +23,29 @@ export function formatCurrency(amount: number, currency: string = 'EUR'): string
   }).format(amount);
 }
 
+// Format amount — returns number formatted and currency info
+export function formatAmount(amount: number, currency?: string | null): {
+  formatted: string;
+  hasCurrency: boolean;
+} {
+  if (currency) {
+    return {
+      formatted: new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency,
+      }).format(amount),
+      hasCurrency: true,
+    };
+  }
+  return {
+    formatted: new Intl.NumberFormat('de-DE', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount),
+    hasCurrency: false,
+  };
+}
+
 // Status badge mapping
 export function getStatusBadgeClass(status: string): string {
   const statusMap: Record<string, string> = {

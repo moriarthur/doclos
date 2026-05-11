@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { CancelableLoader } from '@/components/ui/CancelableLoader';
-import { formatDate, getStatusLabel } from '@/lib/utils';
+import { formatDate, formatAmount, getStatusLabel } from '@/lib/utils';
 import {
   ArrowLeft,
   FileText,
@@ -63,8 +63,8 @@ export default function DocumentDetailPage() {
   const { data: jobProgress } = useQuery({
     queryKey: ['job', docId],
     queryFn: () => jobsApi.getDocumentJob(docId),
-    enabled: !!docId && document?.status === 'processing',
-    refetchInterval: 1000, // Poll every second for job progress
+    enabled: !!docId && (document?.status === 'processing' || document?.status === 'error'),
+    refetchInterval: document?.status === 'processing' ? 1000 : false,
   });
 
   const cancelByDocumentMutation = useMutation({
@@ -84,7 +84,6 @@ export default function DocumentDetailPage() {
     mutationFn: (fields: Record<string, string>) =>
       documentsApi.validate(docId, fields),
     onSuccess: () => {
-      setIsEditing(false);
       setEditedFields({});
       refetch();
     },
@@ -142,12 +141,11 @@ export default function DocumentDetailPage() {
     setEditedFields((prev) => ({ ...prev, [field]: value }));
   };
 
-  const getFieldValue = (field: string, originalValue: string | { value?: string } | undefined) => {
-    // Handle backend response structure: { value, confidence } or direct string
+  const getFieldValue = (field: string, originalValue: string | number | { value?: string | number } | undefined | null) => {
     const baseValue = typeof originalValue === 'object' && originalValue?.value
-      ? originalValue.value
-      : originalValue;
-    return editedFields[field] ?? baseValue ?? '';
+      ? String(originalValue.value)
+      : originalValue != null ? String(originalValue) : '';
+    return editedFields[field] ?? baseValue;
   };
 
   const handleSave = () => {
@@ -223,8 +221,8 @@ export default function DocumentDetailPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {document.status === 'needs_validation' && (
+            <div className="flex items-center gap-1">
+              {['needs_validation', 'parsed', 'validated'].includes(document.status) && (
                 <>
                   {isEditing ? (
                     <>
@@ -236,27 +234,28 @@ export default function DocumentDetailPage() {
                           setEditedFields({});
                         }}
                         disabled={validateMutation.isPending}
+                        title="Abbrechen"
                       >
-                        <X className="h-4 w-4 mr-1" />
-                        Abbrechen
+                        <X className="h-4 w-4" />
                       </Button>
                       <Button
+                        variant="ghost"
                         size="sm"
                         onClick={handleSave}
-                        isLoading={validateMutation.isPending}
+                        disabled={validateMutation.isPending}
+                        title="Speichern"
                       >
-                        <Save className="h-4 w-4 mr-1" />
-                        Speichern
+                        <Save className="h-4 w-4" />
                       </Button>
                     </>
                   ) : (
                     <Button
-                      variant="secondary"
+                      variant="ghost"
                       size="sm"
                       onClick={() => setIsEditing(true)}
+                      title="Bearbeiten"
                     >
-                      <Pencil className="h-4 w-4 mr-1" />
-                      Bearbeiten
+                      <Pencil className="h-4 w-4" />
                     </Button>
                   )}
                 </>
@@ -437,23 +436,57 @@ export default function DocumentDetailPage() {
                         Betrag
                       </span>
                       {isEditing ? (
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={getFieldValue('amount_total', invoiceData?.amount_total?.toString())}
-                          onChange={(e) => handleFieldChange('amount_total', e.target.value)}
-                          className="max-w-[120px] h-8 text-sm"
-                          placeholder="0.00"
-                        />
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={getFieldValue('amount_total', invoiceData?.amount_total)}
+                            onChange={(e) => handleFieldChange('amount_total', e.target.value)}
+                            className="max-w-[100px] h-8 text-sm"
+                            placeholder="0.00"
+                          />
+                          <select
+                            className="h-8 text-sm px-2 rounded-md border border-input bg-background"
+                            value={editedFields.currency || invoiceData.currency || ''}
+                            onChange={(e) => handleFieldChange('currency', e.target.value)}
+                          >
+                            <option value="">—</option>
+                            <option value="EUR">€ EUR</option>
+                            <option value="USD">$ USD</option>
+                            <option value="GBP">£ GBP</option>
+                            <option value="CHF">CHF</option>
+                          </select>
+                        </div>
                       ) : (
-                        <span className="font-serif font-semibold text-xl text-foreground">
-                          {getFieldValue('amount_total', invoiceData?.amount_total)
-                            ? new Intl.NumberFormat('de-DE', {
-                                style: 'currency',
-                                currency: invoiceData.currency || 'EUR',
-                              }).format(Number(getFieldValue('amount_total', invoiceData?.amount_total)))
-                            : '-'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-serif font-semibold text-xl text-foreground">
+                            {getFieldValue('amount_total', invoiceData?.amount_total)
+                              ? formatAmount(
+                                  Number(getFieldValue('amount_total', invoiceData?.amount_total)),
+                                  editedFields.currency || invoiceData.currency,
+                                ).formatted
+                              : '-'}
+                          </span>
+                          {getFieldValue('amount_total', invoiceData?.amount_total) && !(editedFields.currency || invoiceData.currency) && (
+                            <select
+                              className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200 whitespace-nowrap cursor-pointer appearance-none hover:bg-amber-200 transition-colors"
+                              value=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  const newFields = { ...editedFields, currency: e.target.value };
+                                  setEditedFields(newFields);
+                                  validateMutation.mutate(newFields);
+                                }
+                              }}
+                            >
+                              <option value="" disabled>Währung wählen</option>
+                              <option value="EUR">€ EUR</option>
+                              <option value="USD">$ USD</option>
+                              <option value="GBP">£ GBP</option>
+                              <option value="CHF">CHF</option>
+                            </select>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -489,18 +522,12 @@ export default function DocumentDetailPage() {
                               <td className="py-3 px-3 text-right text-muted-foreground">{item.unit || 'Stk'}</td>
                               <td className="py-3 px-3 text-right text-foreground">
                                 {item.unit_price
-                                  ? new Intl.NumberFormat('de-DE', {
-                                      style: 'currency',
-                                      currency: invoiceData.currency || 'EUR',
-                                    }).format(item.unit_price)
+                                  ? formatAmount(item.unit_price, editedFields.currency || invoiceData.currency).formatted
                                   : '-'}
                               </td>
                               <td className="py-3 px-3 text-right font-medium text-foreground">
                                 {item.total_price
-                                  ? new Intl.NumberFormat('de-DE', {
-                                      style: 'currency',
-                                      currency: invoiceData.currency || 'EUR',
-                                    }).format(item.total_price)
+                                  ? formatAmount(item.total_price, editedFields.currency || invoiceData.currency).formatted
                                   : '-'}
                               </td>
                             </tr>
@@ -513,10 +540,10 @@ export default function DocumentDetailPage() {
                             </td>
                             <td className="py-3 px-3 text-right font-serif font-semibold text-lg text-foreground">
                               {getFieldValue('amount_total', invoiceData?.amount_total)
-                                ? new Intl.NumberFormat('de-DE', {
-                                    style: 'currency',
-                                    currency: invoiceData.currency || 'EUR',
-                                  }).format(Number(getFieldValue('amount_total', invoiceData?.amount_total)))
+                                ? formatAmount(
+                                    Number(getFieldValue('amount_total', invoiceData?.amount_total)),
+                                    editedFields.currency || invoiceData.currency,
+                                  ).formatted
                                 : '-'}
                             </td>
                           </tr>
@@ -581,25 +608,37 @@ export default function DocumentDetailPage() {
                   {(() => {
                     const stage = jobProgress?.progress?.stage;
                     const isProcessing = document.status === 'processing';
+                    const isError = document.status === 'error';
                     const ocrDone = ['parsed', 'needs_validation', 'validated'].includes(document.status)
                       || (isProcessing && ['classifying', 'extracting'].includes(stage));
                     const aiDone = ['parsed', 'needs_validation', 'validated'].includes(document.status)
                       && !isProcessing;
+
+                    // Determine which stage failed
+                    const failedOcr = isError && (!stage || stage === 'downloading' || stage === 'ocr');
+                    const failedAi = isError && (stage === 'classifying' || stage === 'extracting');
+
+                    // For error state, stages before the failed one are done
+                    const ocrDoneOnError = isError && failedAi;
+                    const aiDoneOnError = false;
+
                     const steps = [
-                      { label: 'Hochgeladen', done: true, active: false },
+                      { label: 'Hochgeladen', done: true, failed: false, active: false },
                       {
                         label: stage === 'ocr' && isProcessing && jobProgress?.progress
                           ? `OCR-Verarbeitung (${jobProgress.progress.current}/${jobProgress.progress.total})`
                           : 'OCR-Verarbeitung',
-                        done: ocrDone,
+                        done: ocrDone || ocrDoneOnError,
+                        failed: failedOcr,
                         active: isProcessing && (!stage || stage === 'downloading' || stage === 'ocr'),
                       },
                       {
                         label: stage === 'classifying' && isProcessing ? 'AI-Klassifizierung...' : 'AI-Extraktion',
-                        done: aiDone,
+                        done: aiDone || aiDoneOnError,
+                        failed: failedAi,
                         active: isProcessing && (stage === 'classifying' || stage === 'extracting'),
                       },
-                      { label: 'Validiert', done: document.status === 'validated', active: false },
+                      { label: 'Validiert', done: document.status === 'validated', failed: false, active: false },
                     ];
                     return (
                       <div className="space-y-4">
@@ -609,12 +648,18 @@ export default function DocumentDetailPage() {
                               <svg className="h-4 w-4 flex-shrink-0 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
+                            ) : step.failed ? (
+                              <div className="h-2.5 w-2.5 rounded-full flex-shrink-0 bg-red-400 dark:bg-red-500" />
                             ) : step.active ? (
                               <div className="h-2 w-2 rounded-full flex-shrink-0 bg-primary animate-slow-blink" />
                             ) : (
                               <div className="h-2 w-2 rounded-full flex-shrink-0 bg-muted" />
                             )}
-                            <span className={`text-sm ${step.done || step.active ? 'text-foreground' : 'text-muted-foreground'}`}>
+                            <span className={`text-sm ${
+                              step.done || step.active ? 'text-foreground'
+                              : step.failed ? 'text-red-500 dark:text-red-400'
+                              : 'text-muted-foreground'
+                            }`}>
                               {step.label}
                             </span>
                           </div>

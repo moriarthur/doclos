@@ -10,7 +10,7 @@ Required fields:
 - due_date: The payment due date in ISO format (YYYY-MM-DD), if present
 - amount_total: The total amount as a number (e.g., 3200.00)
 - vat_amount: The VAT/tax amount as a number (e.g., 608.00)
-- currency: The currency code (e.g., "EUR")
+- currency: The ISO 4217 currency code ONLY if explicitly stated in the document (symbol like £, €, $ or code like GBP, EUR, USD). If no currency is explicitly mentioned, use null — do NOT infer from addresses or country codes.
 - supplier_name: The company name issuing the invoice
 - supplier_address: The supplier's address
 

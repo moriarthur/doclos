@@ -45,7 +45,7 @@ export class DocumentProcessor {
     private structuredExtractionService: StructuredExtractionService,
   ) {}
 
-  @Process('process-document')
+  @Process({ name: 'process-document', concurrency: 1 })
   async handleProcessDocument(job: Job<ProcessDocumentJob>) {
     const { documentId } = job.data;
 
@@ -139,6 +139,8 @@ export class DocumentProcessor {
 
       // 4. Extract structured data with LLM (if invoice)
       if (classification.type === DocumentType.INVOICE) {
+        // Rate limit buffer: wait before next GLM API call
+        await new Promise(r => setTimeout(r, 3000));
         await this.extractInvoiceData(document, ocrResult.text);
       } else {
         // For non-invoice documents, mark as parsed
@@ -179,7 +181,7 @@ export class DocumentProcessor {
     }
   }
 
-  @Process('reprocess-document')
+  @Process({ name: 'reprocess-document', concurrency: 1 })
   async handleReprocessDocument(job: Job<ProcessDocumentJob>) {
     const { documentId } = job.data;
     this.logger.log(`Reprocessing document: ${documentId}`);
@@ -214,9 +216,13 @@ export class DocumentProcessor {
       // Determine validation requirement based on confidence
       const autoAcceptThreshold = 0.85;
       const needsValidationThreshold = 0.6;
+      const hasMissingCurrency = !normalizedExtraction.currency;
 
       let newStatus: DocumentStatus;
-      if (confidence.overall >= autoAcceptThreshold) {
+      if (hasMissingCurrency) {
+        newStatus = DocumentStatus.NEEDS_VALIDATION;
+        this.logger.log('Currency missing - needs validation');
+      } else if (confidence.overall >= autoAcceptThreshold) {
         newStatus = DocumentStatus.PARSED;
         this.logger.log('Confidence high - auto-accepting');
       } else if (confidence.overall >= needsValidationThreshold) {
@@ -261,7 +267,7 @@ export class DocumentProcessor {
         : null as any;
       invoice.amount_total = normalizedExtraction.amount_total || 0;
       invoice.vat_amount = normalizedExtraction.vat_amount || 0;
-      invoice.currency = normalizedExtraction.currency || 'EUR';
+      invoice.currency = normalizedExtraction.currency || '';
       invoice.supplier_name = normalizedExtraction.supplier_name || '';
       invoice.supplier_address = normalizedExtraction.supplier_address || '';
       invoice.validated = confidence.overall >= autoAcceptThreshold;

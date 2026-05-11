@@ -7,7 +7,7 @@ import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatDate, formatCurrency, getStatusLabel } from '@/lib/utils';
+import { formatDate, formatAmount, getStatusLabel } from '@/lib/utils';
 import {
   FileText,
   Search,
@@ -278,7 +278,12 @@ export default function DashboardPage() {
                               {doc.amount && (
                                 <span className="flex items-center gap-1.5 font-medium">
                                   <Euro className="h-4 w-4" />
-                                  {formatCurrency(doc.amount, doc.currency)}
+                                  {formatAmount(doc.amount, doc.currency).formatted}
+                                  {!doc.currency && (
+                                    <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
+                                      ?
+                                    </span>
+                                  )}
                                 </span>
                               )}
                               <span className="text-xs uppercase tracking-wide">
