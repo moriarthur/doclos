@@ -15,7 +15,7 @@ import {
   Plus,
   ChevronRight,
   Calendar,
-  Euro,
+  CircleDollarSign,
   Sparkles,
   Loader2,
   Archive,
@@ -277,7 +277,7 @@ export default function DashboardPage() {
                               )}
                               {doc.amount && (
                                 <span className="flex items-center gap-1.5 font-medium">
-                                  <Euro className="h-4 w-4" />
+                                  <CircleDollarSign className="h-4 w-4" />
                                   {formatAmount(doc.amount, doc.currency).formatted}
                                   {!doc.currency && (
                                     <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">

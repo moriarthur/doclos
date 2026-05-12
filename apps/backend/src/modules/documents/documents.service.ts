@@ -196,8 +196,12 @@ export class DocumentsService {
       original_filename: document.original_filename,
       invoice: document.invoice
         ? {
-            invoice_number: extractionMap['invoice_number'],
-            amount_total: extractionMap['amount_total'],
+            invoice_number: document.invoice.invoice_number
+              ? { value: document.invoice.invoice_number, confidence: extractionMap['invoice_number']?.confidence }
+              : extractionMap['invoice_number'],
+            amount_total: document.invoice.amount_total != null
+              ? { value: String(document.invoice.amount_total), confidence: extractionMap['amount_total']?.confidence }
+              : extractionMap['amount_total'],
             currency: document.invoice.currency,
             invoice_date: document.invoice.invoice_date
               ? typeof document.invoice.invoice_date === 'string'

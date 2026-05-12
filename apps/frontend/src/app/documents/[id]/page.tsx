@@ -15,7 +15,7 @@ import {
   ArrowLeft,
   FileText,
   Calendar,
-  Euro,
+
   RefreshCw,
   Building2,
   Settings,
@@ -431,8 +431,7 @@ export default function DocumentDetailPage() {
 
                     {/* Amount */}
                     <div className="flex items-center justify-between py-3 gap-3">
-                      <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
-                        <Euro className="h-4 w-4" />
+                      <span className="text-sm text-muted-foreground shrink-0">
                         Betrag
                       </span>
                       {isEditing ? (
@@ -459,7 +458,7 @@ export default function DocumentDetailPage() {
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <span className="font-serif font-semibold text-xl text-foreground">
+                          <span className="font-medium text-foreground">
                             {getFieldValue('amount_total', invoiceData?.amount_total)
                               ? formatAmount(
                                   Number(getFieldValue('amount_total', invoiceData?.amount_total)),
