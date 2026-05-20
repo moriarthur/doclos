@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+
 import { formatDate, formatAmount, getStatusLabel } from '@/lib/utils';
 import {
   FileText,
@@ -15,12 +15,14 @@ import {
   Plus,
   ChevronRight,
   Calendar,
-  CircleDollarSign,
+
+
   Sparkles,
   Loader2,
   Archive,
   Trash2,
-  MoreVertical,
+
+
 } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
@@ -263,9 +265,6 @@ export default function DashboardPage() {
                               <span className="font-serif font-medium text-foreground truncate">
                                 {doc.company_name || 'Unbekannter Anbieter'}
                               </span>
-                              <Badge variant={doc.status as any} className="shrink-0">
-                                {getStatusLabel(doc.status)}
-                              </Badge>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
@@ -277,7 +276,6 @@ export default function DashboardPage() {
                               )}
                               {doc.amount && (
                                 <span className="flex items-center gap-1.5 font-medium">
-                                  <CircleDollarSign className="h-4 w-4" />
                                   {formatAmount(doc.amount, doc.currency).formatted}
                                   {!doc.currency && (
                                     <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
@@ -295,6 +293,16 @@ export default function DashboardPage() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-1 ml-4">
+                          <span className={`h-2 w-2 rounded-full shrink-0 mr-1 ${
+                            doc.status === 'uploaded' ? 'bg-blue-500' :
+                            doc.status === 'processing' ? 'bg-yellow-500' :
+                            doc.status === 'parsed' ? 'bg-green-500' :
+                            doc.status === 'needs_validation' ? 'bg-orange-500' :
+                            doc.status === 'validated' ? 'bg-emerald-500' :
+                            doc.status === 'error' ? 'bg-red-400' :
+                            doc.status === 'archived' ? 'bg-gray-400' :
+                            'bg-gray-400'
+                          }`} title={getStatusLabel(doc.status)} />
                           <Button
                             size="sm"
                             variant="ghost"
