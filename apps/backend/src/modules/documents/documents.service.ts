@@ -213,8 +213,12 @@ export class DocumentsService {
                   ? document.invoice.due_date
                   : new Date(document.invoice.due_date).toISOString().split('T')[0]
               : undefined,
-            supplier_name: extractionMap['supplier_name'],
-            supplier_address: extractionMap['supplier_address'],
+            supplier_name: document.invoice.supplier_name
+              ? { value: document.invoice.supplier_name, confidence: extractionMap['supplier_name']?.confidence }
+              : extractionMap['supplier_name'],
+            supplier_address: document.invoice.supplier_address
+              ? { value: document.invoice.supplier_address, confidence: extractionMap['supplier_address']?.confidence }
+              : extractionMap['supplier_address'],
           }
         : undefined,
     };
@@ -257,6 +261,12 @@ export class DocumentsService {
       }
       if (fields.currency) {
         document.invoice.currency = String(fields.currency);
+      }
+      if (fields.supplier_name) {
+        document.invoice.supplier_name = String(fields.supplier_name);
+      }
+      if (fields.supplier_address) {
+        document.invoice.supplier_address = String(fields.supplier_address);
       }
       document.invoice.validated = true;
       await this.invoicesRepository.save(document.invoice);

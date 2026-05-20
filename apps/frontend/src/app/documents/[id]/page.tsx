@@ -46,7 +46,7 @@ export default function DocumentDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const docId = params.id as string;
-  const [isEditing, setIsEditing] = useState(false);
+  const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editedFields, setEditedFields] = useState<Record<string, string>>({});
   const [deleteDialog, setDeleteDialog] = useState(false);
 
@@ -85,6 +85,7 @@ export default function DocumentDetailPage() {
       documentsApi.validate(docId, fields),
     onSuccess: () => {
       setEditedFields({});
+      setEditingSection(null);
       refetch();
     },
     onError: (err) => {
@@ -148,9 +149,20 @@ export default function DocumentDetailPage() {
     return editedFields[field] ?? baseValue;
   };
 
-  const handleSave = () => {
+  const startEditing = (section: string) => {
+    setEditingSection(section);
+  };
+
+  const cancelEditing = () => {
+    setEditingSection(null);
+    setEditedFields({});
+  };
+
+  const saveSection = () => {
     if (Object.keys(editedFields).length > 0) {
       validateMutation.mutate(editedFields);
+    } else {
+      setEditingSection(null);
     }
   };
 
@@ -222,44 +234,6 @@ export default function DocumentDetailPage() {
             </div>
 
             <div className="flex items-center gap-1">
-              {['needs_validation', 'parsed', 'validated'].includes(document.status) && (
-                <>
-                  {isEditing ? (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setIsEditing(false);
-                          setEditedFields({});
-                        }}
-                        disabled={validateMutation.isPending}
-                        title="Abbrechen"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleSave}
-                        disabled={validateMutation.isPending}
-                        title="Speichern"
-                      >
-                        <Save className="h-4 w-4" />
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsEditing(true)}
-                      title="Bearbeiten"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  )}
-                </>
-              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -365,17 +339,52 @@ export default function DocumentDetailPage() {
               {/* Invoice Details */}
               <Card className="animate-slide-up">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Settings className="h-5 w-5 text-primary" />
-                    Rechnungsdetails
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <Settings className="h-5 w-5 text-primary" />
+                      Rechnungsdetails
+                    </CardTitle>
+                    {['needs_validation', 'parsed', 'validated'].includes(document.status) && (
+                      editingSection === 'invoice' ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={cancelEditing}
+                            disabled={validateMutation.isPending}
+                            title="Abbrechen"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={saveSection}
+                            disabled={validateMutation.isPending}
+                            title="Speichern"
+                          >
+                            <Save className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => startEditing('invoice')}
+                          title="Bearbeiten"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     {/* Invoice Number */}
                     <div className="flex items-center justify-between py-3 border-b border-border gap-3">
                       <span className="text-sm text-muted-foreground shrink-0">Rechnungsnummer</span>
-                      {isEditing ? (
+                      {editingSection === 'invoice' ? (
                         <Input
                           value={getFieldValue('invoice_number', invoiceData?.invoice_number)}
                           onChange={(e) => handleFieldChange('invoice_number', e.target.value)}
@@ -395,7 +404,7 @@ export default function DocumentDetailPage() {
                         <Calendar className="h-4 w-4" />
                         Rechnungsdatum
                       </span>
-                      {isEditing ? (
+                      {editingSection === 'invoice' ? (
                         <Input
                           type="date"
                           value={getFieldValue('invoice_date', invoiceData?.invoice_date)}
@@ -415,7 +424,7 @@ export default function DocumentDetailPage() {
                         <Calendar className="h-4 w-4" />
                         Fälligkeitsdatum
                       </span>
-                      {isEditing ? (
+                      {editingSection === 'invoice' ? (
                         <Input
                           type="date"
                           value={getFieldValue('due_date', invoiceData?.due_date)}
@@ -434,7 +443,7 @@ export default function DocumentDetailPage() {
                       <span className="text-sm text-muted-foreground shrink-0">
                         Betrag
                       </span>
-                      {isEditing ? (
+                      {editingSection === 'invoice' ? (
                         <div className="flex items-center gap-2">
                           <Input
                             type="number"
@@ -554,16 +563,51 @@ export default function DocumentDetailPage() {
               )}
 
               {/* Supplier Info */}
-              {(invoiceData?.supplier_name || isEditing) && (
+              {(invoiceData?.supplier_name || editingSection === 'supplier') && (
                 <Card className="animate-slide-up" style={{ animationDelay: '150ms' }}>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <Building2 className="h-5 w-5 text-primary" />
-                      Anbieter
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Building2 className="h-5 w-5 text-primary" />
+                        Anbieter
+                      </CardTitle>
+                      {['needs_validation', 'parsed', 'validated'].includes(document.status) && (
+                        editingSection === 'supplier' ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={cancelEditing}
+                              disabled={validateMutation.isPending}
+                              title="Abbrechen"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={saveSection}
+                              disabled={validateMutation.isPending}
+                              title="Speichern"
+                            >
+                              <Save className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEditing('supplier')}
+                            title="Bearbeiten"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )
+                      )}
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {isEditing ? (
+                    {editingSection === 'supplier' ? (
                       <>
                         <div>
                           <label className="text-xs text-muted-foreground mb-1 block">Firmenname</label>
