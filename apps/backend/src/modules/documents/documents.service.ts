@@ -6,6 +6,7 @@ import { Queue } from 'bull';
 import * as crypto from 'crypto';
 import { Document, DocumentStatus, DocumentType } from './entities/document.entity';
 import { Invoice } from './entities/invoice.entity';
+import { Customer } from './entities/customer.entity';
 import { FieldExtraction } from './entities/field-extraction.entity';
 import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
@@ -24,6 +25,8 @@ export class DocumentsService {
     private documentsRepository: Repository<Document>,
     @InjectRepository(Invoice)
     private invoicesRepository: Repository<Invoice>,
+    @InjectRepository(Customer)
+    private customersRepository: Repository<Customer>,
     @InjectRepository(FieldExtraction)
     private fieldExtractionsRepository: Repository<FieldExtraction>,
     @InjectRepository(AuditLog)
@@ -234,7 +237,7 @@ export class DocumentsService {
   async validateDocument(documentId: string, userId: string, fields: Record<string, unknown>) {
     const document = await this.documentsRepository.findOne({
       where: { id: documentId, user_id: userId },
-      relations: ['invoice'],
+      relations: ['invoice', 'customer'],
     });
 
     if (!document) {
@@ -252,12 +255,26 @@ export class DocumentsService {
     // Update invoice with new values
     if (document.invoice) {
       if (fields.invoice_number) document.invoice.invoice_number = String(fields.invoice_number);
-      if (fields.amount_total) document.invoice.amount_total = Number(fields.amount_total);
+      if (fields.amount_total) {
+        const num = Number(fields.amount_total);
+        if (isNaN(num) || num === 0) {
+          throw new BadRequestException('Betrag muss eine Zahl ungleich 0 sein');
+        }
+        document.invoice.amount_total = num;
+      }
       if (fields.invoice_date) {
-        document.invoice.invoice_date = new Date(String(fields.invoice_date));
+        const dateStr = String(fields.invoice_date);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          throw new BadRequestException('Ungültiges Datumsformat (JJJJ-MM-TT)');
+        }
+        document.invoice.invoice_date = new Date(dateStr);
       }
       if (fields.due_date) {
-        document.invoice.due_date = new Date(String(fields.due_date));
+        const dateStr = String(fields.due_date);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          throw new BadRequestException('Ungültiges Datumsformat (JJJJ-MM-TT)');
+        }
+        document.invoice.due_date = new Date(dateStr);
       }
       if (fields.currency) {
         document.invoice.currency = String(fields.currency);
@@ -270,6 +287,12 @@ export class DocumentsService {
       }
       document.invoice.validated = true;
       await this.invoicesRepository.save(document.invoice);
+    }
+
+    // Update customer name if supplier_name changed
+    if (fields.supplier_name && document.customer_id && document.customer) {
+      document.customer.name = String(fields.supplier_name);
+      await this.customersRepository.save(document.customer);
     }
 
     // Update document status

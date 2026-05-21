@@ -86,6 +86,7 @@ export default function DocumentDetailPage() {
     onSuccess: () => {
       setEditedFields({});
       setEditingSection(null);
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
       refetch();
     },
     onError: (err) => {
@@ -159,6 +160,7 @@ export default function DocumentDetailPage() {
   };
 
   const saveSection = () => {
+    if (hasErrors()) return;
     if (Object.keys(editedFields).length > 0) {
       validateMutation.mutate(editedFields);
     } else {
@@ -199,6 +201,50 @@ export default function DocumentDetailPage() {
   }
 
   const invoiceData = document.invoice;
+
+  // Validation
+  const getFieldError = (field: string): string | null => {
+    if (editingSection !== 'invoice' && editingSection !== 'supplier') return null;
+    const value = editedFields[field];
+    if (value === undefined) return null; // unchanged field
+
+    switch (field) {
+      case 'invoice_number': {
+        if (!value.trim()) return 'Rechnungsnummer darf nicht leer sein';
+        break;
+      }
+      case 'amount_total': {
+        if (!value.trim()) return 'Betrag darf nicht leer sein';
+        const num = Number(value);
+        if (isNaN(num) || num === 0) return 'Muss eine Zahl ungleich 0 sein';
+        break;
+      }
+      case 'invoice_date':
+      case 'due_date': {
+        if (!value.trim()) return 'Datum erforderlich (JJJJ-MM-TT)';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'Format: JJJJ-MM-TT';
+        const [y, m, d] = value.split('-').map(Number);
+        const date = new Date(y, m - 1, d);
+        if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
+          return 'Ungültiges Datum';
+        }
+        if (field === 'due_date') {
+          const invDate = editedFields.invoice_date ?? getFieldValue('invoice_date', invoiceData?.invoice_date);
+          if (invDate && value < invDate) return 'Darf nicht vor Rechnungsdatum liegen';
+        }
+        break;
+      }
+      case 'supplier_name': {
+        if (!value.trim()) return 'Firmenname darf nicht leer sein';
+        break;
+      }
+    }
+    return null;
+  };
+
+  const hasErrors = (): boolean => {
+    return Object.keys(editedFields).some((field) => getFieldError(field) !== null);
+  };
 
   return (
     <div className="flex">
@@ -360,7 +406,7 @@ export default function DocumentDetailPage() {
                             variant="ghost"
                             size="sm"
                             onClick={saveSection}
-                            disabled={validateMutation.isPending}
+                            disabled={validateMutation.isPending || hasErrors()}
                             title="Speichern"
                           >
                             <Save className="h-4 w-4" />
@@ -382,77 +428,95 @@ export default function DocumentDetailPage() {
                 <CardContent>
                   <div className="space-y-4">
                     {/* Invoice Number */}
-                    <div className="flex items-center justify-between py-3 border-b border-border gap-3">
-                      <span className="text-sm text-muted-foreground shrink-0">Rechnungsnummer</span>
-                      {editingSection === 'invoice' ? (
-                        <Input
-                          value={getFieldValue('invoice_number', invoiceData?.invoice_number)}
-                          onChange={(e) => handleFieldChange('invoice_number', e.target.value)}
-                          className="max-w-[200px] h-8 text-sm"
-                          placeholder="Rechnungsnummer"
-                        />
-                      ) : (
-                        <span className="font-medium text-foreground truncate">
-                          {getFieldValue('invoice_number', invoiceData?.invoice_number) || '-'}
-                        </span>
+                    <div className="py-3 border-b border-border gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-muted-foreground shrink-0">Rechnungsnummer</span>
+                        {editingSection === 'invoice' ? (
+                          <Input
+                            value={getFieldValue('invoice_number', invoiceData?.invoice_number)}
+                            onChange={(e) => handleFieldChange('invoice_number', e.target.value)}
+                            className={`max-w-[200px] h-8 text-sm ${getFieldError('invoice_number') ? 'border-red-400 focus:ring-red-200' : ''}`}
+                            placeholder="Rechnungsnummer"
+                          />
+                        ) : (
+                          <span className="font-medium text-foreground truncate">
+                            {getFieldValue('invoice_number', invoiceData?.invoice_number) || '-'}
+                          </span>
+                        )}
+                      </div>
+                      {getFieldError('invoice_number') && (
+                        <p className="text-xs text-red-500 mt-1 text-right">{getFieldError('invoice_number')}</p>
                       )}
                     </div>
 
                     {/* Invoice Date */}
-                    <div className="flex items-center justify-between py-3 border-b border-border gap-3">
-                      <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
-                        <Calendar className="h-4 w-4" />
-                        Rechnungsdatum
-                      </span>
-                      {editingSection === 'invoice' ? (
-                        <Input
-                          type="date"
-                          value={getFieldValue('invoice_date', invoiceData?.invoice_date)}
-                          onChange={(e) => handleFieldChange('invoice_date', e.target.value)}
-                          className="max-w-[160px] h-8 text-sm"
-                        />
-                      ) : (
-                        <span className="font-medium text-foreground">
-                          {getFieldValue('invoice_date', invoiceData?.invoice_date) ? formatDate(getFieldValue('invoice_date', invoiceData?.invoice_date)) : '-'}
+                    <div className="py-3 border-b border-border gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
+                          <Calendar className="h-4 w-4" />
+                          Rechnungsdatum
                         </span>
+                        {editingSection === 'invoice' ? (
+                          <Input
+                            type="text"
+                            value={getFieldValue('invoice_date', invoiceData?.invoice_date)}
+                            onChange={(e) => handleFieldChange('invoice_date', e.target.value)}
+                            className={`max-w-[160px] h-8 text-sm ${getFieldError('invoice_date') ? 'border-red-400 focus:ring-red-200' : ''}`}
+                            placeholder="JJJJ-MM-TT"
+                          />
+                        ) : (
+                          <span className="font-medium text-foreground">
+                            {getFieldValue('invoice_date', invoiceData?.invoice_date) ? formatDate(getFieldValue('invoice_date', invoiceData?.invoice_date)) : '-'}
+                          </span>
+                        )}
+                      </div>
+                      {getFieldError('invoice_date') && (
+                        <p className="text-xs text-red-500 mt-1 text-right">{getFieldError('invoice_date')}</p>
                       )}
                     </div>
 
                     {/* Due Date */}
-                    <div className="flex items-center justify-between py-3 border-b border-border gap-3">
-                      <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
-                        <Calendar className="h-4 w-4" />
-                        Fälligkeitsdatum
-                      </span>
-                      {editingSection === 'invoice' ? (
-                        <Input
-                          type="date"
-                          value={getFieldValue('due_date', invoiceData?.due_date)}
-                          onChange={(e) => handleFieldChange('due_date', e.target.value)}
-                          className="max-w-[160px] h-8 text-sm"
-                        />
-                      ) : (
-                        <span className="font-medium text-foreground">
-                          {getFieldValue('due_date', invoiceData?.due_date) ? formatDate(getFieldValue('due_date', invoiceData?.due_date)) : '-'}
+                    <div className="py-3 border-b border-border gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
+                          <Calendar className="h-4 w-4" />
+                          Fälligkeitsdatum
                         </span>
+                        {editingSection === 'invoice' ? (
+                          <Input
+                            type="text"
+                            value={getFieldValue('due_date', invoiceData?.due_date)}
+                            onChange={(e) => handleFieldChange('due_date', e.target.value)}
+                            className={`max-w-[160px] h-8 text-sm ${getFieldError('due_date') ? 'border-red-400 focus:ring-red-200' : ''}`}
+                            placeholder="JJJJ-MM-TT"
+                          />
+                        ) : (
+                          <span className="font-medium text-foreground">
+                            {getFieldValue('due_date', invoiceData?.due_date) ? formatDate(getFieldValue('due_date', invoiceData?.due_date)) : '-'}
+                          </span>
+                        )}
+                      </div>
+                      {getFieldError('due_date') && (
+                        <p className="text-xs text-red-500 mt-1 text-right">{getFieldError('due_date')}</p>
                       )}
                     </div>
 
                     {/* Amount */}
-                    <div className="flex items-center justify-between py-3 gap-3">
-                      <span className="text-sm text-muted-foreground shrink-0">
-                        Betrag
-                      </span>
-                      {editingSection === 'invoice' ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={getFieldValue('amount_total', invoiceData?.amount_total)}
-                            onChange={(e) => handleFieldChange('amount_total', e.target.value)}
-                            className="max-w-[100px] h-8 text-sm"
-                            placeholder="0.00"
-                          />
+                    <div className="py-3 gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-muted-foreground shrink-0">
+                          Betrag
+                        </span>
+                        {editingSection === 'invoice' ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={getFieldValue('amount_total', invoiceData?.amount_total)}
+                              onChange={(e) => handleFieldChange('amount_total', e.target.value)}
+                              className={`max-w-[120px] h-8 text-sm ${getFieldError('amount_total') ? 'border-red-400 focus:ring-red-200' : ''}`}
+                              placeholder="0.00"
+                            />
                           <select
                             className="h-8 text-sm px-2 rounded-md border border-input bg-background"
                             value={editedFields.currency || invoiceData.currency || ''}
@@ -496,6 +560,10 @@ export default function DocumentDetailPage() {
                           )}
                         </div>
                       )}
+                    </div>
+                    {getFieldError('amount_total') && (
+                      <p className="text-xs text-red-500 mt-1.5 text-right">{getFieldError('amount_total')}</p>
+                    )}
                     </div>
                   </div>
                 </CardContent>
@@ -587,7 +655,7 @@ export default function DocumentDetailPage() {
                               variant="ghost"
                               size="sm"
                               onClick={saveSection}
-                              disabled={validateMutation.isPending}
+                              disabled={validateMutation.isPending || hasErrors()}
                               title="Speichern"
                             >
                               <Save className="h-4 w-4" />
@@ -614,8 +682,12 @@ export default function DocumentDetailPage() {
                           <Input
                             value={getFieldValue('supplier_name', invoiceData?.supplier_name)}
                             onChange={(e) => handleFieldChange('supplier_name', e.target.value)}
+                            className={getFieldError('supplier_name') ? 'border-red-400 focus:ring-red-200' : ''}
                             placeholder="Firmenname"
                           />
+                          {getFieldError('supplier_name') && (
+                            <p className="text-xs text-red-500 mt-1">{getFieldError('supplier_name')}</p>
+                          )}
                         </div>
                         <div>
                           <label className="text-xs text-muted-foreground mb-1 block">Adresse</label>
