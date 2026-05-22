@@ -6,7 +6,6 @@ import { Queue } from 'bull';
 import * as crypto from 'crypto';
 import { Document, DocumentStatus, DocumentType } from './entities/document.entity';
 import { Invoice } from './entities/invoice.entity';
-import { Customer } from './entities/customer.entity';
 import { FieldExtraction } from './entities/field-extraction.entity';
 import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
@@ -25,8 +24,6 @@ export class DocumentsService {
     private documentsRepository: Repository<Document>,
     @InjectRepository(Invoice)
     private invoicesRepository: Repository<Invoice>,
-    @InjectRepository(Customer)
-    private customersRepository: Repository<Customer>,
     @InjectRepository(FieldExtraction)
     private fieldExtractionsRepository: Repository<FieldExtraction>,
     @InjectRepository(AuditLog)
@@ -133,7 +130,7 @@ export class DocumentsService {
         id: doc.id,
         type: doc.type,
         status: doc.status,
-        company_name: doc.customer?.name,
+        company_name: doc.invoice?.supplier_name || doc.customer?.name,
         amount: doc.invoice?.amount_total,
         currency: doc.invoice?.currency,
         invoice_date: doc.invoice?.invoice_date,
@@ -237,7 +234,7 @@ export class DocumentsService {
   async validateDocument(documentId: string, userId: string, fields: Record<string, unknown>) {
     const document = await this.documentsRepository.findOne({
       where: { id: documentId, user_id: userId },
-      relations: ['invoice', 'customer'],
+      relations: ['invoice'],
     });
 
     if (!document) {
@@ -287,12 +284,6 @@ export class DocumentsService {
       }
       document.invoice.validated = true;
       await this.invoicesRepository.save(document.invoice);
-    }
-
-    // Update customer name if supplier_name changed
-    if (fields.supplier_name && document.customer_id && document.customer) {
-      document.customer.name = String(fields.supplier_name);
-      await this.customersRepository.save(document.customer);
     }
 
     // Update document status
@@ -404,7 +395,7 @@ export class DocumentsService {
   async deleteDocument(documentId: string, userId: string) {
     const document = await this.documentsRepository.findOne({
       where: { id: documentId, user_id: userId },
-      relations: ['invoice', 'customer'],
+      relations: ['invoice'],
     });
 
     if (!document) {
