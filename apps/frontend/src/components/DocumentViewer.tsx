@@ -174,12 +174,66 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelRep
     if (pdfDoc) renderPage(currentPage);
   }, [pdfDoc, currentPage, renderPage]);
 
-  // Re-render on window resize to refit
+  // Re-render on container resize to refit
   useEffect(() => {
-    const handleResize = () => { if (pdfDoc) renderPage(currentPage); };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const container = containerRef.current;
+    if (!container) return;
+    let rafId: number;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => { if (pdfDoc) renderPage(currentPage); });
+    });
+    observer.observe(container);
+    return () => { observer.disconnect(); cancelAnimationFrame(rafId); };
   }, [pdfDoc, currentPage, renderPage]);
+
+  // Trackpad zoom (Ctrl+scroll) and pinch-to-zoom (touch)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || isBlocked) return;
+
+    const clampZoom = (z: number) => Math.min(3, Math.max(0.5, Math.round(z * 20) / 20));
+
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = -e.deltaY * 0.01;
+      setZoom((z) => clampZoom(z + delta));
+    };
+
+    let lastDist = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastDist = Math.hypot(dx, dy);
+      }
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (lastDist > 0) {
+        const scale = dist / lastDist;
+        setZoom((z) => clampZoom(z * scale));
+      }
+      lastDist = dist;
+    };
+    const onTouchEnd = () => { lastDist = 0; };
+
+    container.addEventListener('wheel', onWheel, { passive: false });
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      container.removeEventListener('wheel', onWheel);
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isBlocked]);
 
   const goTo = (page: number) => {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
@@ -189,7 +243,7 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelRep
     <div className="relative">
       <div
         ref={containerRef}
-        className={`bg-muted rounded-xl overflow-auto max-h-[80vh] flex items-start justify-center p-4 ${
+        className={`bg-muted rounded-xl overflow-auto h-[75vh] min-h-0 flex items-start justify-center p-4 ${
           isBlocked ? 'blur-md pointer-events-none select-none' : ''
         }`}
       >

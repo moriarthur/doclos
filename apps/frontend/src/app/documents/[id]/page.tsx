@@ -355,7 +355,7 @@ export default function DocumentDetailPage() {
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* PDF Viewer */}
-            <Card className="animate-scale-in">
+            <Card className="animate-scale-in lg:h-fit lg:sticky lg:top-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <FileText className="h-5 w-5 text-primary" />
