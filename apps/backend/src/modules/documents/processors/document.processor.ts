@@ -85,6 +85,7 @@ export class DocumentProcessor {
       this.logger.log(`Downloading file from S3: ${document.s3_key}`);
       jobRecord.progress = { stage: 'downloading', message: 'Downloading file...' };
       await this.jobsRepository.save(jobRecord);
+      job.progress(10);
       const fileBuffer = await this.s3Service.downloadFile(document.s3_key);
 
       if (await isCancelled()) {
@@ -96,6 +97,7 @@ export class DocumentProcessor {
       this.logger.log('Starting OCR processing');
       jobRecord.progress = { stage: 'ocr', message: 'Starting OCR...', current: 0, total: 0 };
       await this.jobsRepository.save(jobRecord);
+      job.progress(25);
       const ocrResult = await this.ocrService.processDocument(
         fileBuffer,
         document.mime_type,
@@ -121,6 +123,7 @@ export class DocumentProcessor {
       this.logger.log('Classifying document type');
       jobRecord.progress = { stage: 'classifying', message: 'Classifying document type...' };
       await this.jobsRepository.save(jobRecord);
+      job.progress(50);
       const classification = await this.documentClassifierService.classifyDocument(
         ocrResult.text,
       );
@@ -140,6 +143,7 @@ export class DocumentProcessor {
       // 4. Extract structured data with LLM (if invoice)
       if (classification.type === DocumentType.INVOICE) {
         // Rate limit buffer: wait before next GLM API call
+        job.progress(65);
         await new Promise(r => setTimeout(r, 3000));
         await this.extractInvoiceData(document, ocrResult.text);
       } else {
@@ -151,6 +155,7 @@ export class DocumentProcessor {
 
       // Update job status
       jobRecord.status = JobStatus.COMPLETED;
+      job.progress(100);
       await this.jobsRepository.save(jobRecord);
 
       this.logger.log(`Document processed: ${documentId}`);

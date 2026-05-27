@@ -27,13 +27,17 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
     // Database - TypeORM with PostgreSQL
     TypeOrmModule.forRoot(dataSourceOptions),
 
-    // Queue - BullMQ with Redis (Upstash with TLS)
+    // Queue - Bull with Redis (Upstash with TLS)
     BullModule.forRoot({
       redis: {
         host: process.env.REDIS_HOST || 'localhost',
         port: parseInt(process.env.REDIS_PORT || '6379'),
         password: redisPassword,
         tls: process.env.REDIS_URL?.startsWith('rediss://') ? {} : undefined,
+      },
+      defaultJobOptions: {
+        removeOnComplete: 100,
+        removeOnFail: 200,
       },
     }),
 

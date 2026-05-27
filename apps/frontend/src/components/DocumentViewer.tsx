@@ -192,7 +192,7 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelRep
     const container = containerRef.current;
     if (!container || isBlocked) return;
 
-    const clampZoom = (z: number) => Math.min(3, Math.max(0.5, Math.round(z * 20) / 20));
+    const clampZoom = (z: number) => Math.min(3, Math.max(0.5, z));
 
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
@@ -243,11 +243,11 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelRep
     <div className="relative">
       <div
         ref={containerRef}
-        className={`bg-muted rounded-xl overflow-auto h-[75vh] min-h-0 flex items-start justify-center p-4 ${
+        className={`bg-muted rounded-xl overflow-auto h-[75vh] min-h-0 p-4 ${
           isBlocked ? 'blur-md pointer-events-none select-none' : ''
         }`}
       >
-        <canvas ref={canvasRef} className="shadow-lg rounded bg-white" />
+        <canvas ref={canvasRef} className="shadow-lg rounded bg-white mx-auto" style={{ display: 'block' }} />
       </div>
 
       {isErrorDoc && !reprocessing && <ErrorOverlay />}
