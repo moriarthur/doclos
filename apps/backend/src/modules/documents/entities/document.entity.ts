@@ -11,6 +11,7 @@ export enum DocumentType {
   CONTRACT = 'contract',
   OFFER = 'offer',
   DELIVERY_NOTE = 'delivery_note',
+  PURCHASE_ORDER = 'purchase_order',
   UNKNOWN = 'unknown',
 }
 

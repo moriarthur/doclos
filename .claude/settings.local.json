@@ -87,7 +87,9 @@
       "Bash(command uvx:*)",
       "Bash(timeout 10 /Users/unlxud/.local/bin/uvx --from \"git+https://github.com/oraios/serena\" serena start-mcp-server --project-from-cwd)",
       "Bash(ls ~/.claude/mcp*.json)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(docker compose *)",
+      "Bash(docker exec *)"
     ]
   }
 }

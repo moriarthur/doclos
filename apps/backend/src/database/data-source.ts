@@ -3,6 +3,10 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as dns from 'dns';
+
+// Force IPv4 — WSL2 doesn't route IPv6 to external hosts
+dns.setDefaultResultOrder('ipv4first');
 
 // Explicitly import entities for Webpack compatibility
 import { User } from '../modules/auth/entities/user.entity';
@@ -32,7 +36,7 @@ for (const envPath of possibleEnvPaths) {
 
 // Parse DATABASE_URL to get individual components
 const databaseUrl = process.env.DATABASE_URL || '';
-const urlMatch = databaseUrl.match(/postgres:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
+const urlMatch = databaseUrl.match(/postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
 let host, port, username, password, database;
 
 if (urlMatch) {
@@ -60,6 +64,10 @@ export const dataSourceOptions: DataSourceOptions = {
   migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
   synchronize: process.env.NODE_ENV !== 'production', // Use migrations in production
   logging: process.env.NODE_ENV === 'development',
+  // Supabase Pooler requires SSL; rejectUnauthorized disabled for dev behind corporate proxy/AV
+  ssl: host?.includes('pooler.supabase.com')
+    ? { rejectUnauthorized: process.env.NODE_ENV === 'production' }
+    : false,
 };
 
 // Default data source for CLI commands
