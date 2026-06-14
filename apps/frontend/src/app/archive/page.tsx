@@ -107,7 +107,7 @@ export default function ArchivePage() {
       <Navigation />
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 min-h-screen">
+      <main className="flex-1 md:ml-64 min-h-screen min-w-0">
         {/* Mobile header spacer */}
         <div className="h-16 md:hidden" />
 

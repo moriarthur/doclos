@@ -14,6 +14,7 @@ import {
   Filter,
   Plus,
   ChevronRight,
+  ChevronDown,
   Calendar,
 
 
@@ -133,7 +134,7 @@ export default function DashboardPage() {
       <Navigation />
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 min-h-screen">
+      <main className="flex-1 md:ml-64 min-h-screen min-w-0">
         {/* Mobile header spacer */}
         <div className="h-16 md:hidden" />
 
@@ -178,7 +179,8 @@ export default function DashboardPage() {
 
                 {/* Status Filter */}
                 <div className="relative">
-                  <Filter className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Filter className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
