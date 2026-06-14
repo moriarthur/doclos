@@ -301,7 +301,7 @@ export default function DashboardPage() {
                             doc.status === 'error' ? 'bg-red-400' :
                             doc.status === 'archived' ? 'bg-gray-400' :
                             'bg-gray-400'
-                          }`} title={getStatusLabel(doc.status)} />
+                          }`} role="img" aria-label={getStatusLabel(doc.status)} title={getStatusLabel(doc.status)} />
                           <Button
                             size="sm"
                             variant="ghost"
