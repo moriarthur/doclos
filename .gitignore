@@ -43,6 +43,9 @@ Thumbs.db
 *.db
 *.sqlite
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
  # Uploads (local dev)
 uploads/
 temp/
