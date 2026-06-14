@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { documentsApi, authApi } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
@@ -48,27 +48,12 @@ export default function UploadPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [dragActive, setDragActive] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
   const [uploadedDocIds, setUploadedDocIds] = useState<string[]>([]);
   const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
   const [currentUploadIndex, setCurrentUploadIndex] = useState<number | null>(null);
-
-  // Check authentication
-  useEffect(() => {
-    const checkAuth = () => {
-      if (!authApi.isAuthenticated()) {
-        router.push('/login');
-      } else {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    const timer = setTimeout(checkAuth, 100);
-    return () => clearTimeout(timer);
-  }, [router]);
 
   const uploadMutation = useMutation({
     mutationFn: ({ file }: { file: File; index: number }) =>
@@ -219,18 +204,6 @@ export default function UploadPage() {
       },
     });
   };
-
-  // Show loading while checking auth
-  if (isCheckingAuth) {
-    return (
-      <div className="flex">
-        <Navigation />
-        <main className="flex-1 md:ml-64 min-h-screen flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </main>
-      </div>
-    );
-  }
 
   return (
     <div className="flex">

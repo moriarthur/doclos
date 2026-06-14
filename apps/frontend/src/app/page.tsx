@@ -1,8 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { documentsApi, authApi } from '@/lib/api-client';
-import { useRouter } from 'next/navigation';
+import { documentsApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -19,14 +18,13 @@ import {
 
 
   Sparkles,
-  Loader2,
   Archive,
   Trash2,
 
 
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,26 +37,10 @@ import {
 } from '@/components/ui/AlertDialog';
 
 export default function DashboardPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
-
-  // Check authentication before showing content
-  useEffect(() => {
-    const checkAuth = () => {
-      if (!authApi.isAuthenticated()) {
-        router.push('/login');
-      } else {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    const timer = setTimeout(checkAuth, 100);
-    return () => clearTimeout(timer);
-  }, [router]);
 
   const { data: documents, isLoading, error } = useQuery({
     queryKey: ['documents', statusFilter],
@@ -69,7 +51,6 @@ export default function DashboardPage() {
       }
       return documentsApi.list({ status: undefined });
     },
-    enabled: !isCheckingAuth, // Only fetch after auth check
   });
 
   const filteredDocuments = documents?.data
@@ -119,15 +100,6 @@ export default function DashboardPage() {
   const confirmDelete = (id: string) => {
     deleteMutation.mutate(id);
   };
-
-  // Show loading overlay while checking auth
-  if (isCheckingAuth) {
-    return (
-      <div className="min-h-screen gradient-bg flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex">

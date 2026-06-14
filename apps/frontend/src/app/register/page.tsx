@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { authApi, type RegisterData } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
@@ -11,12 +11,11 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { registerSchema, type RegisterFormData } from '@/lib/validation';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [apiError, setApiError] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -33,20 +32,6 @@ export default function RegisterPage() {
   const password = watch('password');
   const confirmPassword = watch('confirmPassword');
 
-  // Check authentication and redirect if needed
-  useEffect(() => {
-    const checkAuth = () => {
-      if (authApi.isAuthenticated()) {
-        router.push('/');
-      } else {
-        setIsLoading(false);
-      }
-    };
-
-    const timer = setTimeout(checkAuth, 100);
-    return () => clearTimeout(timer);
-  }, [router]);
-
   const registerMutation = useMutation({
     mutationFn: (data: RegisterData) => authApi.register(data),
     onSuccess: () => {
@@ -56,15 +41,6 @@ export default function RegisterPage() {
       setApiError(authApi.getErrorMessage(err));
     },
   });
-
-  // Show loading while checking auth
-  if (isLoading) {
-    return (
-      <div className="min-h-screen gradient-bg flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   const onSubmit = async (data: RegisterFormData) => {
     setApiError('');

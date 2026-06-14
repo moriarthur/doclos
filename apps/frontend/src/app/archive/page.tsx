@@ -1,8 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { documentsApi, authApi } from '@/lib/api-client';
-import { useRouter } from 'next/navigation';
+import { documentsApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -13,11 +12,10 @@ import {
   Search,
   Archive,
   ArchiveRestore,
-  Loader2,
   Trash2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,30 +28,13 @@ import {
 } from '@/components/ui/AlertDialog';
 
 export default function ArchivePage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
-
-  // Check authentication before showing content
-  useEffect(() => {
-    const checkAuth = () => {
-      if (!authApi.isAuthenticated()) {
-        router.push('/login');
-      } else {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    const timer = setTimeout(checkAuth, 100);
-    return () => clearTimeout(timer);
-  }, [router]);
 
   const { data: documents, isLoading } = useQuery({
     queryKey: ['documents', 'archived'],
     queryFn: () => documentsApi.list({ status: 'archived' }),
-    enabled: !isCheckingAuth,
   });
 
   const unarchiveMutation = useMutation({
@@ -96,15 +77,6 @@ export default function ArchivePage() {
       doc.invoice_number?.toLowerCase().includes(q)
     );
   }) || [];
-
-  // Show loading overlay while checking auth
-  if (isCheckingAuth) {
-    return (
-      <div className="min-h-screen gradient-bg flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex">
