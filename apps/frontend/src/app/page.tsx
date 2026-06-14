@@ -184,10 +184,9 @@ export default function DashboardPage() {
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="pl-11 pr-10 py-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary appearance-none cursor-pointer transition-all"
+                    className="w-full pl-11 pr-10 py-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary appearance-none cursor-pointer transition-all"
                   >
                     <option value="">Alle Status</option>
-                    <option value="uploaded">Hochgeladen</option>
                     <option value="processing">Verarbeitung</option>
                     <option value="parsed">Verarbeitet</option>
                     <option value="needs_validation">Prüfung erforderlich</option>
