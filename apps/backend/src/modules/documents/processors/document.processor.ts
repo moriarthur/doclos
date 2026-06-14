@@ -47,7 +47,7 @@ export class DocumentProcessor {
 
   @Process({ name: 'process-document', concurrency: 1 })
   async handleProcessDocument(job: Job<ProcessDocumentJob>) {
-    const { documentId } = job.data;
+    const { documentId, userId } = job.data;
 
     this.logger.log(`Processing document: ${documentId}`);
 
@@ -75,6 +75,15 @@ export class DocumentProcessor {
       const document = await this.documentsRepository.findOne({ where: { id: documentId } });
       if (!document) {
         throw new Error('Document not found');
+      }
+
+      // Defense-in-depth: only the owner may trigger processing of their document.
+      // (Ownership is already enforced at the HTTP enqueue layer; this guards the
+      // trusted worker against any path that bypasses it.)
+      if (document.user_id !== userId) {
+        throw new Error(
+          `Unauthorized: document ${documentId} does not belong to user ${userId}`,
+        );
       }
 
       // Update status to processing

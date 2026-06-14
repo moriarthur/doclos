@@ -1,7 +1,9 @@
-// One-off cleanup of historical Bug-A leftovers:
-//   1) orphan invoices (not linked by any document) + their items
-//   2) duplicate field_extractions (keep newest per document_id+field_name)
-// Runs in a single transaction; reports what was removed.
+/**
+ * MAINTENANCE script — DESTRUCTIVE. Run manually by an operator with DB credentials.
+ * Deletes orphan invoices + their items and dedupes field_extractions. Already
+ * executed once (2026-06-14). Runs in a single transaction and reports (via
+ * RETURNING) exactly what was removed before COMMIT.
+ */
 const pg = require('pg');
 const dotenv = require('dotenv');
 const dns = require('dns');

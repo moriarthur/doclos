@@ -1,5 +1,13 @@
-// Enqueue a reprocess-document job directly on the Bull 'documents' queue (bypasses HTTP auth).
-// usage: node trigger-reprocess.cjs <documentId> [userId]
+/**
+ * DEV/TEST ONLY — enqueues a reprocess-document job directly on the Bull
+ * 'documents' queue, BYPASSING the authenticated HTTP endpoint. Requires direct
+ * Redis access (REDIS_URL). Do NOT use in production — prefer
+ * POST /documents/:id/reprocess (which enforces ownership).
+ *
+ * usage: node trigger-reprocess.cjs <documentId> <userId>
+ *   both args are REQUIRED and must be valid UUIDs; userId must own the document
+ *   (the worker now verifies ownership).
+ */
 const bull = require('bull');
 const dotenv = require('dotenv');
 const dns = require('dns');
@@ -11,10 +19,11 @@ for (const p of [path.join(__dirname, '../../../.env'), path.join(process.cwd(),
   if (fs.existsSync(p)) { dotenv.config({ path: p }); break; }
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const documentId = process.argv[2];
-const userId = process.argv[3] || 'a9ff617e-8345-4a3f-8364-93cca13b863b';
-if (!documentId) {
-  console.error('usage: node trigger-reprocess.cjs <documentId> [userId]');
+const userId = process.argv[3];
+if (!documentId || !userId || !UUID_RE.test(documentId) || !UUID_RE.test(userId)) {
+  console.error('usage: node trigger-reprocess.cjs <documentId> <userId>  (both required, UUID v4)');
   process.exit(1);
 }
 

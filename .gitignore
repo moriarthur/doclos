@@ -59,3 +59,6 @@ test files/
 
 # Claude memory
 .claude/projects/
+
+# CodeGraph local index (per-machine)
+.codegraph/

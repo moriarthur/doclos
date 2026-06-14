@@ -89,7 +89,9 @@
       "Bash(ls ~/.claude/mcp*.json)",
       "Bash(npx tsc:*)",
       "Bash(docker compose *)",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "Bash(pnpm *)",
+      "Bash(git check-ignore *)"
     ]
   }
 }
