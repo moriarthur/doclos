@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils';
 import {
   FileText,
   Upload,
-  Settings,
   LogOut,
   Menu,
   X,
@@ -21,7 +20,6 @@ const navItems = [
   { name: 'Dokumente', href: '/', icon: FileText },
   { name: 'Upload', href: '/upload', icon: Upload },
   { name: 'Archiv', href: '/archive', icon: Archive },
-  { name: 'Einstellungen', href: '/settings', icon: Settings },
 ];
 
 export function Navigation() {
