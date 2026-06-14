@@ -63,14 +63,10 @@ export default function DashboardPage() {
   const { data: documents, isLoading, error } = useQuery({
     queryKey: ['documents', statusFilter],
     queryFn: () => {
-      // Exclude archived documents from default view
-      if (statusFilter === 'archived') {
-        return documentsApi.list({ status: 'archived' });
-      }
+      // Default: show all except archived
       if (statusFilter) {
         return documentsApi.list({ status: statusFilter });
       }
-      // Default: show all except archived
       return documentsApi.list({ status: undefined });
     },
     enabled: !isCheckingAuth, // Only fetch after auth check
