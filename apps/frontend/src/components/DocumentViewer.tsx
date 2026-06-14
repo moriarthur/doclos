@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { CancelableLoader } from '@/components/ui/CancelableLoader';
 
@@ -14,7 +14,14 @@ interface DocumentViewerProps {
   onCancelReprocess?: () => void;
 }
 
-export function DocumentViewer({ url, mimeType, error: isErrorDoc = false, reprocessing = false, isReprocess = false, onCancelReprocess }: DocumentViewerProps) {
+export function DocumentViewer({
+  url,
+  mimeType,
+  error: isErrorDoc = false,
+  reprocessing = false,
+  isReprocess = false,
+  onCancelReprocess,
+}: DocumentViewerProps) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -59,7 +66,12 @@ export function DocumentViewer({ url, mimeType, error: isErrorDoc = false, repro
         <div className="text-center p-8">
           <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <p className="text-sm text-muted-foreground mb-3">Dokument konnte nicht geladen werden</p>
-          <a href={url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-sm">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline text-sm"
+          >
             In neuem Tab öffnen
           </a>
         </div>
@@ -68,15 +80,43 @@ export function DocumentViewer({ url, mimeType, error: isErrorDoc = false, repro
   }
 
   if (mimeType.startsWith('image/')) {
-    return <ImageViewer blobUrl={blobUrl} isErrorDoc={isErrorDoc} reprocessing={reprocessing} isReprocess={isReprocess} onCancelReprocess={onCancelReprocess} />;
+    return (
+      <ImageViewer
+        blobUrl={blobUrl}
+        isErrorDoc={isErrorDoc}
+        reprocessing={reprocessing}
+        isReprocess={isReprocess}
+        onCancelReprocess={onCancelReprocess}
+      />
+    );
   }
 
-  return <PdfViewer blobUrl={blobUrl} isErrorDoc={isErrorDoc} reprocessing={reprocessing} isReprocess={isReprocess} onCancelReprocess={onCancelReprocess} />;
+  return (
+    <PdfViewer
+      blobUrl={blobUrl}
+      isErrorDoc={isErrorDoc}
+      reprocessing={reprocessing}
+      isReprocess={isReprocess}
+      onCancelReprocess={onCancelReprocess}
+    />
+  );
 }
 
 /* ─── Image Viewer ─── */
 
-function ImageViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelReprocess }: { blobUrl: string; isErrorDoc: boolean; reprocessing: boolean; isReprocess: boolean; onCancelReprocess?: () => void }) {
+function ImageViewer({
+  blobUrl,
+  isErrorDoc,
+  reprocessing,
+  isReprocess,
+  onCancelReprocess,
+}: {
+  blobUrl: string;
+  isErrorDoc: boolean;
+  reprocessing: boolean;
+  isReprocess: boolean;
+  onCancelReprocess?: () => void;
+}) {
   const [zoom, setZoom] = useState(1);
   const isBlocked = isErrorDoc || reprocessing;
 
@@ -91,7 +131,9 @@ function ImageViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelR
           src={blobUrl}
           alt="Dokument"
           className="max-w-full h-auto rounded shadow-lg transition-transform duration-200"
-          style={!isBlocked ? { transform: `scale(${zoom})`, transformOrigin: 'top center' } : undefined}
+          style={
+            !isBlocked ? { transform: `scale(${zoom})`, transformOrigin: 'top center' } : undefined
+          }
         />
       </div>
 
@@ -99,13 +141,24 @@ function ImageViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelR
       {reprocessing && <ProcessingOverlay onCancel={onCancelReprocess} isReprocess={isReprocess} />}
 
       {!isBlocked && (
-        <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
+        <div className="absolute bottom-3 right-3 flex flex-wrap items-center justify-center gap-1 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
           <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground w-12 text-center">{Math.round(zoom * 100)}%</span>
+          <span className="text-xs text-muted-foreground w-12 text-center">
+            {Math.round(zoom * 100)}%
+          </span>
           <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
             <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setZoom(1)}
+            disabled={zoom === 1}
+            title="Zoom zurücksetzen"
+          >
+            <Maximize2 className="h-4 w-4" />
           </Button>
         </div>
       )}
@@ -115,7 +168,19 @@ function ImageViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelR
 
 /* ─── PDF Viewer ─── */
 
-function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelReprocess }: { blobUrl: string; isErrorDoc: boolean; reprocessing: boolean; isReprocess: boolean; onCancelReprocess?: () => void }) {
+function PdfViewer({
+  blobUrl,
+  isErrorDoc,
+  reprocessing,
+  isReprocess,
+  onCancelReprocess,
+}: {
+  blobUrl: string;
+  isErrorDoc: boolean;
+  reprocessing: boolean;
+  isReprocess: boolean;
+  onCancelReprocess?: () => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -139,36 +204,41 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelRep
         // handled by parent
       }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [blobUrl]);
 
-  const renderPage = useCallback(async (pageNum: number) => {
-    if (!pdfDoc || !canvasRef.current || !containerRef.current || renderingRef.current) return;
-    renderingRef.current = true;
-    try {
-      const page = await pdfDoc.getPage(pageNum);
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d')!;
-      const containerWidth = containerRef.current.clientWidth - 32; // subtract padding
-      const unscaledViewport = page.getViewport({ scale: 1 });
-      // Scale so PDF fills the container width, then apply user zoom
-      const fitScale = containerWidth / unscaledViewport.width * zoom;
-      const dpr = window.devicePixelRatio || 1;
-      const renderScale = fitScale * dpr;
-      const viewport = page.getViewport({ scale: fitScale });
-      canvas.width = Math.round(viewport.width * dpr);
-      canvas.height = Math.round(viewport.height * dpr);
-      canvas.style.width = `${Math.round(viewport.width)}px`;
-      canvas.style.height = `${Math.round(viewport.height)}px`;
-      const renderViewport = page.getViewport({ scale: renderScale });
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
-    } catch {
-      // silent
-    } finally {
-      renderingRef.current = false;
-    }
-  }, [pdfDoc, zoom]);
+  const renderPage = useCallback(
+    async (pageNum: number) => {
+      if (!pdfDoc || !canvasRef.current || !containerRef.current || renderingRef.current) return;
+      renderingRef.current = true;
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d')!;
+        const containerWidth = containerRef.current.clientWidth - 32; // subtract padding
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        // Scale so PDF fills the container width, then apply user zoom
+        const fitScale = (containerWidth / unscaledViewport.width) * zoom;
+        const dpr = window.devicePixelRatio || 1;
+        const renderScale = fitScale * dpr;
+        const viewport = page.getViewport({ scale: fitScale });
+        canvas.width = Math.round(viewport.width * dpr);
+        canvas.height = Math.round(viewport.height * dpr);
+        canvas.style.width = `${Math.round(viewport.width)}px`;
+        canvas.style.height = `${Math.round(viewport.height)}px`;
+        const renderViewport = page.getViewport({ scale: renderScale });
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+      } catch {
+        // silent
+      } finally {
+        renderingRef.current = false;
+      }
+    },
+    [pdfDoc, zoom]
+  );
 
   useEffect(() => {
     if (pdfDoc) renderPage(currentPage);
@@ -181,10 +251,15 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelRep
     let rafId: number;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => { if (pdfDoc) renderPage(currentPage); });
+      rafId = requestAnimationFrame(() => {
+        if (pdfDoc) renderPage(currentPage);
+      });
     });
     observer.observe(container);
-    return () => { observer.disconnect(); cancelAnimationFrame(rafId); };
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(rafId);
+    };
   }, [pdfDoc, currentPage, renderPage]);
 
   // Trackpad zoom (Ctrl+scroll) and pinch-to-zoom (touch)
@@ -221,7 +296,9 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelRep
       }
       lastDist = dist;
     };
-    const onTouchEnd = () => { lastDist = 0; };
+    const onTouchEnd = () => {
+      lastDist = 0;
+    };
 
     container.addEventListener('wheel', onWheel, { passive: false });
     container.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -247,30 +324,55 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelRep
           isBlocked ? 'blur-md pointer-events-none select-none' : ''
         }`}
       >
-        <canvas ref={canvasRef} className="shadow-lg rounded bg-white mx-auto" style={{ display: 'block' }} />
+        <canvas
+          ref={canvasRef}
+          className="shadow-lg rounded bg-white mx-auto"
+          style={{ display: 'block' }}
+        />
       </div>
 
       {isErrorDoc && !reprocessing && <ErrorOverlay />}
       {reprocessing && <ProcessingOverlay onCancel={onCancelReprocess} isReprocess={isReprocess} />}
 
       {!isBlocked && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
-          <Button variant="ghost" size="sm" onClick={() => goTo(currentPage - 1)} disabled={currentPage <= 1}>
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-1 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => goTo(currentPage - 1)}
+            disabled={currentPage <= 1}
+          >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-xs text-muted-foreground px-2 min-w-[60px] text-center">
             {currentPage} / {totalPages}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => goTo(currentPage + 1)} disabled={currentPage >= totalPages}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => goTo(currentPage + 1)}
+            disabled={currentPage >= totalPages}
+          >
             <ChevronRight className="h-4 w-4" />
           </Button>
           <div className="w-px h-4 bg-border mx-1" />
           <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground w-10 text-center">{Math.round(zoom * 100)}%</span>
+          <span className="text-xs text-muted-foreground w-10 text-center">
+            {Math.round(zoom * 100)}%
+          </span>
           <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
             <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setZoom(1)}
+            disabled={zoom === 1}
+            title="Zoom zurücksetzen"
+          >
+            <Maximize2 className="h-4 w-4" />
           </Button>
         </div>
       )}
@@ -280,7 +382,13 @@ function PdfViewer({ blobUrl, isErrorDoc, reprocessing, isReprocess, onCancelRep
 
 /* ─── Overlays ─── */
 
-function ProcessingOverlay({ onCancel, isReprocess }: { onCancel?: () => void; isReprocess?: boolean }) {
+function ProcessingOverlay({
+  onCancel,
+  isReprocess,
+}: {
+  onCancel?: () => void;
+  isReprocess?: boolean;
+}) {
   return (
     <div className="absolute inset-0 flex items-center justify-center z-10">
       <div className="text-center p-8 bg-background/70 backdrop-blur-sm rounded-2xl">

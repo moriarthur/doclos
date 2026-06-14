@@ -81,6 +81,19 @@ export class DocumentProcessor {
       document.status = DocumentStatus.PROCESSING;
       await this.documentsRepository.save(document);
 
+      // Clean up artifacts from a previous run so reprocessing never leaves
+      // duplicate invoices or accumulating field extractions behind (Bug A).
+      await this.fieldExtractionsRepository.delete({ document_id: documentId });
+      if (document.invoiceId) {
+        const oldInvoiceId = document.invoiceId;
+        // Clear the document's FK reference first (documents.invoiceId → invoices.id),
+        // otherwise deleting the invoice violates the foreign-key constraint.
+        document.invoiceId = null as any;
+        await this.documentsRepository.save(document);
+        await this.invoiceItemsRepository.delete({ invoice_id: oldInvoiceId });
+        await this.invoicesRepository.delete({ id: oldInvoiceId });
+      }
+
       // 1. Download file from S3
       this.logger.log(`Downloading file from S3: ${document.s3_key}`);
       jobRecord.progress = { stage: 'downloading', message: 'Downloading file...' };

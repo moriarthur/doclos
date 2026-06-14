@@ -63,7 +63,8 @@ export const dataSourceOptions: DataSourceOptions = {
   ],
   migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
   synchronize: process.env.NODE_ENV !== 'production', // Use migrations in production
-  logging: process.env.NODE_ENV === 'development',
+  // Log only failed queries — normal per-query logging was flooding the logs.
+  logging: ['error'],
   // Supabase Pooler requires SSL; rejectUnauthorized disabled for dev behind corporate proxy/AV
   ssl: host?.includes('pooler.supabase.com')
     ? { rejectUnauthorized: process.env.NODE_ENV === 'production' }
