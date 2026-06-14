@@ -141,7 +141,7 @@ function ImageViewer({
       {reprocessing && <ProcessingOverlay onCancel={onCancelReprocess} isReprocess={isReprocess} />}
 
       {!isBlocked && (
-        <div className="absolute bottom-3 right-3 flex flex-wrap items-center justify-center gap-1 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-1 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
           <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
             <ZoomOut className="h-4 w-4" />
           </Button>

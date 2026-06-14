@@ -7,7 +7,7 @@ import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
-import { formatDate, formatAmount, getStatusLabel } from '@/lib/utils';
+import { formatDate, formatAmount, getStatusLabel, getDocumentTypeLabel } from '@/lib/utils';
 import {
   FileText,
   Search,
@@ -286,9 +286,11 @@ export default function DashboardPage() {
                                   )}
                                 </span>
                               )}
-                              <span className="text-xs uppercase tracking-wide">
-                                {doc.type}
-                              </span>
+                              {doc.type && doc.type !== 'unknown' && (
+                                <span className="text-xs uppercase tracking-wide">
+                                  {getDocumentTypeLabel(doc.type)}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>

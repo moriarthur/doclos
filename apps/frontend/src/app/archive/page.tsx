@@ -7,7 +7,7 @@ import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatDate, formatAmount, getStatusLabel } from '@/lib/utils';
+import { formatDate, formatAmount, getStatusLabel, getDocumentTypeLabel } from '@/lib/utils';
 import {
   FileText,
   Search,
@@ -213,34 +213,35 @@ export default function ArchivePage() {
                                   {formatAmount(doc.amount, doc.currency).formatted}
                                 </span>
                               )}
-                              <span className="text-xs uppercase tracking-wide">
-                                {doc.type}
-                              </span>
+                              {doc.type && doc.type !== 'unknown' && (
+                                <span className="text-xs uppercase tracking-wide">
+                                  {getDocumentTypeLabel(doc.type)}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </Link>
 
                         {/* Actions */}
-                        <div className="flex items-center gap-2 ml-4">
+                        <div className="flex items-center gap-1 ml-4">
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={(e) => handleUnarchive(doc.id, e)}
                             disabled={unarchiveMutation.isPending}
-                            className="gap-1.5"
+                            title="Wiederherstellen"
                           >
                             <ArchiveRestore className="h-4 w-4" />
-                            <span className="hidden sm:inline">Wiederherstellen</span>
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={(e) => handleDelete(doc.id, e)}
                             disabled={deleteMutation.isPending}
-                            className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            title="Löschen"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                           >
                             <Trash2 className="h-4 w-4" />
-                            <span className="hidden sm:inline">Löschen</span>
                           </Button>
                         </div>
                       </div>
