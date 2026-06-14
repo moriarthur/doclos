@@ -123,7 +123,7 @@ function ImageViewer({
   return (
     <div className="relative">
       <div
-        className={`bg-muted rounded-xl overflow-auto max-h-[80vh] flex items-center justify-center p-4 ${
+        className={`bg-muted rounded-xl overflow-auto max-h-[60vh] md:max-h-[80vh] flex items-center justify-center p-4 ${
           isBlocked ? 'blur-md pointer-events-none select-none' : ''
         }`}
       >
@@ -141,19 +141,19 @@ function ImageViewer({
       {reprocessing && <ProcessingOverlay onCancel={onCancelReprocess} isReprocess={isReprocess} />}
 
       {!isBlocked && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-1 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
-          <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-0.5 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-0.5 shadow-md">
+          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} title="Verkleinern">
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground w-12 text-center">
+          <span className="text-xs text-muted-foreground w-8 text-center tabular-nums">
             {Math.round(zoom * 100)}%
           </span>
-          <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
+          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} title="Vergrößern">
             <ZoomIn className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
             onClick={() => setZoom(1)}
             disabled={zoom === 1}
             title="Zoom zurücksetzen"
@@ -320,7 +320,7 @@ function PdfViewer({
     <div className="relative">
       <div
         ref={containerRef}
-        className={`bg-muted rounded-xl overflow-auto h-[75vh] min-h-0 p-4 ${
+        className={`bg-muted rounded-xl overflow-auto h-[60vh] md:h-[75vh] min-h-0 p-4 ${
           isBlocked ? 'blur-md pointer-events-none select-none' : ''
         }`}
       >
@@ -335,39 +335,41 @@ function PdfViewer({
       {reprocessing && <ProcessingOverlay onCancel={onCancelReprocess} isReprocess={isReprocess} />}
 
       {!isBlocked && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-1 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-1 shadow-md">
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-0.5 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-0.5 shadow-md">
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
             onClick={() => goTo(currentPage - 1)}
             disabled={currentPage <= 1}
+            title="Vorherige Seite"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground px-2 min-w-[60px] text-center">
+          <span className="text-xs text-muted-foreground px-1 min-w-[40px] text-center tabular-nums">
             {currentPage} / {totalPages}
           </span>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
             onClick={() => goTo(currentPage + 1)}
             disabled={currentPage >= totalPages}
+            title="Nächste Seite"
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
-          <div className="w-px h-4 bg-border mx-1" />
-          <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}>
+          <div className="w-px h-5 bg-border mx-0.5" />
+          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} title="Verkleinern">
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground w-10 text-center">
+          <span className="text-xs text-muted-foreground w-8 text-center tabular-nums">
             {Math.round(zoom * 100)}%
           </span>
-          <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
+          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} title="Vergrößern">
             <ZoomIn className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
             onClick={() => setZoom(1)}
             disabled={zoom === 1}
             title="Zoom zurücksetzen"
