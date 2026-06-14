@@ -88,10 +88,14 @@ export default function ArchivePage() {
     deleteMutation.mutate(id);
   };
 
-  const filteredDocuments = documents?.data.filter((doc) =>
-    doc.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.id.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const filteredDocuments = documents?.data.filter((doc) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      doc.company_name?.toLowerCase().includes(q) ||
+      doc.invoice_number?.toLowerCase().includes(q)
+    );
+  }) || [];
 
   // Show loading overlay while checking auth
   if (isCheckingAuth) {

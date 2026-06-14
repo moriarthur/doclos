@@ -78,10 +78,14 @@ export default function DashboardPage() {
       if (!statusFilter && doc.status === 'archived') return false;
       return true;
     })
-    .filter((doc) =>
-      doc.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.id.toLowerCase().includes(searchQuery.toLowerCase())
-    ) || [];
+    .filter((doc) => {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        doc.company_name?.toLowerCase().includes(q) ||
+        doc.invoice_number?.toLowerCase().includes(q)
+      );
+    }) || [];
 
   const archiveMutation = useMutation({
     mutationFn: (id: string) => documentsApi.updateStatus(id, 'archived'),

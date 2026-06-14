@@ -134,6 +134,7 @@ export class DocumentsService {
         type: doc.type,
         status: doc.status,
         company_name: doc.invoice?.supplier_name || doc.customer?.name,
+        invoice_number: doc.invoice?.invoice_number,
         amount: doc.invoice?.amount_total,
         currency: doc.invoice?.currency,
         invoice_date: doc.invoice?.invoice_date,
