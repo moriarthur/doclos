@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { documentsApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -42,18 +42,31 @@ export default function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
 
-  const { data: documents, isLoading, error } = useQuery({
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    error,
+  } = useInfiniteQuery({
     queryKey: ['documents', statusFilter],
-    queryFn: () => {
-      // Default: show all except archived
-      if (statusFilter) {
-        return documentsApi.list({ status: statusFilter });
-      }
-      return documentsApi.list({ status: undefined });
-    },
+    queryFn: ({ pageParam = 1 }) =>
+      documentsApi.list({
+        status: statusFilter || undefined,
+        page: pageParam,
+        limit: 20,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.pagination.page * last.pagination.limit < last.pagination.total
+        ? last.pagination.page + 1
+        : undefined,
   });
 
-  const filteredDocuments = documents?.data
+  const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
+
+  const filteredDocuments = allDocuments
     .filter((doc) => {
       // Exclude archived documents from default view
       if (!statusFilter && doc.status === 'archived') return false;
@@ -66,7 +79,7 @@ export default function DashboardPage() {
         doc.company_name?.toLowerCase().includes(q) ||
         doc.invoice_number?.toLowerCase().includes(q)
       );
-    }) || [];
+    });
 
   const archiveMutation = useMutation({
     mutationFn: (id: string) => documentsApi.updateStatus(id, 'archived'),
@@ -213,6 +226,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           ) : (
+            <>
             <div className="space-y-3">
               {filteredDocuments.map((doc, index) => (
                 <Link
@@ -306,6 +320,20 @@ export default function DashboardPage() {
                 </Link>
               ))}
             </div>
+
+            {hasNextPage && (
+              <div className="mt-6">
+                <Button
+                  variant="secondary"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="w-full"
+                >
+                  {isFetchingNextPage ? 'Lädt…' : 'Mehr laden'}
+                </Button>
+              </div>
+            )}
+            </>
           )}
         </div>
       </main>

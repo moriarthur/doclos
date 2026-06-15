@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { documentsApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -32,9 +32,21 @@ export default function ArchivePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
 
-  const { data: documents, isLoading } = useQuery({
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery({
     queryKey: ['documents', 'archived'],
-    queryFn: () => documentsApi.list({ status: 'archived' }),
+    queryFn: ({ pageParam = 1 }) =>
+      documentsApi.list({ status: 'archived', page: pageParam, limit: 20 }),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.pagination.page * last.pagination.limit < last.pagination.total
+        ? last.pagination.page + 1
+        : undefined,
   });
 
   const unarchiveMutation = useMutation({
@@ -69,14 +81,16 @@ export default function ArchivePage() {
     deleteMutation.mutate(id);
   };
 
-  const filteredDocuments = documents?.data.filter((doc) => {
+  const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
+
+  const filteredDocuments = allDocuments.filter((doc) => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return true;
     return (
       doc.company_name?.toLowerCase().includes(q) ||
       doc.invoice_number?.toLowerCase().includes(q)
     );
-  }) || [];
+  });
 
   return (
     <div className="flex">
@@ -146,6 +160,7 @@ export default function ArchivePage() {
               </CardContent>
             </Card>
           ) : (
+            <>
             <div className="space-y-3">
               {filteredDocuments.map((doc, index) => (
                 <div
@@ -226,6 +241,20 @@ export default function ArchivePage() {
                 </div>
               ))}
             </div>
+
+            {hasNextPage && (
+              <div className="mt-6">
+                <Button
+                  variant="secondary"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="w-full"
+                >
+                  {isFetchingNextPage ? 'Lädt…' : 'Mehr laden'}
+                </Button>
+              </div>
+            )}
+            </>
           )}
         </div>
       </main>
