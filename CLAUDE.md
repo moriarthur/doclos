@@ -293,27 +293,16 @@ Upload → S3 → Queue → Download → OCR (Tesseract) → Classify (GLM) → 
 
 ## Cloud Services Configuration (ALL SET UP ✅)
 
-### Current Configuration (.env)
-```env
-# Database (Supabase)
-DATABASE_URL="postgresql://postgres:#***REMOVED***@db.dkyauhncczoyvmoftbhy.supabase.co:5432/postgres"
+### Current Configuration
 
-# Redis (Upstash)
-REDIS_URL="rediss://default:...@joint-tiger-75182.upstash.io:6379"
+Credentials live in `.env` (gitignored — never commit real secrets). Copy
+`.env.example` and fill in your own values for: `DATABASE_URL`, `REDIS_URL`,
+`S3_*`, `GLM_API_KEY`, `JWT_SECRET`.
 
-# Storage (Cloudflare R2)
-S3_ENDPOINT="https://d3b73d6c64935729440a3d6af1c1f999.r2.cloudflarestorage.com/doclos-documents"
-S3_BUCKET="doclos-documents"
-S3_ACCESS_KEY_ID="***REMOVED***"
-S3_SECRET_ACCESS_KEY="***REMOVED***"
-
-# AI (GLM / Z.ai)
-GLM_API_KEY="***REMOVED***"
-GLM_MODEL="glm-4-flash"
-
-# JWT
-JWT_SECRET="***REMOVED***="
-```
+> ⚠️ **Security note:** real credentials were accidentally committed to this
+> file (and thus to git history) while the repo was public. They have been
+> removed here, but they must be considered compromised — **rotate ALL secrets**
+> (Supabase DB password, R2 keys, GLM key, JWT secret) regardless.
 
 ### Free Tiers Used
 | Service | Plan | Status |

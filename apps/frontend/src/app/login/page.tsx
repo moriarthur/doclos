@@ -22,7 +22,6 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const [apiError, setApiError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -37,20 +36,6 @@ function LoginForm() {
 
   const email = watch('email');
   const password = watch('password');
-
-  // Check authentication and redirect if needed
-  useEffect(() => {
-    const checkAuth = () => {
-      if (authApi.isAuthenticated()) {
-        router.push('/');
-      } else {
-        setIsLoading(false);
-      }
-    };
-
-    const timer = setTimeout(checkAuth, 100);
-    return () => clearTimeout(timer);
-  }, [router]);
 
   // Check if user just registered
   useEffect(() => {
@@ -68,15 +53,6 @@ function LoginForm() {
       setApiError(authApi.getErrorMessage(err));
     },
   });
-
-  // Show loading while checking auth
-  if (isLoading) {
-    return (
-      <div className="min-h-screen gradient-bg flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   const onSubmit = async (data: LoginFormData) => {
     setApiError('');

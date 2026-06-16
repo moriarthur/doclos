@@ -18,14 +18,19 @@
     "db:seed": "cd packages/backend && npm run db:seed"
   },
   "devDependencies": {
-    "dotenv": "^17.3.1",
-    "eslint": "^8.57.0",
-    "prettier": "^3.2.0",
-    "turbo": "^2.0.0"
+    "dotenv": "^17.4.2",
+    "eslint": "^8.57.1",
+    "prettier": "^3.8.4",
+    "turbo": "^2.9.18"
   },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=8.0.0"
   },
-  "packageManager": "pnpm@8.15.0"
+  "packageManager": "pnpm@8.15.0",
+  "pnpm": {
+    "overrides": {
+      "multer": "^2.1.0"
+    }
+  }
 }

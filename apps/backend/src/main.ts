@@ -16,10 +16,14 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api/v1');
 
-  // CORS - More permissive configuration for development
+  // CORS — production allows only the configured frontend origin; dev also
+  // allows localhost variants.
   const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
+  const isProduction = configService.get('NODE_ENV') === 'production';
   app.enableCors({
-    origin: [frontendUrl, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: isProduction
+      ? [frontendUrl]
+      : [frontendUrl, 'http://localhost:3000', 'http://127.0.0.1:3000'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

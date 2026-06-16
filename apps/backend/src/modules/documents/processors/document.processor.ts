@@ -45,9 +45,26 @@ export class DocumentProcessor {
     private structuredExtractionService: StructuredExtractionService,
   ) {}
 
+  /**
+   * Heuristic: does this document's text indicate a EUR (German/EU) invoice?
+   *
+   * Invoices in the target market (Germany/EU) often state the amount without an
+   * explicit currency next to the total, yet are unambiguously EUR. The extraction
+   * prompt returns currency=null in that case, which would otherwise force a
+   * high-confidence invoice into needs_validation. Default to EUR when strong
+   * German/EU indicators are present; leave null (→ validation) only when nothing
+   * points to EUR.
+   */
+  private looksLikeEurInvoice(text: string): boolean {
+    const t = text.toLowerCase();
+    // Explicit €/EUR, or German accounting vocabulary that in practice always
+    // accompanies a EUR invoice (CHF invoices virtually always state CHF).
+    return /(€|\beur\b|mwst|umsatzsteuer|\bust\b|rechnung)/.test(t);
+  }
+
   @Process({ name: 'process-document', concurrency: 1 })
   async handleProcessDocument(job: Job<ProcessDocumentJob>) {
-    const { documentId } = job.data;
+    const { documentId, userId } = job.data;
 
     this.logger.log(`Processing document: ${documentId}`);
 
@@ -77,9 +94,31 @@ export class DocumentProcessor {
         throw new Error('Document not found');
       }
 
+      // Defense-in-depth: only the owner may trigger processing of their document.
+      // (Ownership is already enforced at the HTTP enqueue layer; this guards the
+      // trusted worker against any path that bypasses it.)
+      if (document.user_id !== userId) {
+        throw new Error(
+          `Unauthorized: document ${documentId} does not belong to user ${userId}`,
+        );
+      }
+
       // Update status to processing
       document.status = DocumentStatus.PROCESSING;
       await this.documentsRepository.save(document);
+
+      // Clean up artifacts from a previous run so reprocessing never leaves
+      // duplicate invoices or accumulating field extractions behind (Bug A).
+      await this.fieldExtractionsRepository.delete({ document_id: documentId });
+      if (document.invoiceId) {
+        const oldInvoiceId = document.invoiceId;
+        // Clear the document's FK reference first (documents.invoiceId → invoices.id),
+        // otherwise deleting the invoice violates the foreign-key constraint.
+        document.invoiceId = null as any;
+        await this.documentsRepository.save(document);
+        await this.invoiceItemsRepository.delete({ invoice_id: oldInvoiceId });
+        await this.invoicesRepository.delete({ id: oldInvoiceId });
+      }
 
       // 1. Download file from S3
       this.logger.log(`Downloading file from S3: ${document.s3_key}`);
@@ -140,8 +179,15 @@ export class DocumentProcessor {
         `Document classified as ${classification.type} (confidence: ${classification.confidence})`,
       );
 
-      // 4. Extract structured data with LLM (if invoice)
-      if (classification.type === DocumentType.INVOICE) {
+      // 4. Extract structured data with LLM for tabular commercial documents.
+      // Invoices, purchase orders and offers all carry supplier + line items +
+      // totals; delivery_note (usually no prices) and contract (non-tabular)
+      // stay parsed-only.
+      if (
+        classification.type === DocumentType.INVOICE ||
+        classification.type === DocumentType.PURCHASE_ORDER ||
+        classification.type === DocumentType.OFFER
+      ) {
         // Rate limit buffer: wait before next GLM API call
         job.progress(65);
         await new Promise(r => setTimeout(r, 3000));
@@ -221,6 +267,13 @@ export class DocumentProcessor {
       // Determine validation requirement based on confidence
       const autoAcceptThreshold = 0.85;
       const needsValidationThreshold = 0.6;
+      // Default currency to EUR for German/EU invoices that don't state it
+      // explicitly (common in the target market). Genuinely ambiguous docs
+      // (no €/EUR/Rechnung/MwSt indicators) still route to validation.
+      if (!normalizedExtraction.currency && this.looksLikeEurInvoice(extractedText)) {
+        normalizedExtraction.currency = 'EUR';
+        this.logger.log('Currency not explicitly stated — defaulting to EUR (German/EU invoice heuristic)');
+      }
       const hasMissingCurrency = !normalizedExtraction.currency;
 
       let newStatus: DocumentStatus;

@@ -6,6 +6,7 @@ import { Queue } from 'bull';
 import * as crypto from 'crypto';
 import { Document, DocumentStatus, DocumentType } from './entities/document.entity';
 import { Invoice } from './entities/invoice.entity';
+import { InvoiceItem } from './entities/invoice-item.entity';
 import { FieldExtraction } from './entities/field-extraction.entity';
 import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
@@ -24,6 +25,8 @@ export class DocumentsService {
     private documentsRepository: Repository<Document>,
     @InjectRepository(Invoice)
     private invoicesRepository: Repository<Invoice>,
+    @InjectRepository(InvoiceItem)
+    private invoiceItemsRepository: Repository<InvoiceItem>,
     @InjectRepository(FieldExtraction)
     private fieldExtractionsRepository: Repository<FieldExtraction>,
     @InjectRepository(AuditLog)
@@ -58,21 +61,20 @@ export class DocumentsService {
     // Upload to S3
     await this.s3Service.uploadFile(s3Key, file.buffer, file.mimetype);
 
-    // Create document record
+    // Create document record. Status starts directly at PROCESSING: the upload
+    // response isn't returned until the processing job is already queued, so
+    // UPLOADED (a transient enum value, still referenced by the frontend status
+    // colors) is never persisted or observable — collapsing the prior double-save.
     const document = this.documentsRepository.create({
       user_id: userId,
       type: metadata?.type || DocumentType.UNKNOWN,
-      status: DocumentStatus.UPLOADED,
+      status: DocumentStatus.PROCESSING,
       original_filename: file.originalname,
       s3_key: s3Key,
       mime_type: file.mimetype,
       file_size: file.size,
       page_count: undefined, // Will be determined during processing
     });
-    await this.documentsRepository.save(document);
-
-    // Set status to processing immediately for responsive UI
-    document.status = DocumentStatus.PROCESSING;
     await this.documentsRepository.save(document);
 
     // Add to processing queue (worker will handle the rest)
@@ -131,6 +133,7 @@ export class DocumentsService {
         type: doc.type,
         status: doc.status,
         company_name: doc.invoice?.supplier_name || doc.customer?.name,
+        invoice_number: doc.invoice?.invoice_number,
         amount: doc.invoice?.amount_total,
         currency: doc.invoice?.currency,
         invoice_date: doc.invoice?.invoice_date,
@@ -188,8 +191,17 @@ export class DocumentsService {
       return acc;
     }, {} as Record<string, { value: string; confidence: number }>);
 
+    // Get invoice line items (invoices only) — map line_total → total_price for the client
+    const invoiceItems = document.invoice
+      ? await this.invoiceItemsRepository.find({
+          where: { invoice_id: document.invoice.id },
+          order: { created_at: 'ASC' },
+        })
+      : [];
+
     return {
       id: document.id,
+      type: document.type,
       status: document.status,
       file_url: fileUrl,
       mime_type: document.mime_type,
@@ -219,6 +231,13 @@ export class DocumentsService {
             supplier_address: document.invoice.supplier_address
               ? { value: document.invoice.supplier_address, confidence: extractionMap['supplier_address']?.confidence }
               : extractionMap['supplier_address'],
+            // Line items — map line_total → total_price; unit is not extracted, client defaults to 'Stk'
+            items: invoiceItems.map((item) => ({
+              description: item.description,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              total_price: item.line_total,
+            })),
           }
         : undefined,
     };

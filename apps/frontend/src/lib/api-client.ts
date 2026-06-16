@@ -179,6 +179,7 @@ export interface Document {
   type: string;
   status: string;
   company_name?: string;
+  invoice_number?: string;
   amount?: number;
   currency?: string;
   invoice_date?: string;

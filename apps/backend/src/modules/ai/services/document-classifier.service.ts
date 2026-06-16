@@ -73,6 +73,24 @@ export class DocumentClassifierService {
       };
     }
 
+    // Check for purchase order indicators
+    if (
+      lowerText.includes('purchase order') ||
+      lowerText.includes('bestellung') ||
+      lowerText.includes('bestellnummer') ||
+      lowerText.includes('order confirmation') ||
+      (lowerText.includes('auftrag') &&
+        (lowerText.includes('lieferung') ||
+          lowerText.includes('menge') ||
+          lowerText.includes('preis')))
+    ) {
+      return {
+        type: DocumentType.PURCHASE_ORDER,
+        confidence: 0.7,
+        reasoning: 'Detected purchase order keywords (Purchase Order, Bestellung)',
+      };
+    }
+
     // Check for contract indicators
     if (
       lowerText.includes('vertrag') ||

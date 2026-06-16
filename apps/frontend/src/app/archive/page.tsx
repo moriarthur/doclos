@@ -1,23 +1,21 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { documentsApi, authApi } from '@/lib/api-client';
-import { useRouter } from 'next/navigation';
+import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { documentsApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatDate, formatAmount, getStatusLabel } from '@/lib/utils';
+import { formatDate, formatAmount, getStatusLabel, getDocumentTypeLabel } from '@/lib/utils';
 import {
   FileText,
   Search,
   Archive,
   ArchiveRestore,
-  Loader2,
   Trash2,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,30 +28,25 @@ import {
 } from '@/components/ui/AlertDialog';
 
 export default function ArchivePage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
 
-  // Check authentication before showing content
-  useEffect(() => {
-    const checkAuth = () => {
-      if (!authApi.isAuthenticated()) {
-        router.push('/login');
-      } else {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    const timer = setTimeout(checkAuth, 100);
-    return () => clearTimeout(timer);
-  }, [router]);
-
-  const { data: documents, isLoading } = useQuery({
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteQuery({
     queryKey: ['documents', 'archived'],
-    queryFn: () => documentsApi.list({ status: 'archived' }),
-    enabled: !isCheckingAuth,
+    queryFn: ({ pageParam = 1 }) =>
+      documentsApi.list({ status: 'archived', page: pageParam, limit: 20 }),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.pagination.page * last.pagination.limit < last.pagination.total
+        ? last.pagination.page + 1
+        : undefined,
   });
 
   const unarchiveMutation = useMutation({
@@ -88,26 +81,23 @@ export default function ArchivePage() {
     deleteMutation.mutate(id);
   };
 
-  const filteredDocuments = documents?.data.filter((doc) =>
-    doc.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.id.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
 
-  // Show loading overlay while checking auth
-  if (isCheckingAuth) {
+  const filteredDocuments = allDocuments.filter((doc) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
     return (
-      <div className="min-h-screen gradient-bg flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      doc.company_name?.toLowerCase().includes(q) ||
+      doc.invoice_number?.toLowerCase().includes(q)
     );
-  }
+  });
 
   return (
     <div className="flex">
       <Navigation />
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 min-h-screen">
+      <main className="flex-1 md:ml-64 min-h-screen min-w-0">
         {/* Mobile header spacer */}
         <div className="h-16 md:hidden" />
 
@@ -170,6 +160,7 @@ export default function ArchivePage() {
               </CardContent>
             </Card>
           ) : (
+            <>
             <div className="space-y-3">
               {filteredDocuments.map((doc, index) => (
                 <div
@@ -213,34 +204,35 @@ export default function ArchivePage() {
                                   {formatAmount(doc.amount, doc.currency).formatted}
                                 </span>
                               )}
-                              <span className="text-xs uppercase tracking-wide">
-                                {doc.type}
-                              </span>
+                              {doc.type && doc.type !== 'unknown' && (
+                                <span className="text-xs uppercase tracking-wide">
+                                  {getDocumentTypeLabel(doc.type)}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </Link>
 
                         {/* Actions */}
-                        <div className="flex items-center gap-2 ml-4">
+                        <div className="flex items-center gap-1 ml-4">
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={(e) => handleUnarchive(doc.id, e)}
                             disabled={unarchiveMutation.isPending}
-                            className="gap-1.5"
+                            title="Wiederherstellen"
                           >
                             <ArchiveRestore className="h-4 w-4" />
-                            <span className="hidden sm:inline">Wiederherstellen</span>
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={(e) => handleDelete(doc.id, e)}
                             disabled={deleteMutation.isPending}
-                            className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            title="Löschen"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                           >
                             <Trash2 className="h-4 w-4" />
-                            <span className="hidden sm:inline">Löschen</span>
                           </Button>
                         </div>
                       </div>
@@ -249,6 +241,20 @@ export default function ArchivePage() {
                 </div>
               ))}
             </div>
+
+            {hasNextPage && (
+              <div className="mt-6">
+                <Button
+                  variant="secondary"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="w-full"
+                >
+                  {isFetchingNextPage ? 'Lädt…' : 'Mehr laden'}
+                </Button>
+              </div>
+            )}
+            </>
           )}
         </div>
       </main>

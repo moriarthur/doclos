@@ -43,6 +43,9 @@ Thumbs.db
 *.db
 *.sqlite
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
  # Uploads (local dev)
 uploads/
 temp/
@@ -59,3 +62,6 @@ test files/
 
 # Claude memory
 .claude/projects/
+
+# CodeGraph local index (per-machine)
+.codegraph/

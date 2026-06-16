@@ -72,3 +72,18 @@ export function getStatusLabel(status: string): string {
   };
   return labelMap[status] || status;
 }
+
+// Localized document type label. Returns '' for null/undefined so callers can
+// gate rendering on truthiness; pass a non-empty type to get a German label.
+export function getDocumentTypeLabel(type?: string | null): string {
+  if (!type) return '';
+  const labelMap: Record<string, string> = {
+    invoice: 'Rechnung',
+    contract: 'Vertrag',
+    offer: 'Angebot',
+    delivery_note: 'Lieferschein',
+    purchase_order: 'Bestellung',
+    unknown: 'Unbekannt',
+  };
+  return labelMap[type] ?? type;
+}

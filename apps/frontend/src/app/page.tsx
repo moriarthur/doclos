@@ -1,31 +1,30 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { documentsApi, authApi } from '@/lib/api-client';
-import { useRouter } from 'next/navigation';
+import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { documentsApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
-import { formatDate, formatAmount, getStatusLabel } from '@/lib/utils';
+import { formatDate, formatAmount, getStatusLabel, getDocumentTypeLabel } from '@/lib/utils';
 import {
   FileText,
   Search,
   Filter,
   Plus,
   ChevronRight,
+  ChevronDown,
   Calendar,
 
 
   Sparkles,
-  Loader2,
   Archive,
   Trash2,
 
 
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,53 +37,49 @@ import {
 } from '@/components/ui/AlertDialog';
 
 export default function DashboardPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
 
-  // Check authentication before showing content
-  useEffect(() => {
-    const checkAuth = () => {
-      if (!authApi.isAuthenticated()) {
-        router.push('/login');
-      } else {
-        setIsCheckingAuth(false);
-      }
-    };
-
-    const timer = setTimeout(checkAuth, 100);
-    return () => clearTimeout(timer);
-  }, [router]);
-
-  const { data: documents, isLoading, error } = useQuery({
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    error,
+  } = useInfiniteQuery({
     queryKey: ['documents', statusFilter],
-    queryFn: () => {
-      // Exclude archived documents from default view
-      if (statusFilter === 'archived') {
-        return documentsApi.list({ status: 'archived' });
-      }
-      if (statusFilter) {
-        return documentsApi.list({ status: statusFilter });
-      }
-      // Default: show all except archived
-      return documentsApi.list({ status: undefined });
-    },
-    enabled: !isCheckingAuth, // Only fetch after auth check
+    queryFn: ({ pageParam = 1 }) =>
+      documentsApi.list({
+        status: statusFilter || undefined,
+        page: pageParam,
+        limit: 20,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.pagination.page * last.pagination.limit < last.pagination.total
+        ? last.pagination.page + 1
+        : undefined,
   });
 
-  const filteredDocuments = documents?.data
+  const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
+
+  const filteredDocuments = allDocuments
     .filter((doc) => {
       // Exclude archived documents from default view
       if (!statusFilter && doc.status === 'archived') return false;
       return true;
     })
-    .filter((doc) =>
-      doc.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.id.toLowerCase().includes(searchQuery.toLowerCase())
-    ) || [];
+    .filter((doc) => {
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        doc.company_name?.toLowerCase().includes(q) ||
+        doc.invoice_number?.toLowerCase().includes(q)
+      );
+    });
 
   const archiveMutation = useMutation({
     mutationFn: (id: string) => documentsApi.updateStatus(id, 'archived'),
@@ -119,21 +114,12 @@ export default function DashboardPage() {
     deleteMutation.mutate(id);
   };
 
-  // Show loading overlay while checking auth
-  if (isCheckingAuth) {
-    return (
-      <div className="min-h-screen gradient-bg flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
     <div className="flex">
       <Navigation />
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 min-h-screen">
+      <main className="flex-1 md:ml-64 min-h-screen min-w-0">
         {/* Mobile header spacer */}
         <div className="h-16 md:hidden" />
 
@@ -178,14 +164,14 @@ export default function DashboardPage() {
 
                 {/* Status Filter */}
                 <div className="relative">
-                  <Filter className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Filter className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="pl-11 pr-10 py-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary appearance-none cursor-pointer transition-all"
+                    className="w-full pl-11 pr-10 py-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary appearance-none cursor-pointer transition-all"
                   >
                     <option value="">Alle Status</option>
-                    <option value="uploaded">Hochgeladen</option>
                     <option value="processing">Verarbeitung</option>
                     <option value="parsed">Verarbeitet</option>
                     <option value="needs_validation">Prüfung erforderlich</option>
@@ -240,6 +226,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           ) : (
+            <>
             <div className="space-y-3">
               {filteredDocuments.map((doc, index) => (
                 <Link
@@ -284,9 +271,11 @@ export default function DashboardPage() {
                                   )}
                                 </span>
                               )}
-                              <span className="text-xs uppercase tracking-wide">
-                                {doc.type}
-                              </span>
+                              {doc.type && doc.type !== 'unknown' && (
+                                <span className="text-xs uppercase tracking-wide">
+                                  {getDocumentTypeLabel(doc.type)}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -302,7 +291,7 @@ export default function DashboardPage() {
                             doc.status === 'error' ? 'bg-red-400' :
                             doc.status === 'archived' ? 'bg-gray-400' :
                             'bg-gray-400'
-                          }`} title={getStatusLabel(doc.status)} />
+                          }`} role="img" aria-label={getStatusLabel(doc.status)} title={getStatusLabel(doc.status)} />
                           <Button
                             size="sm"
                             variant="ghost"
@@ -331,6 +320,20 @@ export default function DashboardPage() {
                 </Link>
               ))}
             </div>
+
+            {hasNextPage && (
+              <div className="mt-6">
+                <Button
+                  variant="secondary"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                  className="w-full"
+                >
+                  {isFetchingNextPage ? 'Lädt…' : 'Mehr laden'}
+                </Button>
+              </div>
+            )}
+            </>
           )}
         </div>
       </main>
