@@ -179,8 +179,15 @@ export class DocumentProcessor {
         `Document classified as ${classification.type} (confidence: ${classification.confidence})`,
       );
 
-      // 4. Extract structured data with LLM (if invoice)
-      if (classification.type === DocumentType.INVOICE) {
+      // 4. Extract structured data with LLM for tabular commercial documents.
+      // Invoices, purchase orders and offers all carry supplier + line items +
+      // totals; delivery_note (usually no prices) and contract (non-tabular)
+      // stay parsed-only.
+      if (
+        classification.type === DocumentType.INVOICE ||
+        classification.type === DocumentType.PURCHASE_ORDER ||
+        classification.type === DocumentType.OFFER
+      ) {
         // Rate limit buffer: wait before next GLM API call
         job.progress(65);
         await new Promise(r => setTimeout(r, 3000));

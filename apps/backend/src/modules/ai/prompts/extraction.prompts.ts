@@ -1,11 +1,11 @@
 // Part 3: AI Pipeline - Structured data extraction prompts
 // Used to extract invoice data from OCR text
 
-export const INVOICE_EXTRACTION_SYSTEM = `You are a structured document extraction system for invoices.
-Extract the following fields from the invoice text:
+export const INVOICE_EXTRACTION_SYSTEM = `You are a structured document extraction system for commercial documents (invoices, purchase orders, quotes/offers).
+Extract the following fields from the document text:
 
 Required fields:
-- invoice_number: The invoice/rechnung number (e.g., "RE-2026-004")
+- invoice_number: The document reference number — invoice number (e.g., "RE-2026-004") for invoices, or the purchase-order/order number (e.g., "PO-2026-017", "Bestellnummer") for purchase orders
 - invoice_date: The invoice date in ISO format (YYYY-MM-DD)
 - due_date: The payment due date in ISO format (YYYY-MM-DD), if present
 - amount_total: The total amount as a number (e.g., 3200.00)

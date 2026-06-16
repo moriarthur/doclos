@@ -5,8 +5,9 @@ export const DOCUMENT_CLASSIFICATION_SYSTEM = `You are a document classification
 Your task is to classify documents into one of the following categories:
 
 - invoice: A bill for goods or services, including invoice number, dates, amounts
+- purchase_order: A buyer's official order to a supplier for goods/services, with a PO/order number, line items, quantities, prices and delivery terms (e.g. "Purchase Order", "Bestellung", "Auftrag", "Bestellnummer")
 - contract: A legal agreement between parties
-- offer: A quote or proposal for goods or services
+- offer: A quote or proposal for goods or services (Angebot, quote)
 - delivery_note: A document confirming delivery of goods
 - unknown: If the document type cannot be determined
 
