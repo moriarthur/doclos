@@ -61,21 +61,20 @@ export class DocumentsService {
     // Upload to S3
     await this.s3Service.uploadFile(s3Key, file.buffer, file.mimetype);
 
-    // Create document record
+    // Create document record. Status starts directly at PROCESSING: the upload
+    // response isn't returned until the processing job is already queued, so
+    // UPLOADED (a transient enum value, still referenced by the frontend status
+    // colors) is never persisted or observable — collapsing the prior double-save.
     const document = this.documentsRepository.create({
       user_id: userId,
       type: metadata?.type || DocumentType.UNKNOWN,
-      status: DocumentStatus.UPLOADED,
+      status: DocumentStatus.PROCESSING,
       original_filename: file.originalname,
       s3_key: s3Key,
       mime_type: file.mimetype,
       file_size: file.size,
       page_count: undefined, // Will be determined during processing
     });
-    await this.documentsRepository.save(document);
-
-    // Set status to processing immediately for responsive UI
-    document.status = DocumentStatus.PROCESSING;
     await this.documentsRepository.save(document);
 
     // Add to processing queue (worker will handle the rest)
