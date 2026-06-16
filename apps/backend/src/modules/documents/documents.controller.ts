@@ -13,6 +13,7 @@ import {
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
+  UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -25,13 +26,35 @@ import { DocumentType } from './entities/document.entity';
 
 // Part 4: API Specification - Document endpoints
 
+// Allowed upload MIME types + max size. Multer defaults to in-memory storage, so
+// capping size bounds memory pressure (DoS hardening).
+const UPLOAD_MIME_TYPES = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/tiff',
+  'image/webp',
+];
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB
+
 @Controller('documents')
 @UseGuards(JwtAuthGuard)
 export class DocumentsController {
   constructor(private documentsService: DocumentsService) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_UPLOAD_BYTES },
+      fileFilter: (_req, file, cb) => {
+        if (UPLOAD_MIME_TYPES.includes(file.mimetype)) return cb(null, true);
+        return cb(
+          new UnsupportedMediaTypeException(`Unsupported file type: ${file.mimetype}`),
+          false,
+        );
+      },
+    }),
+  )
   async uploadDocument(
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: User,
