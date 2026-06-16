@@ -45,6 +45,23 @@ export class DocumentProcessor {
     private structuredExtractionService: StructuredExtractionService,
   ) {}
 
+  /**
+   * Heuristic: does this document's text indicate a EUR (German/EU) invoice?
+   *
+   * Invoices in the target market (Germany/EU) often state the amount without an
+   * explicit currency next to the total, yet are unambiguously EUR. The extraction
+   * prompt returns currency=null in that case, which would otherwise force a
+   * high-confidence invoice into needs_validation. Default to EUR when strong
+   * German/EU indicators are present; leave null (→ validation) only when nothing
+   * points to EUR.
+   */
+  private looksLikeEurInvoice(text: string): boolean {
+    const t = text.toLowerCase();
+    // Explicit €/EUR, or German accounting vocabulary that in practice always
+    // accompanies a EUR invoice (CHF invoices virtually always state CHF).
+    return /(€|\beur\b|mwst|umsatzsteuer|\bust\b|rechnung)/.test(t);
+  }
+
   @Process({ name: 'process-document', concurrency: 1 })
   async handleProcessDocument(job: Job<ProcessDocumentJob>) {
     const { documentId, userId } = job.data;
@@ -243,6 +260,13 @@ export class DocumentProcessor {
       // Determine validation requirement based on confidence
       const autoAcceptThreshold = 0.85;
       const needsValidationThreshold = 0.6;
+      // Default currency to EUR for German/EU invoices that don't state it
+      // explicitly (common in the target market). Genuinely ambiguous docs
+      // (no €/EUR/Rechnung/MwSt indicators) still route to validation.
+      if (!normalizedExtraction.currency && this.looksLikeEurInvoice(extractedText)) {
+        normalizedExtraction.currency = 'EUR';
+        this.logger.log('Currency not explicitly stated — defaulting to EUR (German/EU invoice heuristic)');
+      }
       const hasMissingCurrency = !normalizedExtraction.currency;
 
       let newStatus: DocumentStatus;
