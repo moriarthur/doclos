@@ -60,8 +60,10 @@ dump.rdb
 tets files/
 test files/
 
-# Claude memory
-.claude/projects/
+# AI assistant / tooling state (personal, per-machine — must NOT be tracked)
+.claude/
+.serena/
+skills/
 
 # CodeGraph local index (per-machine)
 .codegraph/
