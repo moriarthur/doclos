@@ -92,7 +92,20 @@
       "Bash(ls -1 src/middleware.ts)",
       "Bash(ls -d app src/app)",
       "Bash(git grep *)",
-      "Bash(openssl rand *)"
+      "Bash(openssl rand *)",
+      "Bash(git fetch *)",
+      "Bash(git rev-list *)",
+      "Bash(rm -f /tmp/doclos-logs/smoke.log)",
+      "Bash(nohup pnpm --filter @doclos/backend run start:dev)",
+      "Bash(pkill -f \"start:dev\")",
+      "Bash(pkill -f \"nest start\")",
+      "Bash(command -v lsof)",
+      "Bash(kill -9 98314)",
+      "Bash(pkill -9 -f \"@doclos/backend\")",
+      "Bash(git ls-tree *)",
+      "Bash(git tag *)",
+      "Bash(git bundle *)",
+      "Bash(git merge *)"
     ]
   }
 }
