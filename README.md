@@ -24,7 +24,7 @@ Built for the German market: handles German-language documents, DSGVO-compliant 
 ## Key Features
 
 - **PDF Ingestion** — Upload Rechnungen, Verträge, Angebote, Lieferscheine
-- **AI Extraction Pipeline** — Claude + OpenAI for intelligent data extraction
+- **AI Extraction Pipeline** — GLM-4.7-Flash (Zhipu/Z.ai) for structured extraction with per-field confidence
 - **OCR Layer** — Tesseract for scanned documents
 - **Background Jobs** — BullMQ + Redis queue for reliable async processing
 - **Cloud Storage** — AWS S3 / Cloudflare R2 with presigned URLs
@@ -60,7 +60,7 @@ doclos/
 | Database | PostgreSQL |
 | Queue | Redis, BullMQ |
 | Storage | AWS S3 / Cloudflare R2 |
-| AI | Claude (Anthropic), OpenAI |
+| AI | GLM-4.7-Flash (Zhipu/Z.ai) — free tier |
 | OCR | Tesseract |
 | Build | Turborepo, pnpm workspaces |
 | Infra | Docker, Docker Compose |
@@ -101,6 +101,10 @@ Full architecture documentation available in [`documentations/`](./documentation
 6. Security & DSGVO
 7. Infrastructure & Deployment
 8. Development System
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
 
 ---
 
