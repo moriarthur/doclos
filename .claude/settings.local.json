@@ -91,7 +91,8 @@
       "Bash(ls -d src)",
       "Bash(ls -1 src/middleware.ts)",
       "Bash(ls -d app src/app)",
-      "Bash(git grep *)"
+      "Bash(git grep *)",
+      "Bash(openssl rand *)"
     ]
   }
 }
