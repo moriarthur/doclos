@@ -87,14 +87,10 @@ Then update `.env` with your cloud credentials:
 # Cloud Services Configuration
 # ============================================================================
 
-# Database (Supabase or Neon)
-# Replace with your connection string
-DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
-DB_HOST="db.[PROJECT-REF].supabase.co"
-DB_PORT="5432"
-DB_USERNAME="postgres"
-DB_PASSWORD="[YOUR-PASSWORD]"
-DB_NAME="postgres"
+# Database (Supabase) — use the IPv4 POOLER, not the direct db.* host
+# (db.*.supabase.co is IPv6-only and fails on IPv4-only networks like WSL2).
+# The app reads DATABASE_URL only. Session mode = port 5432; transaction mode = 6543.
+DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres"
 
 # Redis (Upstash)
 # Replace with your Redis URL
@@ -114,9 +110,6 @@ S3_SECRET_ACCESS_KEY="[YOUR-SECRET-KEY]"
 GLM_API_KEY="[YOUR-GLM-API-KEY]"
 GLM_MODEL="glm-4-flash"  # Options: glm-4-flash, glm-4-plus, glm-4-air, glm-4
 GLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
-
-# Optional: OpenAI fallback (not required when using GLM)
-OPENAI_API_KEY=""
 
 # ============================================================================
 # Application Settings
