@@ -48,19 +48,26 @@ export class PdfService {
   }
 
   /**
-   * Convert PDF pages to images
-   * @param _buffer - PDF file buffer (not used yet)
-   * @returns Array of image buffers (one per page)
+   * Convert PDF pages to PNG images for OCR (scanned / image-only PDFs).
+   * Uses pdf-to-img (already a dependency). It is ESM-only while this project is
+   * CommonJS, so it is imported dynamically to avoid ERR_REQUIRE_ESM.
+   * @param buffer - PDF file buffer
+   * @returns Array of PNG image buffers (one per page)
    */
-  async pdfToImages(_buffer: Buffer): Promise<Buffer[]> {
+  async pdfToImages(buffer: Buffer): Promise<Buffer[]> {
+    // scale ≈ DPI/72: 3 ≈ 216 DPI (good OCR/speed balance), 4 ≈ 288 DPI.
+    const scale = Number(process.env.PDF_RENDER_SCALE) || 3;
+    this.logger.log(`Converting PDF to images at scale ${scale}`);
+
     try {
-      this.logger.log('Converting PDF to images');
-
-      // For now, use a simpler approach - use pdfjs-dist directly
-      // This will be implemented separately
-      // For now, throw an error to force OCR fallback
-      throw new Error('PDF to image conversion not yet implemented - using OCR fallback');
-
+      const { pdf } = await import('pdf-to-img');
+      const doc = await pdf(buffer, { scale });
+      const images: Buffer[] = [];
+      for await (const page of doc) {
+        images.push(page);
+      }
+      this.logger.log(`Rendered ${images.length} PDF page(s) to images`);
+      return images;
     } catch (error) {
       this.logger.error(`Failed to convert PDF to images: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
