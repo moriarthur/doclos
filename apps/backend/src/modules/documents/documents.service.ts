@@ -412,9 +412,13 @@ export class DocumentsService {
   }
 
   async deleteDocument(documentId: string, userId: string) {
+    // Intentionally NOT loading the `invoice` relation: with it loaded,
+    // save(document) below won't persist invoiceId=null (TypeORM keeps the FK
+    // because the relation object is attached) and the subsequent invoice delete
+    // FK-violates. The scalar `document.invoiceId` column is all we need. Mirrors
+    // document.processor.ts (findOne without relations).
     const document = await this.documentsRepository.findOne({
       where: { id: documentId, user_id: userId },
-      relations: ['invoice'],
     });
 
     if (!document) {
@@ -430,17 +434,26 @@ export class DocumentsService {
       // Continue with database deletion even if S3 deletion fails
     }
 
-    // Delete related jobs first (foreign key constraint)
-    const jobs = await this.jobsRepository.find({
-      where: { document_id: documentId },
-    });
-    if (jobs.length > 0) {
-      await this.jobsRepository.remove(jobs);
-      this.logger.log(`Deleted ${jobs.length} related jobs`);
+    // Tear down the related graph. The FKs are circular and NOT ON DELETE
+    // CASCADE at the DB level (documents.invoiceId -> invoices.id,
+    // invoices.document_id -> documents.id), so the prior single `remove(document)`
+    // always 500'd with an FK violation on any extracted document. Mirrors the
+    // reprocess cleanup in document.processor.ts: clear the invoice FK on the
+    // document, then delete items -> invoice -> extractions -> jobs -> document.
+    if (document.invoiceId) {
+      const invoiceId = document.invoiceId;
+      // Clear documents.invoiceId first, else deleting the invoice violates the FK.
+      document.invoiceId = null as any;
+      await this.documentsRepository.save(document);
+      await this.invoiceItemsRepository.delete({ invoice_id: invoiceId });
+      await this.invoicesRepository.delete({ id: invoiceId });
+      this.logger.log(`Deleted invoice ${invoiceId} and its items`);
     }
 
-    // Delete related records (invoice, field extractions) will be handled by CASCADE
-    await this.documentsRepository.remove(document);
+    // Remaining dependents that reference the document directly
+    await this.fieldExtractionsRepository.delete({ document_id: documentId });
+    await this.jobsRepository.delete({ document_id: documentId });
+    await this.documentsRepository.delete({ id: documentId, user_id: userId });
 
     // Write audit log
     await this.auditLogsRepository.save({
