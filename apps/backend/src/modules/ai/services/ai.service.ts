@@ -84,14 +84,17 @@ export class AiService {
 
         clearTimeout(timeoutId);
 
-        if (response.status === 429 && attempt < retries) {
-          const delay = Math.pow(2, attempt) * 3000;
-          this.logger.warn(`GLM 429 rate limit, retry ${attempt}/${retries} in ${delay}ms`);
-          await new Promise(r => setTimeout(r, delay));
-          continue;
-        }
-
         if (!response.ok) {
+          // Retry rate-limit (429) and server errors (5xx). Z.ai (glm-4.7-flash)
+          // is a reasoning model and intermittently 500s on the heavier extraction
+          // call; client errors (4xx) are not retried.
+          const retryable = response.status === 429 || response.status >= 500;
+          if (retryable && attempt < retries) {
+            const delay = Math.pow(2, attempt) * 3000;
+            this.logger.warn(`GLM ${response.status} (retryable), retry ${attempt}/${retries} in ${delay}ms`);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
           const errorText = await response.text();
           this.logger.error(`GLM API error: ${response.status} - ${errorText}`);
           throw new Error(`GLM API request failed: ${response.status}`);
@@ -117,7 +120,18 @@ export class AiService {
       } catch (error) {
         clearTimeout(timeoutId);
 
-        if (error instanceof Error && error.name === 'AbortError') {
+        // Retry on timeout — the 120s AbortController fires when Z.ai hangs
+        // (glm-4.7-flash reasoning calls can run past 120s before returning/500ing).
+        const isTimeout =
+          error instanceof Error &&
+          (error.name === 'AbortError' || error.message.toLowerCase().includes('timed out'));
+        if (isTimeout && attempt < retries) {
+          const delay = Math.pow(2, attempt) * 3000;
+          this.logger.warn(`GLM timeout, retry ${attempt}/${retries} in ${delay}ms`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        if (isTimeout) {
           this.logger.error('GLM API request timed out after 120s');
           throw new Error('AI request timed out - please try again');
         }
@@ -125,7 +139,7 @@ export class AiService {
       }
     }
 
-    throw new Error('GLM API request failed: 429');
+    throw new Error('GLM API request failed after retries');
   }
 
   async sendMessage(
