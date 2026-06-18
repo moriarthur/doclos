@@ -120,23 +120,27 @@ doclos/
 
 ## Development Status
 
+Backend + Frontend MVP is complete and production-verified:
+
 - ✅ Turborepo monorepo structure
-- ✅ NestJS backend setup
-- ✅ PostgreSQL + Redis via Docker
-- ✅ Authentication (JWT)
+- ✅ NestJS backend (API on :3001)
+- ✅ PostgreSQL (Supabase) + Redis (Upstash)
+- ✅ Authentication (JWT register/login/refresh)
 - ✅ Document upload API
 - ✅ Document processing queue (BullMQ)
-- ✅ Document validation API
-- ✅ Database entities
-- 🚧 S3 integration (TODO)
-- 🚧 OCR processing (TODO)
-- 🚧 LLM extraction (TODO)
-- 🚧 Frontend (Next.js) - Not started
+- ✅ OCR (Tesseract.js, German + English)
+- ✅ LLM extraction (GLM-4.7-Flash / Z.ai)
+- ✅ Document validation & reprocess API
+- ✅ Cloudflare R2 storage (signed URLs)
+- ✅ Database entities (8 tables)
+- ✅ Frontend (Next.js + React + shadcn/ui)
 
 ## Next Steps
 
-1. Implement S3 storage service
-2. Implement OCR processing with Tesseract
-3. Implement LLM extraction with Claude/OpenAI
-4. Add search functionality
-5. Build Next.js frontend
+Not yet implemented (see `CLAUDE.md` for the full picture):
+
+1. Search API (`GET /api/v1/search`)
+2. Excel/CSV/JSON export (`GET /api/v1/export/excel`)
+3. Scanned-PDF OCR — PDF→image conversion not yet wired up (image-only PDFs error out)
+4. i18n (English/German via next-i18next)
+5. OAuth (Google/Microsoft)
