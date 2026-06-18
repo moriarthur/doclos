@@ -146,6 +146,8 @@ Processing time:
 
 ## Case 2 — Scanned PDF
 
+> **STATUS (as built): NOT IMPLEMENTED.** "PDF to image conversion not yet implemented" — scanned/mixed PDFs currently error out instead of being OCR'd.
+
 Document contains images only.
 
 OCR pipeline required.
@@ -198,6 +200,8 @@ Most invoices in Germany contain both languages.
 
 # IMAGE PREPROCESSING
 
+> **STATUS (as built): aspirational.** The OpenCV pipeline below is not implemented; OCR runs via Tesseract.js directly.
+
 OCR accuracy depends heavily on preprocessing.
 
 Pipeline includes:
@@ -224,9 +228,11 @@ Image
 
 # HANDWRITTEN TEXT STRATEGY
 
+> **STATUS (as built): NOT IMPLEMENTED / aspirational.** Only Tesseract.js OCR (deu+eng) is wired up; there is no cloud-OCR fallback (Google Vision / AWS Textract) and no OpenCV preprocessing. Scanned/handwritten documents fall through to the not-yet-implemented PDF→image path.
+
 Handwritten text is difficult for traditional OCR.
 
-Fallback strategy:
+Fallback strategy (planned, not built):
 
 Cloud‑based OCR.
 
@@ -312,17 +318,15 @@ Example output:
 
 After classification the document text is sent to an LLM for structured parsing.
 
+> **STATUS (as built):** the production model is **GLM-4.7-Flash** (Zhipu AI / Z.ai, `open.bigmodel.cn`) — not Claude or OpenAI GPT. The original "Primary: Claude / Fallback: OpenAI" wording below was speculative and is superseded by `apps/backend/src/modules/ai/`.
+
 Primary model:
 
-Claude
-
-Fallback model:
-
-OpenAI GPT
+GLM-4.7-Flash (Z.ai)
 
 Reasons:
 
-Claude performs well on long structured documents.
+Free / very low cost, strong structured-JSON extraction on invoices.
 
 ---
 
