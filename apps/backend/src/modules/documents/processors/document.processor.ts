@@ -276,10 +276,22 @@ export class DocumentProcessor {
       }
       const hasMissingCurrency = !normalizedExtraction.currency;
 
+      // Correctness guard: never auto-accept an extraction with no usable total
+      // or invoice number. A confidently-wrong "parsed" (e.g. amount_total 0
+      // produced from degraded OCR) must route to human validation rather than
+      // flow into exports. Mirrors the hasMissingCurrency guard above.
+      const hasBadAmount =
+        normalizedExtraction.amount_total === null ||
+        normalizedExtraction.amount_total === undefined ||
+        Number(normalizedExtraction.amount_total) <= 0;
+      const hasMissingInvoiceNumber =
+        !normalizedExtraction.invoice_number || normalizedExtraction.invoice_number.trim() === '';
+      const guardTriggered = hasMissingCurrency || hasBadAmount || hasMissingInvoiceNumber;
+
       let newStatus: DocumentStatus;
-      if (hasMissingCurrency) {
+      if (guardTriggered) {
         newStatus = DocumentStatus.NEEDS_VALIDATION;
-        this.logger.log('Currency missing - needs validation');
+        this.logger.log('Correctness guard triggered - critical fields missing/invalid, needs validation');
       } else if (confidence.overall >= autoAcceptThreshold) {
         newStatus = DocumentStatus.PARSED;
         this.logger.log('Confidence high - auto-accepting');
@@ -328,7 +340,7 @@ export class DocumentProcessor {
       invoice.currency = normalizedExtraction.currency || '';
       invoice.supplier_name = normalizedExtraction.supplier_name || '';
       invoice.supplier_address = normalizedExtraction.supplier_address || '';
-      invoice.validated = confidence.overall >= autoAcceptThreshold;
+      invoice.validated = confidence.overall >= autoAcceptThreshold && !guardTriggered;
       await this.invoicesRepository.save(invoice);
 
       // Link invoice to document
