@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslations, useLocale } from 'next-intl';
 import { documentsApi, jobsApi, authApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { DocumentViewer } from '@/components/DocumentViewer';
@@ -10,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { CancelableLoader } from '@/components/ui/CancelableLoader';
-import { formatDate, formatAmount, getStatusLabel } from '@/lib/utils';
+import { formatDate, formatAmount } from '@/lib/utils';
 import {
   ArrowLeft,
   FileText,
@@ -45,6 +46,11 @@ export default function DocumentDetailPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const docId = params.id as string;
+  const t = useTranslations('DocumentDetail');
+  const tCommon = useTranslations('Common');
+  const tStatus = useTranslations('Status');
+  const tDocType = useTranslations('DocType');
+  const locale = useLocale();
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editedFields, setEditedFields] = useState<Record<string, string>>({});
   const [deleteDialog, setDeleteDialog] = useState(false);
@@ -197,10 +203,10 @@ export default function DocumentDetailPage() {
             <CardContent className="p-16 text-center">
               <FileText className="h-16 w-16 mx-auto mb-6 text-muted-foreground" />
               <p className="text-muted-foreground mb-6">
-                Dokument nicht gefunden oder Fehler beim Laden
+                {t('notFound')}
               </p>
               <Link href="/">
-                <Button variant="secondary">Zurück zur Übersicht</Button>
+                <Button variant="secondary">{t('backToOverview')}</Button>
               </Link>
             </CardContent>
           </Card>
@@ -221,14 +227,6 @@ export default function DocumentDetailPage() {
   const showInvoiceSections = isParsed && !!invoiceData;
   const showTypeCard = isParsed && !invoiceData && !!document.type && document.type !== 'invoice';
 
-  const docTypeLabels: Record<string, string> = {
-    contract: 'Vertrag',
-    offer: 'Angebot',
-    delivery_note: 'Lieferschein',
-    purchase_order: 'Bestellung',
-    unknown: 'Unbekannter Dokumenttyp',
-  };
-
   // Validation
   const getFieldError = (field: string): string | null => {
     if (editingSection !== 'invoice' && editingSection !== 'supplier') return null;
@@ -237,33 +235,33 @@ export default function DocumentDetailPage() {
 
     switch (field) {
       case 'invoice_number': {
-        if (!value.trim()) return 'Rechnungsnummer darf nicht leer sein';
+        if (!value.trim()) return t('errInvoiceNumberEmpty');
         break;
       }
       case 'amount_total': {
-        if (!value.trim()) return 'Betrag darf nicht leer sein';
+        if (!value.trim()) return t('errAmountEmpty');
         const num = Number(value);
-        if (isNaN(num) || num === 0) return 'Muss eine Zahl ungleich 0 sein';
+        if (isNaN(num) || num === 0) return t('errAmountInvalid');
         break;
       }
       case 'invoice_date':
       case 'due_date': {
-        if (!value.trim()) return 'Datum erforderlich (JJJJ-MM-TT)';
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'Format: JJJJ-MM-TT';
+        if (!value.trim()) return t('errDateRequired');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return t('errDateFormat');
         const [y, m, d] = value.split('-').map(Number);
         const date = new Date(y, m - 1, d);
         if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) {
-          return 'Ungültiges Datum';
+          return t('errDateInvalid');
         }
         if (field === 'due_date') {
           const invDate =
             editedFields.invoice_date ?? getFieldValue('invoice_date', invoiceData?.invoice_date);
-          if (invDate && value < invDate) return 'Darf nicht vor Rechnungsdatum liegen';
+          if (invDate && value < invDate) return t('errDueBeforeInvoice');
         }
         break;
       }
       case 'supplier_name': {
-        if (!value.trim()) return 'Firmenname darf nicht leer sein';
+        if (!value.trim()) return t('errSupplierEmpty');
         break;
       }
     }
@@ -290,22 +288,22 @@ export default function DocumentDetailPage() {
               <Link href="/" className="shrink-0">
                 <Button variant="ghost" size="sm">
                   <ArrowLeft className="h-4 w-4 mr-2" />
-                  Zurück
+                  {t('back')}
                 </Button>
               </Link>
 
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-muted-foreground uppercase tracking-wide mb-2">
-                  Dokument Details
+                  {t('eyebrow')}
                 </p>
                 <div className="flex items-center gap-3 flex-wrap">
                   <h1 className="font-serif text-3xl font-bold text-brand">
                     {invoiceData
-                      ? getFieldValue('supplier_name', invoiceData?.supplier_name) || 'Dokument'
-                      : docTypeLabels[document.type] || document.original_filename || 'Dokument'}
+                      ? getFieldValue('supplier_name', invoiceData?.supplier_name) || tCommon('docPlaceholder')
+                      : tDocType(document.type) || document.original_filename || tCommon('docPlaceholder')}
                   </h1>
                   <Badge variant={document.status as any} className="shrink-0">
-                    {getStatusLabel(document.status)}
+                    {tStatus(document.status)}
                   </Badge>
                 </div>
               </div>
@@ -317,7 +315,7 @@ export default function DocumentDetailPage() {
                 size="sm"
                 onClick={() => reprocessMutation.mutate()}
                 disabled={reprocessMutation.isPending}
-                title="Neu verarbeiten"
+                title={t('reprocessTitle')}
               >
                 <RefreshCw
                   className={`h-4 w-4 ${reprocessMutation.isPending ? 'animate-spin' : ''} transition-opacity`}
@@ -329,7 +327,7 @@ export default function DocumentDetailPage() {
                   size="sm"
                   onClick={() => archiveMutation.mutate()}
                   disabled={archiveMutation.isPending}
-                  title="Archivieren"
+                  title={t('archiveTitle')}
                 >
                   <Archive className="h-4 w-4" />
                 </Button>
@@ -339,7 +337,7 @@ export default function DocumentDetailPage() {
                   size="sm"
                   onClick={() => unarchiveMutation.mutate()}
                   disabled={unarchiveMutation.isPending}
-                  title="Wiederherstellen"
+                  title={t('restoreTitle')}
                 >
                   <ArchiveRestore className="h-4 w-4" />
                 </Button>
@@ -350,7 +348,7 @@ export default function DocumentDetailPage() {
                 onClick={() => setDeleteDialog(true)}
                 disabled={deleteMutation.isPending}
                 className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                title="Löschen"
+                title={t('deleteTitle')}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -367,11 +365,10 @@ export default function DocumentDetailPage() {
                     <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-red-900 dark:text-red-100 mb-2">
-                        Verarbeitung fehlgeschlagen
+                        {t('errorTitle')}
                       </p>
                       <p className="text-sm text-red-700 dark:text-red-300 mb-3">
-                        Das Dokument konnte nicht automatisch verarbeitet werden. Dies kann an
-                        falschem Dateiformat oder schlechter Bildqualität liegen.
+                        {t('errorDesc')}
                       </p>
                       <Button
                         variant="secondary"
@@ -380,7 +377,7 @@ export default function DocumentDetailPage() {
                         isLoading={reprocessMutation.isPending}
                       >
                         <RefreshCw className="h-4 w-4 mr-1" />
-                        Neu verarbeiten
+                        {t('reprocessBtn')}
                       </Button>
                     </div>
                   </div>
@@ -395,7 +392,7 @@ export default function DocumentDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <FileText className="h-5 w-5 text-primary" />
-                  Dokument
+                  {t('docCardTitle')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -428,17 +425,16 @@ export default function DocumentDetailPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                       <FileText className="h-5 w-5 text-primary" />
-                      {docTypeLabels[document.type]}
+                      {tDocType(document.type)}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      Dieses Dokument wurde als{' '}
+                      {t('nonInvoiceIntro')}
                       <span className="font-medium text-foreground">
-                        {docTypeLabels[document.type]}
-                      </span>{' '}
-                      klassifiziert. Eine strukturierte Feld-Extraktion ist für diesen Dokumenttyp
-                      derzeit nicht verfügbar.
+                        {tDocType(document.type)}
+                      </span>
+                      {t('nonInvoiceOutro')}
                     </p>
                   </CardContent>
                 </Card>
@@ -451,7 +447,7 @@ export default function DocumentDetailPage() {
                     <div className="flex items-center justify-between">
                       <CardTitle className="flex items-center gap-2 text-lg">
                         <Settings className="h-5 w-5 text-primary" />
-                        Rechnungsdetails
+                        {t('invoiceDetails')}
                       </CardTitle>
                       {['needs_validation', 'parsed', 'validated'].includes(document.status) &&
                         (editingSection === 'invoice' ? (
@@ -461,7 +457,7 @@ export default function DocumentDetailPage() {
                               size="sm"
                               onClick={cancelEditing}
                               disabled={validateMutation.isPending}
-                              title="Abbrechen"
+                              title={tCommon('cancel')}
                             >
                               <X className="h-4 w-4" />
                             </Button>
@@ -470,7 +466,7 @@ export default function DocumentDetailPage() {
                               size="sm"
                               onClick={saveSection}
                               disabled={validateMutation.isPending || hasErrors()}
-                              title="Speichern"
+                              title={tCommon('save')}
                             >
                               <Save className="h-4 w-4" />
                             </Button>
@@ -480,7 +476,7 @@ export default function DocumentDetailPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => startEditing('invoice')}
-                            title="Bearbeiten"
+                            title={tCommon('edit')}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -493,14 +489,14 @@ export default function DocumentDetailPage() {
                       <div className="py-3 border-b border-border gap-3">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground shrink-0">
-                            Rechnungsnummer
+                            {t('invoiceNumber')}
                           </span>
                           {editingSection === 'invoice' ? (
                             <Input
                               value={getFieldValue('invoice_number', invoiceData?.invoice_number)}
                               onChange={(e) => handleFieldChange('invoice_number', e.target.value)}
                               className={`max-w-[200px] h-8 text-sm ${getFieldError('invoice_number') ? 'border-red-400 focus:ring-red-200' : ''}`}
-                              placeholder="Rechnungsnummer"
+                              placeholder={t('invoiceNumber')}
                             />
                           ) : (
                             <span className="font-medium text-foreground truncate">
@@ -520,7 +516,7 @@ export default function DocumentDetailPage() {
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
                             <Calendar className="h-4 w-4" />
-                            Rechnungsdatum
+                            {t('invoiceDate')}
                           </span>
                           {editingSection === 'invoice' ? (
                             <Input
@@ -528,13 +524,14 @@ export default function DocumentDetailPage() {
                               value={getFieldValue('invoice_date', invoiceData?.invoice_date)}
                               onChange={(e) => handleFieldChange('invoice_date', e.target.value)}
                               className={`max-w-[160px] h-8 text-sm ${getFieldError('invoice_date') ? 'border-red-400 focus:ring-red-200' : ''}`}
-                              placeholder="JJJJ-MM-TT"
+                              placeholder={t('datePlaceholder')}
                             />
                           ) : (
                             <span className="font-medium text-foreground truncate">
                               {getFieldValue('invoice_date', invoiceData?.invoice_date)
                                 ? formatDate(
-                                    getFieldValue('invoice_date', invoiceData?.invoice_date)
+                                    getFieldValue('invoice_date', invoiceData?.invoice_date),
+                                    locale
                                   )
                                 : '-'}
                             </span>
@@ -552,7 +549,7 @@ export default function DocumentDetailPage() {
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
                             <Calendar className="h-4 w-4" />
-                            Fälligkeitsdatum
+                            {t('dueDate')}
                           </span>
                           {editingSection === 'invoice' ? (
                             <Input
@@ -560,12 +557,12 @@ export default function DocumentDetailPage() {
                               value={getFieldValue('due_date', invoiceData?.due_date)}
                               onChange={(e) => handleFieldChange('due_date', e.target.value)}
                               className={`max-w-[160px] h-8 text-sm ${getFieldError('due_date') ? 'border-red-400 focus:ring-red-200' : ''}`}
-                              placeholder="JJJJ-MM-TT"
+                              placeholder={t('datePlaceholder')}
                             />
                           ) : (
                             <span className="font-medium text-foreground truncate">
                               {getFieldValue('due_date', invoiceData?.due_date)
-                                ? formatDate(getFieldValue('due_date', invoiceData?.due_date))
+                                ? formatDate(getFieldValue('due_date', invoiceData?.due_date), locale)
                                 : '-'}
                             </span>
                           )}
@@ -580,7 +577,7 @@ export default function DocumentDetailPage() {
                       {/* Amount */}
                       <div className="py-3 gap-3">
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-muted-foreground shrink-0">Betrag</span>
+                          <span className="text-sm text-muted-foreground shrink-0">{t('amount')}</span>
                           {editingSection === 'invoice' ? (
                             <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
                               <Input
@@ -611,7 +608,8 @@ export default function DocumentDetailPage() {
                                       Number(
                                         getFieldValue('amount_total', invoiceData?.amount_total)
                                       ),
-                                      editedFields.currency || invoiceData.currency
+                                      editedFields.currency || invoiceData.currency,
+                                      locale
                                     ).formatted
                                   : '-'}
                               </span>
@@ -632,7 +630,7 @@ export default function DocumentDetailPage() {
                                     }}
                                   >
                                     <option value="" disabled>
-                                      Währung wählen
+                                      {t('currencyChoose')}
                                     </option>
                                     <option value="EUR">€ EUR</option>
                                     <option value="USD">$ USD</option>
@@ -660,7 +658,7 @@ export default function DocumentDetailPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                       <Package className="h-5 w-5 text-primary" />
-                      Positionen ({invoiceData.items.length})
+                      {t('items', { count: invoiceData.items.length })}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -669,19 +667,19 @@ export default function DocumentDetailPage() {
                         <thead>
                           <tr className="border-b border-border">
                             <th className="text-left py-2 px-3 font-medium text-muted-foreground">
-                              Beschreibung
+                              {t('colDescription')}
                             </th>
                             <th className="text-right py-2 px-3 font-medium text-muted-foreground">
-                              Menge
+                              {t('colQuantity')}
                             </th>
                             <th className="text-right py-2 px-3 font-medium text-muted-foreground">
-                              Einheit
+                              {t('colUnit')}
                             </th>
                             <th className="text-right py-2 px-3 font-medium text-muted-foreground">
-                              Einzelpreis
+                              {t('colUnitPrice')}
                             </th>
                             <th className="text-right py-2 px-3 font-medium text-muted-foreground">
-                              Gesamt
+                              {t('colTotal')}
                             </th>
                           </tr>
                         </thead>
@@ -695,13 +693,14 @@ export default function DocumentDetailPage() {
                                 {item.quantity ?? 1}
                               </td>
                               <td className="py-3 px-3 text-right text-muted-foreground">
-                                {item.unit || 'Stk'}
+                                {item.unit || t('unitDefault')}
                               </td>
                               <td className="py-3 px-3 text-right text-foreground">
                                 {item.unit_price
                                   ? formatAmount(
                                       item.unit_price,
-                                      editedFields.currency || invoiceData.currency
+                                      editedFields.currency || invoiceData.currency,
+                                      locale
                                     ).formatted
                                   : '-'}
                               </td>
@@ -709,7 +708,8 @@ export default function DocumentDetailPage() {
                                 {item.total_price
                                   ? formatAmount(
                                       item.total_price,
-                                      editedFields.currency || invoiceData.currency
+                                      editedFields.currency || invoiceData.currency,
+                                      locale
                                     ).formatted
                                   : '-'}
                               </td>
@@ -722,7 +722,7 @@ export default function DocumentDetailPage() {
                               colSpan={4}
                               className="py-3 px-3 text-right font-medium text-foreground"
                             >
-                              Gesamtsumme
+                              {t('grandTotal')}
                             </td>
                             <td className="py-3 px-3 text-right font-serif font-semibold text-lg text-foreground">
                               {getFieldValue('amount_total', invoiceData?.amount_total)
@@ -730,7 +730,8 @@ export default function DocumentDetailPage() {
                                     Number(
                                       getFieldValue('amount_total', invoiceData?.amount_total)
                                     ),
-                                    editedFields.currency || invoiceData.currency
+                                    editedFields.currency || invoiceData.currency,
+                                    locale
                                   ).formatted
                                 : '-'}
                             </td>
@@ -750,7 +751,7 @@ export default function DocumentDetailPage() {
                       <div className="flex items-center justify-between">
                         <CardTitle className="flex items-center gap-2 text-lg">
                           <Building2 className="h-5 w-5 text-primary" />
-                          Anbieter
+                          {t('supplier')}
                         </CardTitle>
                         {['needs_validation', 'parsed', 'validated'].includes(document.status) &&
                           (editingSection === 'supplier' ? (
@@ -760,7 +761,7 @@ export default function DocumentDetailPage() {
                                 size="sm"
                                 onClick={cancelEditing}
                                 disabled={validateMutation.isPending}
-                                title="Abbrechen"
+                                title={tCommon('cancel')}
                               >
                                 <X className="h-4 w-4" />
                               </Button>
@@ -769,7 +770,7 @@ export default function DocumentDetailPage() {
                                 size="sm"
                                 onClick={saveSection}
                                 disabled={validateMutation.isPending || hasErrors()}
-                                title="Speichern"
+                                title={tCommon('save')}
                               >
                                 <Save className="h-4 w-4" />
                               </Button>
@@ -779,7 +780,7 @@ export default function DocumentDetailPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => startEditing('supplier')}
-                              title="Bearbeiten"
+                              title={tCommon('edit')}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -791,7 +792,7 @@ export default function DocumentDetailPage() {
                         <>
                           <div>
                             <label className="text-xs text-muted-foreground mb-1 block">
-                              Firmenname
+                              {t('supplierName')}
                             </label>
                             <Input
                               value={getFieldValue('supplier_name', invoiceData?.supplier_name)}
@@ -801,7 +802,7 @@ export default function DocumentDetailPage() {
                                   ? 'border-red-400 focus:ring-red-200'
                                   : ''
                               }
-                              placeholder="Firmenname"
+                              placeholder={t('supplierName')}
                             />
                             {getFieldError('supplier_name') && (
                               <p className="text-xs text-red-500 mt-1">
@@ -811,7 +812,7 @@ export default function DocumentDetailPage() {
                           </div>
                           <div>
                             <label className="text-xs text-muted-foreground mb-1 block">
-                              Adresse
+                              {t('supplierAddress')}
                             </label>
                             <Input
                               value={getFieldValue(
@@ -821,7 +822,7 @@ export default function DocumentDetailPage() {
                               onChange={(e) =>
                                 handleFieldChange('supplier_address', e.target.value)
                               }
-                              placeholder="Straße, PLZ, Ort"
+                              placeholder={t('supplierAddressPlaceholder')}
                             />
                           </div>
                         </>
@@ -844,7 +845,7 @@ export default function DocumentDetailPage() {
               {/* Processing Timeline */}
               <Card className="animate-slide-up" style={{ animationDelay: '200ms' }}>
                 <CardHeader>
-                  <CardTitle className="text-lg">Verarbeitungsstatus</CardTitle>
+                  <CardTitle className="text-lg">{t('timelineTitle')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {(() => {
@@ -868,12 +869,15 @@ export default function DocumentDetailPage() {
                     const aiDoneOnError = false;
 
                     const steps = [
-                      { label: 'Hochgeladen', done: true, failed: false, active: false },
+                      { label: t('stepUploaded'), done: true, failed: false, active: false },
                       {
                         label:
                           stage === 'ocr' && isProcessing && jobProgress?.progress
-                            ? `OCR-Verarbeitung (${jobProgress.progress.current}/${jobProgress.progress.total})`
-                            : 'OCR-Verarbeitung',
+                            ? t('stepOcrProgress', {
+                                current: jobProgress.progress.current,
+                                total: jobProgress.progress.total,
+                              })
+                            : t('stepOcr'),
                         done: ocrDone || ocrDoneOnError,
                         failed: failedOcr,
                         active:
@@ -882,14 +886,14 @@ export default function DocumentDetailPage() {
                       {
                         label:
                           stage === 'classifying' && isProcessing
-                            ? 'AI-Klassifizierung...'
-                            : 'AI-Extraktion',
+                            ? t('stepAiClassify')
+                            : t('stepAiExtract'),
                         done: aiDone || aiDoneOnError,
                         failed: failedAi,
                         active: isProcessing && (stage === 'classifying' || stage === 'extracting'),
                       },
                       {
-                        label: 'Validiert',
+                        label: t('stepValidated'),
                         done: document.status === 'validated',
                         failed: false,
                         active: false,
@@ -947,19 +951,18 @@ export default function DocumentDetailPage() {
       <AlertDialog open={deleteDialog} onOpenChange={setDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Dokument löschen?</AlertDialogTitle>
+            <AlertDialogTitle>{tCommon('deleteDialogTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Dies wird das Dokument dauerhaft löschen. Diese Aktion kann nicht rückgängig gemacht
-              werden.
+              {tCommon('deleteDialogDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteMutation.mutate()}
               className="bg-red-600 hover:bg-red-700"
             >
-              Löschen
+              {tCommon('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

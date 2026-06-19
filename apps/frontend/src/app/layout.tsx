@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Source_Serif_4, Inter } from 'next/font/google';
 import './globals.css';
 import { QueryProvider } from '@/lib/react-query-provider';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale } from 'next-intl/server';
 
 const sourceSerif = Source_Serif_4({
   subsets: ['latin'],
@@ -22,21 +24,24 @@ export const metadata: Metadata = {
   description: 'Automate invoice processing with AI-powered extraction and validation',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
   return (
-    <html lang="de" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body
         className={`${sourceSerif.variable} ${inter.variable} font-sans antialiased`}
       >
-        <QueryProvider>
-          <div className="min-h-screen bg-background">
-            {children}
-          </div>
-        </QueryProvider>
+        <NextIntlClientProvider>
+          <QueryProvider>
+            <div className="min-h-screen bg-background">
+              {children}
+            </div>
+          </QueryProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

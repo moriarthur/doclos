@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import {
   FileText,
@@ -15,15 +16,18 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { authApi } from '@/lib/api-client';
+import { LocaleSwitcher } from './LocaleSwitcher';
 
 const navItems = [
-  { name: 'Dokumente', href: '/', icon: FileText },
-  { name: 'Upload', href: '/upload', icon: Upload },
-  { name: 'Archiv', href: '/archive', icon: Archive },
-];
+  { key: 'documents', href: '/', icon: FileText },
+  { key: 'upload', href: '/upload', icon: Upload },
+  { key: 'archive', href: '/archive', icon: Archive },
+] as const;
 
 export function Navigation() {
   const pathname = usePathname();
+  const t = useTranslations('Nav');
+  const tCommon = useTranslations('Common');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
@@ -56,7 +60,7 @@ export function Navigation() {
           <h1 className="font-serif text-2xl font-bold text-primary">
             Doclos
           </h1>
-          <p className="text-xs text-muted-foreground mt-1.5 tracking-wide">AI Document Automation</p>
+          <p className="text-xs text-muted-foreground mt-1.5 tracking-wide">{tCommon('brandTagline')}</p>
         </div>
 
         {/* Navigation Links */}
@@ -66,7 +70,7 @@ export function Navigation() {
             const isActive = pathname === item.href;
             return (
               <Link
-                key={item.name}
+                key={item.key}
                 href={item.href}
                 className={cn(
                   'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200',
@@ -76,27 +80,28 @@ export function Navigation() {
                 )}
               >
                 <Icon className="h-5 w-5" />
-                <span className="font-medium">{item.name}</span>
+                <span className="font-medium">{t(item.key)}</span>
               </Link>
             );
           })}
         </div>
 
-        {/* Dark Mode Toggle and Logout */}
+        {/* Locale, Dark Mode Toggle and Logout */}
         <div className="space-y-2 pt-4 border-t border-border">
+          <LocaleSwitcher />
           <button
             onClick={toggleTheme}
             className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 w-full"
           >
             {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            <span className="text-sm">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+            <span className="text-sm">{isDark ? t('lightMode') : t('darkMode')}</span>
           </button>
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 w-full"
           >
             <LogOut className="h-5 w-5" />
-            <span className="text-sm">Abmelden</span>
+            <span className="text-sm">{t('logout')}</span>
           </button>
         </div>
       </nav>
@@ -122,7 +127,7 @@ export function Navigation() {
               const isActive = pathname === item.href;
               return (
                 <Link
-                  key={item.name}
+                  key={item.key}
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
                   className={cn(
@@ -133,24 +138,27 @@ export function Navigation() {
                   )}
                 >
                   <Icon className="h-5 w-5" />
-                  <span className="font-medium">{item.name}</span>
+                  <span className="font-medium">{t(item.key)}</span>
                 </Link>
               );
             })}
             <div className="divider my-3" />
+            <div className="px-4 py-1">
+              <LocaleSwitcher />
+            </div>
             <button
               onClick={toggleTheme}
               className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 w-full"
             >
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-              <span className="text-sm">{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+              <span className="text-sm">{isDark ? t('lightMode') : t('darkMode')}</span>
             </button>
             <button
               onClick={handleLogout}
               className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 w-full"
             >
               <LogOut className="h-5 w-5" />
-              <span className="text-sm">Abmelden</span>
+              <span className="text-sm">{t('logout')}</span>
             </button>
           </div>
         )}

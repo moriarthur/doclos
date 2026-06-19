@@ -5,10 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Map a next-intl locale ('de' | 'en') to a BCP47 tag for Intl APIs.
+export function toBcp47(locale?: string): string {
+  return locale === 'en' ? 'en-US' : 'de-DE';
+}
+
 // Format date to locale string
-export function formatDate(date: string | Date): string {
+export function formatDate(date: string | Date, locale?: string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('de-DE', {
+  return d.toLocaleDateString(toBcp47(locale), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -16,21 +21,25 @@ export function formatDate(date: string | Date): string {
 }
 
 // Format currency
-export function formatCurrency(amount: number, currency: string = 'EUR'): string {
-  return new Intl.NumberFormat('de-DE', {
+export function formatCurrency(amount: number, currency: string = 'EUR', locale?: string): string {
+  return new Intl.NumberFormat(toBcp47(locale), {
     style: 'currency',
     currency,
   }).format(amount);
 }
 
 // Format amount — returns number formatted and currency info
-export function formatAmount(amount: number, currency?: string | null): {
+export function formatAmount(
+  amount: number,
+  currency?: string | null,
+  locale?: string,
+): {
   formatted: string;
   hasCurrency: boolean;
 } {
   if (currency) {
     return {
-      formatted: new Intl.NumberFormat('de-DE', {
+      formatted: new Intl.NumberFormat(toBcp47(locale), {
         style: 'currency',
         currency,
       }).format(amount),
@@ -38,7 +47,7 @@ export function formatAmount(amount: number, currency?: string | null): {
     };
   }
   return {
-    formatted: new Intl.NumberFormat('de-DE', {
+    formatted: new Intl.NumberFormat(toBcp47(locale), {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount),
@@ -46,7 +55,7 @@ export function formatAmount(amount: number, currency?: string | null): {
   };
 }
 
-// Status badge mapping
+// Status badge CSS class mapping (visual only — labels come from i18n)
 export function getStatusBadgeClass(status: string): string {
   const statusMap: Record<string, string> = {
     uploaded: 'badge-uploaded',
@@ -58,32 +67,4 @@ export function getStatusBadgeClass(status: string): string {
     error: 'badge-error',
   };
   return statusMap[status] || 'badge-secondary';
-}
-
-export function getStatusLabel(status: string): string {
-  const labelMap: Record<string, string> = {
-    uploaded: 'Hochgeladen',
-    processing: 'Verarbeitung',
-    parsed: 'Verarbeitet',
-    needs_validation: 'Prüfung erforderlich',
-    validated: 'Validiert',
-    archived: 'Archiviert',
-    error: 'Fehler',
-  };
-  return labelMap[status] || status;
-}
-
-// Localized document type label. Returns '' for null/undefined so callers can
-// gate rendering on truthiness; pass a non-empty type to get a German label.
-export function getDocumentTypeLabel(type?: string | null): string {
-  if (!type) return '';
-  const labelMap: Record<string, string> = {
-    invoice: 'Rechnung',
-    contract: 'Vertrag',
-    offer: 'Angebot',
-    delivery_note: 'Lieferschein',
-    purchase_order: 'Bestellung',
-    unknown: 'Unbekannt',
-  };
-  return labelMap[type] ?? type;
 }

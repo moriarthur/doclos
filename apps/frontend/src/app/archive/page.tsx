@@ -1,14 +1,14 @@
 'use client';
 
 import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations, useLocale } from 'next-intl';
 import { documentsApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatDate, formatAmount, getStatusLabel, getDocumentTypeLabel } from '@/lib/utils';
+import { formatDate, formatAmount } from '@/lib/utils';
 import {
-  FileText,
   Search,
   Archive,
   ArchiveRestore,
@@ -29,6 +29,11 @@ import {
 
 export default function ArchivePage() {
   const queryClient = useQueryClient();
+  const t = useTranslations('Archive');
+  const tCommon = useTranslations('Common');
+  const tStatus = useTranslations('Status');
+  const tDocType = useTranslations('DocType');
+  const locale = useLocale();
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
 
@@ -105,13 +110,13 @@ export default function ArchivePage() {
           {/* Header */}
           <div className="mb-10 animate-fade-in">
             <p className="text-sm text-muted-foreground uppercase tracking-wide mb-2">
-              Archiv
+              {t('eyebrow')}
             </p>
             <h1 className="font-serif text-4xl md:text-5xl font-bold text-brand mb-3">
-              Archivierte Dokumente
+              {t('title')}
             </h1>
             <p className="text-muted-foreground max-w-md leading-relaxed">
-              Hier finden Sie alle archivierten Dokumente. Sie können Dokumente wiederherstellen oder dauerhaft löschen.
+              {t('subtitle')}
             </p>
           </div>
 
@@ -122,7 +127,7 @@ export default function ArchivePage() {
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Archiv durchsuchen..."
+                  placeholder={t('searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
@@ -150,12 +155,10 @@ export default function ArchivePage() {
                   <Archive className="h-10 w-10 text-muted-foreground" />
                 </div>
                 <h3 className="font-serif text-xl font-semibold mb-3">
-                  {searchQuery ? 'Keine Ergebnisse' : 'Archiv leer'}
+                  {searchQuery ? t('emptyNoResults') : t('empty')}
                 </h3>
                 <p className="text-muted-foreground max-w-sm mx-auto leading-relaxed">
-                  {searchQuery
-                    ? 'Keine archivierten Dokumente gefunden, die Ihren Kriterien entsprechen.'
-                    : 'Sie haben noch keine Dokumente archiviert.'}
+                  {searchQuery ? t('emptyNoResultsDesc') : t('emptyDesc')}
                 </p>
               </CardContent>
             </Card>
@@ -186,27 +189,27 @@ export default function ArchivePage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2.5 mb-2">
                               <span className="font-serif font-medium text-foreground truncate">
-                                {doc.company_name || 'Unbekannter Anbieter'}
+                                {doc.company_name || tCommon('unknownSupplier')}
                               </span>
                               <Badge variant="archived" className="shrink-0">
-                                {getStatusLabel(doc.status)}
+                                {tStatus(doc.status)}
                               </Badge>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                               {doc.invoice_date && (
                                 <span className="flex items-center gap-1.5">
-                                  {formatDate(doc.invoice_date)}
+                                  {formatDate(doc.invoice_date, locale)}
                                 </span>
                               )}
                               {doc.amount && (
                                 <span className="flex items-center gap-1.5 font-medium">
-                                  {formatAmount(doc.amount, doc.currency).formatted}
+                                  {formatAmount(doc.amount, doc.currency, locale).formatted}
                                 </span>
                               )}
                               {doc.type && doc.type !== 'unknown' && (
                                 <span className="text-xs uppercase tracking-wide">
-                                  {getDocumentTypeLabel(doc.type)}
+                                  {tDocType(doc.type)}
                                 </span>
                               )}
                             </div>
@@ -220,7 +223,7 @@ export default function ArchivePage() {
                             variant="ghost"
                             onClick={(e) => handleUnarchive(doc.id, e)}
                             disabled={unarchiveMutation.isPending}
-                            title="Wiederherstellen"
+                            title={t('restore')}
                           >
                             <ArchiveRestore className="h-4 w-4" />
                           </Button>
@@ -229,7 +232,7 @@ export default function ArchivePage() {
                             variant="ghost"
                             onClick={(e) => handleDelete(doc.id, e)}
                             disabled={deleteMutation.isPending}
-                            title="Löschen"
+                            title={t('delete')}
                             className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -250,7 +253,7 @@ export default function ArchivePage() {
                   disabled={isFetchingNextPage}
                   className="w-full"
                 >
-                  {isFetchingNextPage ? 'Lädt…' : 'Mehr laden'}
+                  {isFetchingNextPage ? tCommon('loading') : tCommon('loadMore')}
                 </Button>
               </div>
             )}
@@ -263,18 +266,18 @@ export default function ArchivePage() {
       <AlertDialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Dokument löschen?</AlertDialogTitle>
+            <AlertDialogTitle>{tCommon('deleteDialogTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Dies wird das Dokument dauerhaft löschen. Diese Aktion kann nicht rückgängig gemacht werden.
+              {tCommon('deleteDialogDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteDialog && confirmDelete(deleteDialog)}
               className="bg-red-600 hover:bg-red-700"
             >
-              Löschen
+              {tCommon('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2,14 +2,15 @@ import axios, { AxiosError } from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
-// Helper to extract error message from response
-const getErrorMessage = (error: any): string => {
-  const data = error.response?.data;
-  if (!data) return 'Ein unerwarteter Fehler ist aufgetreten';
+// Helper to read the active locale from the cookie (single-path i18n).
+function getLocale(): 'de' | 'en' {
+  if (typeof document === 'undefined') return 'de';
+  return /(?:^|; )locale=en/.test(document.cookie) ? 'en' : 'de';
+}
 
-  // Translation map for backend errors
-  const errorTranslations: Record<string, string> = {
-    // Auth errors
+// Backend error messages mapped per locale.
+const errorMaps = {
+  de: {
     'User already exists': 'Diese E-Mail ist bereits registriert',
     'Invalid credentials': 'Ungültige Anmeldedaten',
     'Unauthorized': 'Nicht autorisiert',
@@ -17,38 +18,60 @@ const getErrorMessage = (error: any): string => {
     'User not found': 'Benutzer nicht gefunden',
     'Invalid token': 'Ungültiges Token',
     'Token expired': 'Token abgelaufen',
-
-    // Validation errors
     'email must be an email': 'Ungültige E-Mail-Adresse',
     'password must be longer than or equal to 12 characters': 'Passwort muss mindestens 12 Zeichen lang sein',
     'name must be longer than or equal to 2 characters': 'Name muss mindestens 2 Zeichen lang sein',
     'name should not be empty': 'Name darf nicht leer sein',
-
-    // Document errors
     'Document not found': 'Dokument nicht gefunden',
     'File type not supported': 'Dateityp nicht unterstützt',
     'File too large': 'Datei zu groß',
-
-    // General errors
     'Internal server error': 'Interner Serverfehler',
     'Bad request': 'Ungültige Anfrage',
     'Not found': 'Nicht gefunden',
-  };
+    _fallback: 'Ein unerwarteter Fehler ist aufgetreten',
+  },
+  en: {
+    'User already exists': 'This email is already registered',
+    'Invalid credentials': 'Invalid credentials',
+    'Unauthorized': 'Unauthorized',
+    'Forbidden': 'Forbidden',
+    'User not found': 'User not found',
+    'Invalid token': 'Invalid token',
+    'Token expired': 'Token expired',
+    'email must be an email': 'Invalid email address',
+    'password must be longer than or equal to 12 characters': 'Password must be at least 12 characters long',
+    'name must be longer than or equal to 2 characters': 'Name must be at least 2 characters long',
+    'name should not be empty': 'Name must not be empty',
+    'Document not found': 'Document not found',
+    'File type not supported': 'File type not supported',
+    'File too large': 'File too large',
+    'Internal server error': 'Internal server error',
+    'Bad request': 'Bad request',
+    'Not found': 'Not found',
+    _fallback: 'An unexpected error occurred',
+  },
+} as const;
+
+// Helper to extract error message from response
+const getErrorMessage = (error: any): string => {
+  const data = error.response?.data;
+  const map = errorMaps[getLocale()];
+  if (!data) return map._fallback;
 
   // Handle array of messages (validation errors)
   if (Array.isArray(data.message)) {
     return data.message
-      .map((msg: string) => errorTranslations[msg] || msg)
+      .map((msg: string) => (map as Record<string, string>)[msg] || msg)
       .join(', ');
   }
 
   // Handle single message string
   if (typeof data.message === 'string') {
-    return errorTranslations[data.message] || data.message;
+    return (map as Record<string, string>)[data.message] || data.message;
   }
 
   // Fallback
-  return 'Ein unerwarteter Fehler ist aufgetreten';
+  return map._fallback;
 };
 
 // Helper to set cookies on client side

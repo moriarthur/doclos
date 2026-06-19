@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { authApi } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
@@ -11,7 +12,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { loginSchema, type LoginFormData } from '@/lib/validation';
+import { createLoginSchema, type LoginFormData } from '@/lib/validation';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
 
 // Force dynamic rendering for this page since it uses useSearchParams
@@ -19,6 +20,9 @@ export const dynamic = 'force-dynamic';
 
 function LoginForm() {
   const router = useRouter();
+  const t = useTranslations('Login');
+  const tCommon = useTranslations('Common');
+  const tValidation = useTranslations('Validation');
   const searchParams = useSearchParams();
   const [apiError, setApiError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -30,19 +34,18 @@ function LoginForm() {
     formState: { errors, isSubmitting },
     watch,
   } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(createLoginSchema(tValidation)),
     mode: 'onBlur',
   });
 
-  const email = watch('email');
   const password = watch('password');
 
   // Check if user just registered
   useEffect(() => {
     if (searchParams.get('registered') === 'true') {
-      setSuccessMessage('Registrierung erfolgreich! Bitte melden Sie sich an.');
+      setSuccessMessage(t('registeredSuccess'));
     }
-  }, [searchParams]);
+  }, [searchParams, t]);
 
   const loginMutation = useMutation({
     mutationFn: (data: LoginFormData) => authApi.login(data),
@@ -69,7 +72,7 @@ function LoginForm() {
             Doclos
           </h1>
           <p className="text-muted-foreground leading-relaxed">
-            AI-powered document automation
+            {tCommon('brandTagline')}
           </p>
         </div>
 
@@ -77,19 +80,19 @@ function LoginForm() {
         <Card>
           <CardContent className="p-8">
             <h2 className="font-serif text-2xl font-semibold mb-8">
-              Willkommen zurück
+              {t('welcome')}
             </h2>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               {/* Email */}
               <div>
                 <label className="block text-sm font-medium mb-2.5 text-foreground" htmlFor="email">
-                  E-Mail
+                  {t('email')}
                 </label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="name@beispiel.de"
+                  placeholder={t('emailPlaceholder')}
                   {...register('email')}
                   error={errors.email?.message}
                   autoComplete="email"
@@ -100,13 +103,13 @@ function LoginForm() {
               {/* Password */}
               <div>
                 <label className="block text-sm font-medium mb-2.5 text-foreground" htmlFor="password">
-                  Passwort
+                  {t('password')}
                 </label>
                 <div className="relative">
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="•••••••••"
+                    placeholder={t('passwordPlaceholder')}
                     {...register('password')}
                     error={errors.password?.message}
                     autoComplete="current-password"
@@ -117,14 +120,14 @@ function LoginForm() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-5 -translate-y-1/2 text-border hover:text-foreground transition-colors"
                     tabIndex={-1}
-                    aria-label={showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
+                    aria-label={showPassword ? t('hidePassword') : t('showPassword')}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 {password && password.length >= 1 && password.length < 12 && !errors.password && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    Mindestens 12 Zeichen erforderlich
+                    {t('passwordMin')}
                   </p>
                 )}
               </div>
@@ -148,15 +151,15 @@ function LoginForm() {
                 className="w-full py-3"
                 isLoading={isSubmitting || loginMutation.isPending}
               >
-                {isSubmitting || loginMutation.isPending ? 'Anmeldung...' : 'Anmelden'}
+                {isSubmitting || loginMutation.isPending ? t('submitting') : t('submit')}
               </Button>
             </form>
 
             <div className="mt-8 text-center">
               <p className="text-sm text-muted-foreground">
-                Noch kein Konto?{' '}
+                {t('noAccount')}{' '}
                 <Link href="/register" className="text-primary hover:underline font-medium">
-                  Registrieren
+                  {t('registerLink')}
                 </Link>
               </p>
             </div>
@@ -165,7 +168,7 @@ function LoginForm() {
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-10">
-          © 2026 Doclos. AI Document Automation für den Mittelstand.
+          {tCommon('footer')}
         </p>
       </div>
     </div>

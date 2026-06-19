@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { authApi, type RegisterData } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
@@ -10,11 +11,15 @@ import { Card, CardContent } from '@/components/ui/Card';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { registerSchema, type RegisterFormData } from '@/lib/validation';
+import { createRegisterSchema, type RegisterFormData } from '@/lib/validation';
 import { Eye, EyeOff } from 'lucide-react';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const t = useTranslations('Register');
+  const tCommon = useTranslations('Common');
+  const tLogin = useTranslations('Login');
+  const tValidation = useTranslations('Validation');
   const [apiError, setApiError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -25,7 +30,7 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
     watch,
   } = useForm<RegisterFormData>({
-    resolver: zodResolver(registerSchema),
+    resolver: zodResolver(createRegisterSchema(tValidation)),
     mode: 'onBlur',
   });
 
@@ -58,7 +63,7 @@ export default function RegisterPage() {
             Doclos
           </h1>
           <p className="text-muted-foreground leading-relaxed">
-            AI-powered document automation
+            {tCommon('brandTagline')}
           </p>
         </div>
 
@@ -66,19 +71,19 @@ export default function RegisterPage() {
         <Card>
           <CardContent className="p-8">
             <h2 className="font-serif text-2xl font-semibold mb-8">
-              Konto erstellen
+              {t('createAccount')}
             </h2>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               {/* Name */}
               <div>
                 <label className="block text-sm font-medium mb-2.5 text-foreground" htmlFor="name">
-                  Name
+                  {t('name')}
                 </label>
                 <Input
                   id="name"
                   type="text"
-                  placeholder="Ihr Name"
+                  placeholder={t('namePlaceholder')}
                   {...register('name')}
                   error={errors.name?.message}
                   autoComplete="name"
@@ -89,12 +94,12 @@ export default function RegisterPage() {
               {/* Email */}
               <div>
                 <label className="block text-sm font-medium mb-2.5 text-foreground" htmlFor="email">
-                  E-Mail
+                  {t('email')}
                 </label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="name@beispiel.de"
+                  placeholder={t('emailPlaceholder')}
                   {...register('email')}
                   error={errors.email?.message}
                   autoComplete="email"
@@ -105,13 +110,13 @@ export default function RegisterPage() {
               {/* Password */}
               <div>
                 <label className="block text-sm font-medium mb-2.5 text-foreground" htmlFor="password">
-                  Passwort
+                  {t('password')}
                 </label>
                 <div className="relative">
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="Mindestens 12 Zeichen"
+                    placeholder={t('passwordPlaceholder')}
                     {...register('password')}
                     error={errors.password?.message}
                     autoComplete="new-password"
@@ -122,14 +127,14 @@ export default function RegisterPage() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-5 -translate-y-1/2 text-border hover:text-foreground transition-colors"
                     tabIndex={-1}
-                    aria-label={showPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
+                    aria-label={showPassword ? tLogin('hidePassword') : tLogin('showPassword')}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 {password && password.length >= 1 && password.length < 12 && !errors.password && (
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    Noch {12 - password.length} Zeichen benötigt
+                    {t('passwordRemaining', { n: 12 - password.length })}
                   </p>
                 )}
               </div>
@@ -137,13 +142,13 @@ export default function RegisterPage() {
               {/* Confirm Password */}
               <div>
                 <label className="block text-sm font-medium mb-2.5 text-foreground" htmlFor="confirmPassword">
-                  Passwort bestätigen
+                  {t('confirmPassword')}
                 </label>
                 <div className="relative">
                   <Input
                     id="confirmPassword"
                     type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="Passwort wiederholen"
+                    placeholder={t('confirmPlaceholder')}
                     {...register('confirmPassword')}
                     error={errors.confirmPassword?.message}
                     autoComplete="new-password"
@@ -154,7 +159,7 @@ export default function RegisterPage() {
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     className="absolute right-3 top-5 -translate-y-1/2 text-border hover:text-foreground transition-colors"
                     tabIndex={-1}
-                    aria-label={showConfirmPassword ? 'Passwort verbergen' : 'Passwort anzeigen'}
+                    aria-label={showConfirmPassword ? tLogin('hidePassword') : tLogin('showPassword')}
                   >
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -163,9 +168,9 @@ export default function RegisterPage() {
                 {confirmPassword && !errors.confirmPassword && (
                   <p className="mt-1.5 text-xs">
                     {password === confirmPassword ? (
-                      <span className="text-green-600 dark:text-green-400">Passwörter stimmen überein</span>
+                      <span className="text-green-600 dark:text-green-400">{t('match')}</span>
                     ) : (
-                      <span className="text-red-600 dark:text-red-400">Passwörter stimmen nicht überein</span>
+                      <span className="text-red-600 dark:text-red-400">{t('mismatch')}</span>
                     )}
                   </p>
                 )}
@@ -184,15 +189,15 @@ export default function RegisterPage() {
                 isLoading={isSubmitting || registerMutation.isPending}
                 disabled={!!errors.confirmPassword && password !== confirmPassword}
               >
-                {isSubmitting || registerMutation.isPending ? 'Wird registriert...' : 'Registrieren'}
+                {isSubmitting || registerMutation.isPending ? t('submitting') : t('submit')}
               </Button>
             </form>
 
             <div className="mt-8 text-center">
               <p className="text-sm text-muted-foreground">
-                Bereits ein Konto?{' '}
+                {t('haveAccount')}{' '}
                 <Link href="/login" className="text-primary hover:underline font-medium">
-                  Anmelden
+                  {t('signIn')}
                 </Link>
               </p>
             </div>
@@ -201,7 +206,7 @@ export default function RegisterPage() {
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-10">
-          © 2026 Doclos. AI Document Automation für den Mittelstand.
+          {tCommon('footer')}
         </p>
       </div>
     </div>

@@ -1,12 +1,13 @@
 'use client';
 
 import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations, useLocale } from 'next-intl';
 import { documentsApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
-import { formatDate, formatAmount, getStatusLabel, getDocumentTypeLabel } from '@/lib/utils';
+import { formatDate, formatAmount } from '@/lib/utils';
 import {
   FileText,
   Search,
@@ -36,8 +37,20 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/AlertDialog';
 
+const statusOptions = [
+  { value: 'processing', key: 'processing' },
+  { value: 'parsed', key: 'parsed' },
+  { value: 'needs_validation', key: 'needs_validation' },
+  { value: 'validated', key: 'validated' },
+] as const;
+
 export default function DashboardPage() {
   const queryClient = useQueryClient();
+  const t = useTranslations('Dashboard');
+  const tCommon = useTranslations('Common');
+  const tStatus = useTranslations('Status');
+  const tDocType = useTranslations('DocType');
+  const locale = useLocale();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
@@ -128,20 +141,20 @@ export default function DashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 mb-10 animate-fade-in">
             <div>
               <p className="text-sm text-muted-foreground uppercase tracking-wide mb-2">
-                Dashboard
+                {t('eyebrow')}
               </p>
               <h1 className="font-serif text-4xl md:text-5xl font-bold text-brand">
-                Dokumente
+                {t('title')}
               </h1>
               <p className="text-muted-foreground mt-2 max-w-md leading-relaxed">
-                Verwalten und validieren Sie Ihre Rechnungen mit KI-gestützter Extraktion
+                {t('subtitle')}
               </p>
             </div>
 
             <Link href="/upload">
               <Button className="gap-2 shadow-sm">
                 <Plus className="h-4 w-4" />
-                Hochladen
+                {t('uploadBtn')}
               </Button>
             </Link>
           </div>
@@ -155,7 +168,7 @@ export default function DashboardPage() {
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
                     type="text"
-                    placeholder="Dokumente durchsuchen..."
+                    placeholder={t('searchPlaceholder')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-11 pr-4 py-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
@@ -171,11 +184,12 @@ export default function DashboardPage() {
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="w-full pl-11 pr-10 py-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary appearance-none cursor-pointer transition-all"
                   >
-                    <option value="">Alle Status</option>
-                    <option value="processing">Verarbeitung</option>
-                    <option value="parsed">Verarbeitet</option>
-                    <option value="needs_validation">Prüfung erforderlich</option>
-                    <option value="validated">Validiert</option>
+                    <option value="">{t('filterAll')}</option>
+                    {statusOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {tStatus(opt.key)}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -198,7 +212,7 @@ export default function DashboardPage() {
             <Card>
               <CardContent className="p-16 text-center">
                 <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">Fehler beim Laden der Dokumente</p>
+                <p className="text-muted-foreground">{t('loadError')}</p>
               </CardContent>
             </Card>
           ) : filteredDocuments.length === 0 ? (
@@ -208,18 +222,16 @@ export default function DashboardPage() {
                   <FileText className="h-10 w-10 text-muted-foreground" />
                 </div>
                 <h3 className="font-serif text-xl font-semibold mb-3">
-                  {searchQuery || statusFilter ? 'Keine Ergebnisse' : 'Noch keine Dokumente'}
+                  {searchQuery || statusFilter ? t('emptyNoResults') : t('emptyNoDocs')}
                 </h3>
                 <p className="text-muted-foreground mb-8 max-w-sm mx-auto leading-relaxed">
-                  {searchQuery || statusFilter
-                    ? 'Keine Dokumente gefunden, die Ihren Kriterien entsprechen.'
-                    : 'Laden Sie Ihre erste Rechnung hoch, um zu beginnen.'}
+                  {searchQuery || statusFilter ? t('emptyNoResultsDesc') : t('emptyNoDocsDesc')}
                 </p>
                 {!searchQuery && !statusFilter && (
                   <Link href="/upload">
                     <Button className="gap-2">
                       <Sparkles className="h-4 w-4" />
-                      Erste Rechnung hochladen
+                      {t('firstInvoiceBtn')}
                     </Button>
                   </Link>
                 )}
@@ -250,7 +262,7 @@ export default function DashboardPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2.5 mb-2">
                               <span className="font-serif font-medium text-foreground truncate">
-                                {doc.company_name || 'Unbekannter Anbieter'}
+                                {doc.company_name || tCommon('unknownSupplier')}
                               </span>
                             </div>
 
@@ -258,12 +270,12 @@ export default function DashboardPage() {
                               {doc.invoice_date && (
                                 <span className="flex items-center gap-1.5">
                                   <Calendar className="h-4 w-4" />
-                                  {formatDate(doc.invoice_date)}
+                                  {formatDate(doc.invoice_date, locale)}
                                 </span>
                               )}
                               {doc.amount && (
                                 <span className="flex items-center gap-1.5 font-medium">
-                                  {formatAmount(doc.amount, doc.currency).formatted}
+                                  {formatAmount(doc.amount, doc.currency, locale).formatted}
                                   {!doc.currency && (
                                     <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">
                                       ?
@@ -273,7 +285,7 @@ export default function DashboardPage() {
                               )}
                               {doc.type && doc.type !== 'unknown' && (
                                 <span className="text-xs uppercase tracking-wide">
-                                  {getDocumentTypeLabel(doc.type)}
+                                  {tDocType(doc.type)}
                                 </span>
                               )}
                             </div>
@@ -291,14 +303,14 @@ export default function DashboardPage() {
                             doc.status === 'error' ? 'bg-red-400' :
                             doc.status === 'archived' ? 'bg-gray-400' :
                             'bg-gray-400'
-                          }`} role="img" aria-label={getStatusLabel(doc.status)} title={getStatusLabel(doc.status)} />
+                          }`} role="img" aria-label={tStatus(doc.status)} title={tStatus(doc.status)} />
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={(e) => handleArchive(doc.id, e)}
                             disabled={archiveMutation.isPending}
                             className="gap-1.5"
-                            title="Archivieren"
+                            title={t('archiveTitle')}
                           >
                             <Archive className="h-4 w-4" />
                           </Button>
@@ -308,7 +320,7 @@ export default function DashboardPage() {
                             onClick={(e) => handleDelete(doc.id, e)}
                             disabled={deleteMutation.isPending}
                             className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                            title="Löschen"
+                            title={t('deleteTitle')}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -329,7 +341,7 @@ export default function DashboardPage() {
                   disabled={isFetchingNextPage}
                   className="w-full"
                 >
-                  {isFetchingNextPage ? 'Lädt…' : 'Mehr laden'}
+                  {isFetchingNextPage ? tCommon('loading') : tCommon('loadMore')}
                 </Button>
               </div>
             )}
@@ -342,18 +354,18 @@ export default function DashboardPage() {
       <AlertDialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Dokument löschen?</AlertDialogTitle>
+            <AlertDialogTitle>{tCommon('deleteDialogTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Dies wird das Dokument dauerhaft löschen. Diese Aktion kann nicht rückgängig gemacht werden.
+              {tCommon('deleteDialogDesc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteDialog && confirmDelete(deleteDialog)}
               className="bg-red-600 hover:bg-red-700"
             >
-              Löschen
+              {tCommon('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

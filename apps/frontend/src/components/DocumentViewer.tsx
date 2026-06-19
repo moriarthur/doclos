@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { CancelableLoader } from '@/components/ui/CancelableLoader';
@@ -22,6 +23,7 @@ export function DocumentViewer({
   isReprocess = false,
   onCancelReprocess,
 }: DocumentViewerProps) {
+  const t = useTranslations('DocumentViewer');
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -65,14 +67,14 @@ export function DocumentViewer({
       <div className="aspect-[3/4] bg-muted rounded-xl flex items-center justify-center">
         <div className="text-center p-8">
           <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground mb-3">Dokument konnte nicht geladen werden</p>
+          <p className="text-sm text-muted-foreground mb-3">{t('loadFailed')}</p>
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary hover:underline text-sm"
           >
-            In neuem Tab öffnen
+            {t('openNewTab')}
           </a>
         </div>
       </div>
@@ -117,6 +119,7 @@ function ImageViewer({
   isReprocess: boolean;
   onCancelReprocess?: () => void;
 }) {
+  const t = useTranslations('DocumentViewer');
   const [zoom, setZoom] = useState(1);
   const isBlocked = isErrorDoc || reprocessing;
 
@@ -129,7 +132,7 @@ function ImageViewer({
       >
         <img
           src={blobUrl}
-          alt="Dokument"
+          alt={t('docAlt')}
           className="max-w-full h-auto rounded shadow-lg transition-transform duration-200"
           style={
             !isBlocked ? { transform: `scale(${zoom})`, transformOrigin: 'top center' } : undefined
@@ -142,13 +145,13 @@ function ImageViewer({
 
       {!isBlocked && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-0.5 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-0.5 shadow-md">
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} title="Verkleinern">
+          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} title={t('zoomOut')}>
             <ZoomOut className="h-4 w-4" />
           </Button>
           <span className="text-xs text-muted-foreground w-8 text-center tabular-nums">
             {Math.round(zoom * 100)}%
           </span>
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} title="Vergrößern">
+          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} title={t('zoomIn')}>
             <ZoomIn className="h-4 w-4" />
           </Button>
           <Button
@@ -156,7 +159,7 @@ function ImageViewer({
             size="icon"
             onClick={() => setZoom(1)}
             disabled={zoom === 1}
-            title="Zoom zurücksetzen"
+            title={t('zoomReset')}
           >
             <Maximize2 className="h-4 w-4" />
           </Button>
@@ -181,6 +184,7 @@ function PdfViewer({
   isReprocess: boolean;
   onCancelReprocess?: () => void;
 }) {
+  const t = useTranslations('DocumentViewer');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -341,7 +345,7 @@ function PdfViewer({
             size="icon"
             onClick={() => goTo(currentPage - 1)}
             disabled={currentPage <= 1}
-            title="Vorherige Seite"
+            title={t('prevPage')}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -353,18 +357,18 @@ function PdfViewer({
             size="icon"
             onClick={() => goTo(currentPage + 1)}
             disabled={currentPage >= totalPages}
-            title="Nächste Seite"
+            title={t('nextPage')}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
           <div className="w-px h-5 bg-border mx-0.5" />
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} title="Verkleinern">
+          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} title={t('zoomOut')}>
             <ZoomOut className="h-4 w-4" />
           </Button>
           <span className="text-xs text-muted-foreground w-8 text-center tabular-nums">
             {Math.round(zoom * 100)}%
           </span>
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} title="Vergrößern">
+          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} title={t('zoomIn')}>
             <ZoomIn className="h-4 w-4" />
           </Button>
           <Button
@@ -372,7 +376,7 @@ function PdfViewer({
             size="icon"
             onClick={() => setZoom(1)}
             disabled={zoom === 1}
-            title="Zoom zurücksetzen"
+            title={t('zoomReset')}
           >
             <Maximize2 className="h-4 w-4" />
           </Button>
@@ -391,6 +395,7 @@ function ProcessingOverlay({
   onCancel?: () => void;
   isReprocess?: boolean;
 }) {
+  const t = useTranslations('DocumentViewer');
   return (
     <div className="absolute inset-0 flex items-center justify-center z-10">
       <div className="text-center p-8 bg-background/70 backdrop-blur-sm rounded-2xl">
@@ -398,10 +403,10 @@ function ProcessingOverlay({
           <CancelableLoader size="lg" onCancel={onCancel} />
         </div>
         <p className="font-medium text-foreground mb-2 mt-6">
-          {isReprocess ? 'Wird neu verarbeitet...' : 'Wird verarbeitet...'}
+          {isReprocess ? t('reprocessing') : t('processing')}
         </p>
         <p className="text-sm text-muted-foreground">
-          {onCancel ? 'Zum Abbrechen klicken' : 'Das Dokument wird analysiert.'}
+          {onCancel ? t('cancelHint') : t('analyzing')}
         </p>
       </div>
     </div>
@@ -409,13 +414,14 @@ function ProcessingOverlay({
 }
 
 function ErrorOverlay() {
+  const t = useTranslations('DocumentViewer');
   return (
     <div className="absolute inset-0 flex items-center justify-center z-10">
       <div className="text-center p-8 bg-background/70 backdrop-blur-sm rounded-2xl">
         <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-        <p className="font-medium text-foreground mb-2">Fehler bei der Verarbeitung</p>
+        <p className="font-medium text-foreground mb-2">{t('errorTitle')}</p>
         <p className="text-sm text-muted-foreground">
-          Das Dokument konnte nicht verarbeitet werden.
+          {t('errorDesc')}
         </p>
       </div>
     </div>

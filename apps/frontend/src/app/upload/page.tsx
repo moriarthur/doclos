@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { documentsApi, authApi } from '@/lib/api-client';
 import { useRouter } from 'next/navigation';
 import { Navigation } from '@/components/Navigation';
@@ -47,6 +48,8 @@ function truncateFileName(filename: string, maxLength: number = 25): string {
 export default function UploadPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const t = useTranslations('Upload');
+  const tDashboard = useTranslations('Dashboard');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -73,10 +76,10 @@ export default function UploadPage() {
 
   const validateFile = (file: File): string | null => {
     if (file.size > MAX_FILE_SIZE) {
-      return 'Datei ist zu groß (max. 10 MB)';
+      return t('fileTooLarge');
     }
     if (!ACCEPTED_TYPES.includes(file.type)) {
-      return 'Nicht unterstützter Dateityp';
+      return t('unsupportedType');
     }
     return null;
   };
@@ -113,7 +116,7 @@ export default function UploadPage() {
     if (validFiles.length > 0) {
       setFiles((prev) => [...prev, ...validFiles]);
     }
-  }, []);
+  }, [t]);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -218,15 +221,15 @@ export default function UploadPage() {
           {/* Header */}
           <div className="mb-10 animate-fade-in">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-              <Link href="/" className="hover:text-foreground transition-colors">Dokumente</Link>
+              <Link href="/" className="hover:text-foreground transition-colors">{tDashboard('title')}</Link>
               <span>/</span>
-              <span className="text-foreground">Upload</span>
+              <span className="text-foreground">{t('breadcrumbUpload')}</span>
             </div>
             <h1 className="font-serif text-4xl md:text-5xl font-bold mb-3 text-brand">
-              Dokument hochladen
+              {t('title')}
             </h1>
             <p className="text-muted-foreground max-w-md leading-relaxed">
-              Laden Sie Rechnungen, Verträge oder Angebote zur KI-gestützten Verarbeitung hoch
+              {t('subtitle')}
             </p>
           </div>
 
@@ -263,10 +266,10 @@ export default function UploadPage() {
                         <UploadCloud className="h-8 w-8 md:h-10 md:w-10 text-primary" />
                       </div>
                       <p className="font-serif text-lg md:text-xl font-medium mb-2 md:mb-3 text-foreground px-2">
-                        {dragActive ? 'Datei loslassen' : 'Dateien hierher ziehen'}
+                        {dragActive ? t('dropActive') : t('dropHint')}
                       </p>
                       <p className="text-sm md:text-base text-muted-foreground mb-4 md:mb-6 px-2">
-                        oder klicken zum Auswählen
+                        {t('orClick')}
                       </p>
                       <Button
                         type="button"
@@ -277,12 +280,12 @@ export default function UploadPage() {
                           fileInputRef.current?.click();
                         }}
                       >
-                        Durchsuchen
+                        {t('browse')}
                       </Button>
                     </label>
 
                     <p className="text-xs text-muted-foreground mt-4 md:mt-8 px-2">
-                      Akzeptierte Formate: PDF, PNG, JPG, TIFF (max. 10 MB)
+                      {t('acceptedFormats')}
                     </p>
                   </div>
 
@@ -291,7 +294,7 @@ export default function UploadPage() {
                     <div className="mt-8 space-y-3 max-w-full">
                       <div className="flex items-center gap-2 mb-3 flex-wrap">
                         <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide shrink-0">
-                          Ausgewählte Dateien ({files.length})
+                          {t('selectedFiles', { count: files.length })}
                         </p>
                         <Button
                           size="sm"
@@ -304,7 +307,7 @@ export default function UploadPage() {
                           }}
                           disabled={currentUploadIndex !== null || files.length === 0}
                         >
-                          Alle hochladen
+                          {t('uploadAll')}
                         </Button>
                       </div>
                       {files.map((file, index) => {
@@ -347,7 +350,7 @@ export default function UploadPage() {
                                     onClick={() => uploadFile(file, index)}
                                     disabled={currentUploadIndex !== null}
                                   >
-                                    Hochladen
+                                    {t('uploadOne')}
                                   </Button>
                                   <button
                                     onClick={() => removeFile(index)}
@@ -382,22 +385,20 @@ export default function UploadPage() {
                   </div>
                   <h3 className="font-serif text-2xl font-semibold mb-3 text-foreground">
                     {uploadedDocIds.length === 1
-                      ? 'Erfolgreich hochgeladen!'
-                      : `${uploadedDocIds.length} Dokumente hochgeladen!`}
+                      ? t('successOne')
+                      : t('successMany', { count: uploadedDocIds.length })}
                   </h3>
                   <p className="text-muted-foreground mb-6">
-                    {uploadedDocIds.length === 1
-                      ? 'Das Dokument wird verarbeitet.'
-                      : 'Die Dokumente werden verarbeitet.'}
+                    {uploadedDocIds.length === 1 ? t('processingOne') : t('processingMany')}
                   </p>
                   <div className="flex items-center justify-center gap-3">
                     {uploadedDocIds.length === 1 && (
                       <Button variant="secondary" onClick={() => router.push(`/documents/${uploadedDocIds[0]}`)}>
-                        Dokument anzeigen
+                        {t('viewDoc')}
                       </Button>
                     )}
                     <Button onClick={() => router.push('/')}>
-                      Zur Übersicht
+                      {t('toOverview')}
                     </Button>
                   </div>
                 </div>
@@ -413,7 +414,7 @@ export default function UploadPage() {
                   <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p className="font-medium text-red-900 dark:text-red-100 mb-2">
-                      Dateifehler
+                      {t('fileErrors')}
                     </p>
                     {Object.entries(fileErrors).map(([key, error]) => (
                       <p key={key} className="text-sm text-red-700 dark:text-red-300">
@@ -434,7 +435,7 @@ export default function UploadPage() {
                   <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium text-red-900 dark:text-red-100">
-                      Upload fehlgeschlagen
+                      {t('uploadFailed')}
                     </p>
                     <p className="text-sm text-red-700 dark:text-red-300 mt-1">
                       {authApi.getErrorMessage(uploadMutation.error)}
