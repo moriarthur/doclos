@@ -8,6 +8,7 @@ import { JobsModule } from './modules/jobs/jobs.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { OcrModule } from './modules/ocr/ocr.module';
 import { AiModule } from './modules/ai/ai.module';
+import { ExportModule } from './modules/export/export.module';
 import { dataSourceOptions } from './database/data-source';
 
 // Part 1: System Architecture - Root application module
@@ -48,6 +49,7 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
     AuthModule,
     DocumentsModule,
     JobsModule,
+    ExportModule,
   ],
   controllers: [],
   providers: [],
