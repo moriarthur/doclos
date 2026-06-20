@@ -54,7 +54,13 @@
     "emptyNoDocsDesc": "Upload your first invoice to get started.",
     "firstInvoiceBtn": "Upload first invoice",
     "archiveTitle": "Archive",
-    "deleteTitle": "Delete"
+    "deleteTitle": "Delete",
+    "selectBtn": "Select",
+    "selectionDone": "Done",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "selectedCount": "{count} selected",
+    "bulkDeleteTitle": "Delete {count} documents?"
   },
   "Login": {
     "welcome": "Welcome back",
@@ -123,7 +129,13 @@
     "emptyNoResultsDesc": "No archived documents match your criteria.",
     "emptyDesc": "You have not archived any documents yet.",
     "restore": "Restore",
-    "delete": "Delete"
+    "delete": "Delete",
+    "selectBtn": "Select",
+    "selectionDone": "Done",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "selectedCount": "{count} selected",
+    "bulkDeleteTitle": "Delete {count} documents?"
   },
   "DocumentDetail": {
     "back": "Back",
@@ -190,6 +202,15 @@
     "analyzing": "The document is being analyzed.",
     "errorTitle": "Processing error",
     "errorDesc": "The document could not be processed."
+  },
+  "Export": {
+    "button": "Export",
+    "excel": "Excel",
+    "csv": "CSV",
+    "json": "JSON",
+    "soon": "coming soon",
+    "error": "Export failed",
+    "noInvoiceData": "No invoice data available for this document"
   },
   "LocaleSwitcher": {
     "german": "Deutsch",

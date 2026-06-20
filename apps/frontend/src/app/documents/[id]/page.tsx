@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
 import { documentsApi, jobsApi, authApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
+import { ExportMenu } from '@/components/ExportMenu';
 import { DocumentViewer } from '@/components/DocumentViewer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -310,6 +311,7 @@ export default function DocumentDetailPage() {
             </div>
 
             <div className="flex items-center gap-1 md:ml-auto">
+              <ExportMenu variant="detail" documentId={docId} />
               <Button
                 variant="ghost"
                 size="sm"
