@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { AuthModule } from './modules/auth/auth.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { SearchModule } from './modules/search/search.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { OcrModule } from './modules/ocr/ocr.module';
@@ -48,6 +49,7 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
     AiModule,
     AuthModule,
     DocumentsModule,
+    SearchModule,
     JobsModule,
     ExportModule,
   ],
