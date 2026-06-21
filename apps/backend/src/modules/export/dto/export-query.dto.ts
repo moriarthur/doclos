@@ -18,4 +18,8 @@ export class ExportQueryDto {
   @IsOptional()
   @IsEnum(DocumentStatus)
   status?: DocumentStatus;
+
+  @IsOptional()
+  @IsString()
+  ids?: string; // comma-separated document IDs — export only the selected documents
 }

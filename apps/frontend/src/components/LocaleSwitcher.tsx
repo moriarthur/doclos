@@ -26,7 +26,7 @@ export function LocaleSwitcher() {
   };
 
   return (
-    <div className="flex items-center rounded-lg border border-border overflow-hidden">
+    <div className="inline-flex items-center rounded-lg border border-border overflow-hidden">
       {(['de', 'en'] as const).map((loc) => (
         <button
           key={loc}
@@ -36,7 +36,7 @@ export function LocaleSwitcher() {
           aria-pressed={locale === loc}
           title={loc === 'de' ? t('german') : t('english')}
           className={cn(
-            'px-2 py-1 text-xs font-medium transition-colors',
+            'px-2.5 py-1.5 text-xs font-medium transition-colors',
             locale === loc
               ? 'bg-primary text-primary-foreground'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground',

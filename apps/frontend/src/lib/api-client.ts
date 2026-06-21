@@ -275,6 +275,22 @@ export const documentsApi = {
     return response.data;
   },
 
+  // Server-side full-text search. Same response shape as `list`, so the
+  // dashboard cards render identically. Returns all matches (server-paginated),
+  // including documents beyond the first page the client-side filter missed.
+  search: async (params: {
+    q: string;
+    page?: number;
+    limit?: number;
+    status?: string;
+    type?: string;
+    from_date?: string;
+    to_date?: string;
+  }): Promise<DocumentsResponse> => {
+    const response = await apiClient.get<DocumentsResponse>('/search', { params });
+    return response.data;
+  },
+
   upload: async (file: File, type?: string): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('file', file);
@@ -338,6 +354,40 @@ export const jobsApi = {
 
   cancelByDocument: async (documentId: string) => {
     const response = await apiClient.delete(`/jobs?document_id=${documentId}`);
+    return response.data;
+  },
+};
+
+export const exportApi = {
+  // List export — all of the user's invoices matching filters (dashboard).
+  // Returns a Blob (the .xlsx) for an in-browser download trigger.
+  list: async (params: {
+    format: string;
+    status?: string;
+    company?: string;
+    from_date?: string;
+    to_date?: string;
+    ids?: string[];
+  }): Promise<Blob> => {
+    const response = await apiClient.get(`/export/${encodeURIComponent(params.format)}`, {
+      params: {
+        status: params.status || undefined,
+        company: params.company || undefined,
+        from_date: params.from_date || undefined,
+        to_date: params.to_date || undefined,
+        ids: params.ids && params.ids.length > 0 ? params.ids.join(',') : undefined,
+      },
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  // Detail export — a single document's invoice report (Document Details).
+  detail: async (documentId: string, format: string): Promise<Blob> => {
+    const response = await apiClient.get(
+      `/export/document/${documentId}/${encodeURIComponent(format)}`,
+      { responseType: 'blob' },
+    );
     return response.data;
   },
 };

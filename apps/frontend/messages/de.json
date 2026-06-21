@@ -54,7 +54,13 @@
     "emptyNoDocsDesc": "Laden Sie Ihre erste Rechnung hoch, um zu beginnen.",
     "firstInvoiceBtn": "Erste Rechnung hochladen",
     "archiveTitle": "Archivieren",
-    "deleteTitle": "Löschen"
+    "deleteTitle": "Löschen",
+    "selectBtn": "Auswählen",
+    "selectionDone": "Fertig",
+    "selectAll": "Alle auswählen",
+    "deselectAll": "Auswahl aufheben",
+    "selectedCount": "{count} ausgewählt",
+    "bulkDeleteTitle": "{count} Dokumente löschen?"
   },
   "Login": {
     "welcome": "Willkommen zurück",
@@ -123,7 +129,13 @@
     "emptyNoResultsDesc": "Keine archivierten Dokumente gefunden, die Ihren Kriterien entsprechen.",
     "emptyDesc": "Sie haben noch keine Dokumente archiviert.",
     "restore": "Wiederherstellen",
-    "delete": "Löschen"
+    "delete": "Löschen",
+    "selectBtn": "Auswählen",
+    "selectionDone": "Fertig",
+    "selectAll": "Alle auswählen",
+    "deselectAll": "Auswahl aufheben",
+    "selectedCount": "{count} ausgewählt",
+    "bulkDeleteTitle": "{count} Dokumente löschen?"
   },
   "DocumentDetail": {
     "back": "Zurück",
@@ -190,6 +202,15 @@
     "analyzing": "Das Dokument wird analysiert.",
     "errorTitle": "Fehler bei der Verarbeitung",
     "errorDesc": "Das Dokument konnte nicht verarbeitet werden."
+  },
+  "Export": {
+    "button": "Exportieren",
+    "excel": "Excel",
+    "csv": "CSV",
+    "json": "JSON",
+    "soon": "bald verfügbar",
+    "error": "Export fehlgeschlagen",
+    "noInvoiceData": "Keine Rechnungsdaten für dieses Dokument verfügbar"
   },
   "LocaleSwitcher": {
     "german": "Deutsch",

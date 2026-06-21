@@ -59,6 +59,7 @@ dump.rdb
 # Test directories
 tets files/
 test files/
+1000+ PDF_Invoice_Folder/
 
 # AI assistant / tooling state (personal, per-machine — must NOT be tracked)
 .claude/

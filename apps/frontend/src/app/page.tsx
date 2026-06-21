@@ -4,6 +4,7 @@ import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-q
 import { useTranslations, useLocale } from 'next-intl';
 import { documentsApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
+import { ExportMenu } from '@/components/ExportMenu';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -16,16 +17,15 @@ import {
   ChevronRight,
   ChevronDown,
   Calendar,
-
-
   Sparkles,
   Archive,
   Trash2,
-
-
+  ListChecks,
+  Check,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,6 +54,16 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteDialog, setBulkDeleteDialog] = useState(false);
+
+  // Debounce the search box — server-side search shouldn't fire per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
 
   const {
     data,
@@ -63,13 +73,20 @@ export default function DashboardPage() {
     isLoading,
     error,
   } = useInfiniteQuery({
-    queryKey: ['documents', statusFilter],
+    queryKey: ['documents', statusFilter, debouncedSearch],
     queryFn: ({ pageParam = 1 }) =>
-      documentsApi.list({
-        status: statusFilter || undefined,
-        page: pageParam,
-        limit: 20,
-      }),
+      debouncedSearch
+        ? documentsApi.search({
+            q: debouncedSearch,
+            status: statusFilter || undefined,
+            page: pageParam,
+            limit: 20,
+          })
+        : documentsApi.list({
+            status: statusFilter || undefined,
+            page: pageParam,
+            limit: 20,
+          }),
     initialPageParam: 1,
     getNextPageParam: (last) =>
       last.pagination.page * last.pagination.limit < last.pagination.total
@@ -79,20 +96,13 @@ export default function DashboardPage() {
 
   const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
 
-  const filteredDocuments = allDocuments
-    .filter((doc) => {
-      // Exclude archived documents from default view
-      if (!statusFilter && doc.status === 'archived') return false;
-      return true;
-    })
-    .filter((doc) => {
-      const q = searchQuery.trim().toLowerCase();
-      if (!q) return true;
-      return (
-        doc.company_name?.toLowerCase().includes(q) ||
-        doc.invoice_number?.toLowerCase().includes(q)
-      );
-    });
+  const filteredDocuments = allDocuments.filter((doc) => {
+    // Exclude archived documents from the default (non-search) view. Server-side
+    // search already scopes by relevance and may legitimately surface archived
+    // matches, so we don't hide them while searching.
+    if (!debouncedSearch && !statusFilter && doc.status === 'archived') return false;
+    return true;
+  });
 
   const archiveMutation = useMutation({
     mutationFn: (id: string) => documentsApi.updateStatus(id, 'archived'),
@@ -127,6 +137,51 @@ export default function DashboardPage() {
     deleteMutation.mutate(id);
   };
 
+  // --- Selection mode (bulk export / archive / delete) ---
+  // Selection lives in a Set, independent of the current filter/search view, so
+  // the user can assemble a selection across different filters before exporting.
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const visibleIds = filteredDocuments.map((d) => d.id);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  const toggleSelectAllVisible = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id));
+      else visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
+
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const bulkArchiveMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.all(ids.map((id) => documentsApi.updateStatus(id, 'archived'))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      exitSelection();
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => documentsApi.delete(id))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      setBulkDeleteDialog(false);
+      exitSelection();
+    },
+  });
+
   return (
     <div className="flex">
       <Navigation />
@@ -151,12 +206,28 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <Link href="/upload">
-              <Button className="gap-2 shadow-sm">
-                <Plus className="h-4 w-4" />
-                {t('uploadBtn')}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={selectionMode ? 'primary' : 'secondary'}
+                size="sm"
+                className="gap-1.5"
+                onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
+              >
+                <ListChecks className="h-4 w-4" />
+                {selectionMode ? t('selectionDone') : t('selectBtn')}
               </Button>
-            </Link>
+              <ExportMenu
+                variant="list"
+                status={statusFilter}
+                ids={selectionMode && selectedIds.size > 0 ? [...selectedIds] : undefined}
+              />
+              <Link href="/upload">
+                <Button className="gap-2 shadow-sm">
+                  <Plus className="h-4 w-4" />
+                  {t('uploadBtn')}
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {/* Search and Filters */}
@@ -196,6 +267,51 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
+          {/* Selection bulk bar */}
+          {selectionMode && (
+            <Card className="mb-6 animate-slide-down border-primary/30">
+              <CardContent className="p-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={toggleSelectAllVisible}
+                  disabled={visibleIds.length === 0}
+                  className="text-sm font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
+                >
+                  {allVisibleSelected ? t('deselectAll') : t('selectAll')}
+                </button>
+                <span className="text-sm text-muted-foreground">
+                  {t('selectedCount', { count: selectedIds.size })}
+                </span>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="gap-1.5"
+                    onClick={() => bulkArchiveMutation.mutate([...selectedIds])}
+                    disabled={selectedIds.size === 0 || bulkArchiveMutation.isPending}
+                  >
+                    <Archive className="h-4 w-4" />
+                    {t('archiveTitle')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400"
+                    onClick={() => setBulkDeleteDialog(true)}
+                    disabled={selectedIds.size === 0}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {t('deleteTitle')}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="gap-1.5" onClick={exitSelection}>
+                    <X className="h-4 w-4" />
+                    {tCommon('cancel')}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Documents List */}
           {isLoading ? (
             <div className="space-y-4">
@@ -222,12 +338,12 @@ export default function DashboardPage() {
                   <FileText className="h-10 w-10 text-muted-foreground" />
                 </div>
                 <h3 className="font-serif text-xl font-semibold mb-3">
-                  {searchQuery || statusFilter ? t('emptyNoResults') : t('emptyNoDocs')}
+                  {debouncedSearch || statusFilter ? t('emptyNoResults') : t('emptyNoDocs')}
                 </h3>
                 <p className="text-muted-foreground mb-8 max-w-sm mx-auto leading-relaxed">
-                  {searchQuery || statusFilter ? t('emptyNoResultsDesc') : t('emptyNoDocsDesc')}
+                  {debouncedSearch || statusFilter ? t('emptyNoResultsDesc') : t('emptyNoDocsDesc')}
                 </p>
-                {!searchQuery && !statusFilter && (
+                {!debouncedSearch && !statusFilter && (
                   <Link href="/upload">
                     <Button className="gap-2">
                       <Sparkles className="h-4 w-4" />
@@ -246,14 +362,43 @@ export default function DashboardPage() {
                   href={`/documents/${doc.id}`}
                   className="block animate-slide-up group"
                   style={{ animationDelay: `${index * 75}ms` }}
+                  onClick={(e) => {
+                    if (selectionMode) {
+                      e.preventDefault();
+                      toggleSelect(doc.id);
+                    }
+                  }}
                 >
                   <Card className="hover:shadow-lg transition-all duration-300 cursor-pointer">
                     <CardContent className="p-5">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4 flex-1 min-w-0">
+                          {/* Selection checkbox */}
+                          {selectionMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleSelect(doc.id);
+                              }}
+                              className={`flex-shrink-0 h-6 w-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                                selectedIds.has(doc.id)
+                                  ? 'bg-primary border-primary'
+                                  : 'border-border hover:border-primary'
+                              }`}
+                              aria-label={t('selectBtn')}
+                            >
+                              {selectedIds.has(doc.id) && <Check className="h-4 w-4 text-white" />}
+                            </button>
+                          )}
                           {/* Icon */}
                           <div className="flex-shrink-0">
-                            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                            <div
+                              className={`h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors ${
+                                selectedIds.has(doc.id) ? 'ring-2 ring-primary/40' : ''
+                              }`}
+                            >
                               <FileText className="h-6 w-6 text-primary" />
                             </div>
                           </div>
@@ -292,8 +437,8 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-1 ml-4">
+                        {/* Actions (hidden in selection mode) */}
+                        <div className={`flex items-center gap-1 ml-4 ${selectionMode ? 'hidden' : ''}`}>
                           <span className={`h-2 w-2 rounded-full shrink-0 mr-1 ${
                             doc.status === 'uploaded' ? 'bg-blue-500' :
                             doc.status === 'processing' ? 'bg-yellow-500' :
@@ -363,6 +508,25 @@ export default function DashboardPage() {
             <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteDialog && confirmDelete(deleteDialog)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {tCommon('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk delete confirmation */}
+      <AlertDialog open={bulkDeleteDialog} onOpenChange={setBulkDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('bulkDeleteTitle', { count: selectedIds.size })}</AlertDialogTitle>
+            <AlertDialogDescription>{tCommon('deleteDialogDesc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tCommon('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bulkDeleteMutation.mutate([...selectedIds])}
               className="bg-red-600 hover:bg-red-700"
             >
               {tCommon('delete')}
