@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { Download, ChevronDown } from 'lucide-react';
+import { Download, ChevronDown, Loader2, Lock } from 'lucide-react';
 import { exportApi } from '@/lib/api-client';
 import { Button } from '@/components/ui/Button';
 
@@ -48,12 +48,15 @@ export function ExportMenu({
   status,
   documentId,
   ids,
+  disabled,
 }: {
   variant: 'list' | 'detail';
   status?: string;
   documentId?: string;
   /** When provided (list export), only the selected documents are exported. */
   ids?: string[];
+  /** Disable the whole menu (e.g. detail export for a doc with no invoice data). */
+  disabled?: boolean;
 }) {
   const t = useTranslations('Export');
   const [open, setOpen] = useState(false);
@@ -107,10 +110,10 @@ export function ExportMenu({
         size="sm"
         className="gap-1.5"
         onClick={() => setOpen((o) => !o)}
-        disabled={busy}
-        title={t('button')}
+        disabled={busy || disabled}
+        title={disabled ? t('noInvoiceData') : t('button')}
       >
-        <Download className="h-4 w-4" />
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
         {t('button')}
         <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
       </Button>
@@ -126,10 +129,13 @@ export function ExportMenu({
               className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors ${
                 f.available
                   ? 'text-foreground hover:bg-muted cursor-pointer'
-                  : 'text-muted-foreground cursor-not-allowed'
+                  : 'text-muted-foreground/70 bg-muted/40 cursor-not-allowed'
               }`}
             >
-              <span>{t(f.id)}</span>
+              <span className="flex items-center gap-2">
+                {!f.available && <Lock className="h-3 w-3" />}
+                {t(f.id)}
+              </span>
               {!f.available && (
                 <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
                   {t('soon')}

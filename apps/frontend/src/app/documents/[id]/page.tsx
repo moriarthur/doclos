@@ -221,10 +221,12 @@ export default function DocumentDetailPage() {
   // Gating: show extracted invoice fields whenever the document was successfully parsed
   // AND actually has invoice data — driven by data presence, not the classifier label
   // (a document can be classified "unknown" yet still have extracted invoice fields).
-  // Before parsing, on error, or when there's no invoice data we show nothing, or — for
+  // 'archived' is included so an archived (previously validated) document keeps showing
+  // its data — read-only, since the edit pencil gates below stay limited to pre-archive
+  // statuses. Before parsing, on error, or with no invoice data we show nothing, or — for
   // parsed non-invoice types without invoice data — a classification card instead of
   // empty sections full of dashes.
-  const isParsed = ['parsed', 'needs_validation', 'validated'].includes(document.status);
+  const isParsed = ['parsed', 'needs_validation', 'validated', 'archived'].includes(document.status);
   const showInvoiceSections = isParsed && !!invoiceData;
   const showTypeCard = isParsed && !invoiceData && !!document.type && document.type !== 'invoice';
 
@@ -311,7 +313,11 @@ export default function DocumentDetailPage() {
             </div>
 
             <div className="flex items-center gap-1 md:ml-auto">
-              <ExportMenu variant="detail" documentId={docId} />
+              <ExportMenu
+                variant="detail"
+                documentId={docId}
+                disabled={!showInvoiceSections}
+              />
               <Button
                 variant="ghost"
                 size="sm"

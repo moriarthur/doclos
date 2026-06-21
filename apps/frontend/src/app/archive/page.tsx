@@ -243,7 +243,7 @@ export default function ArchivePage() {
                   </Button>
                   <Button size="sm" variant="ghost" className="gap-1.5" onClick={exitSelection}>
                     <X className="h-4 w-4" />
-                    {t('selectionDone')}
+                    {tCommon('cancel')}
                   </Button>
                 </div>
               </CardContent>
