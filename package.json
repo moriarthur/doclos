@@ -14,8 +14,8 @@
     "format": "turbo run format",
     "test": "turbo run test",
     "clean": "turbo run clean && rm -rf node_modules",
-    "db:migrate": "cd packages/backend && npm run db:migrate",
-    "db:seed": "cd packages/backend && npm run db:seed"
+    "db:migrate": "pnpm --filter @doclos/backend run db:migrate",
+    "db:seed": "pnpm --filter @doclos/backend run db:seed"
   },
   "devDependencies": {
     "dotenv": "^17.4.2",
@@ -25,12 +25,7 @@
   },
   "engines": {
     "node": ">=20.0.0",
-    "pnpm": ">=8.0.0"
+    "pnpm": ">=10.0.0"
   },
-  "packageManager": "pnpm@8.15.0",
-  "pnpm": {
-    "overrides": {
-      "multer": "^2.1.0"
-    }
-  }
+  "packageManager": "pnpm@11.8.0"
 }
