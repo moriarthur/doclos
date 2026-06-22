@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
+import {
+  TransformWrapper,
+  TransformComponent,
+  type ReactZoomPanPinchRef,
+} from 'react-zoom-pan-pinch';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { CancelableLoader } from '@/components/ui/CancelableLoader';
@@ -104,6 +109,15 @@ export function DocumentViewer({
   );
 }
 
+/* ─── Shared zoom/pan controls config ─── */
+const VIEWER_TRANSFORM_PROPS = {
+  minScale: 0.5,
+  maxScale: 6,
+  centerOnInit: true,
+  limitToBounds: true,
+  doubleClick: { mode: 'toggle' as const, step: 0.7 },
+};
+
 /* ─── Image Viewer ─── */
 
 function ImageViewer({
@@ -120,45 +134,65 @@ function ImageViewer({
   onCancelReprocess?: () => void;
 }) {
   const t = useTranslations('DocumentViewer');
-  const [zoom, setZoom] = useState(1);
+  const [scale, setScale] = useState(1);
+  const instanceRef = useRef<ReactZoomPanPinchRef | null>(null);
   const isBlocked = isErrorDoc || reprocessing;
 
   return (
     <div className="relative">
       <div
-        className={`bg-muted rounded-xl overflow-auto max-h-[60vh] md:max-h-[80vh] flex items-center justify-center p-4 ${
+        className={`bg-muted rounded-xl overflow-hidden h-[60vh] md:h-[80vh] flex items-center justify-center p-4 ${
           isBlocked ? 'blur-md pointer-events-none select-none' : ''
         }`}
       >
-        <img
-          src={blobUrl}
-          alt={t('docAlt')}
-          className="max-w-full h-auto rounded shadow-lg transition-transform duration-200"
-          style={
-            !isBlocked ? { transform: `scale(${zoom})`, transformOrigin: 'top center' } : undefined
-          }
-        />
+        <TransformWrapper
+          ref={instanceRef}
+          {...VIEWER_TRANSFORM_PROPS}
+          disabled={isBlocked}
+          onTransform={(_ref, state) => setScale(state.scale)}
+        >
+          <TransformComponent wrapperClass="!cursor-grab active:!cursor-grabbing">
+            <img
+              src={blobUrl}
+              alt={t('docAlt')}
+              className="max-w-full h-auto rounded shadow-lg"
+              draggable={false}
+            />
+          </TransformComponent>
+        </TransformWrapper>
       </div>
 
       {isErrorDoc && !reprocessing && <ErrorOverlay />}
-      {reprocessing && <ProcessingOverlay onCancel={onCancelReprocess} isReprocess={isReprocess} />}
+      {reprocessing && (
+        <ProcessingOverlay onCancel={onCancelReprocess} isReprocess={isReprocess} />
+      )}
 
       {!isBlocked && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-0.5 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-0.5 shadow-md">
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} title={t('zoomOut')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => instanceRef.current?.zoomOut(0.4)}
+            title={t('zoomOut')}
+          >
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground w-8 text-center tabular-nums">
-            {Math.round(zoom * 100)}%
+          <span className="text-xs text-muted-foreground w-9 text-center tabular-nums">
+            {Math.round(scale * 100)}%
           </span>
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} title={t('zoomIn')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => instanceRef.current?.zoomIn(0.4)}
+            title={t('zoomIn')}
+          >
             <ZoomIn className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setZoom(1)}
-            disabled={zoom === 1}
+            onClick={() => instanceRef.current?.resetTransform()}
+            disabled={scale === 1}
             title={t('zoomReset')}
           >
             <Maximize2 className="h-4 w-4" />
@@ -187,10 +221,11 @@ function PdfViewer({
   const t = useTranslations('DocumentViewer');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const instanceRef = useRef<ReactZoomPanPinchRef | null>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
-  const [zoom, setZoom] = useState(1);
+  const [scale, setScale] = useState(1);
   const renderingRef = useRef(false);
   const isBlocked = isErrorDoc || reprocessing;
 
@@ -213,6 +248,9 @@ function PdfViewer({
     };
   }, [blobUrl]);
 
+  // Render the page fit-to-width, crisp via devicePixelRatio. Zoom is handled
+  // by TransformWrapper (CSS transform), so the canvas only re-renders on
+  // page change / container resize — no per-zoom re-render needed.
   const renderPage = useCallback(
     async (pageNum: number) => {
       if (!pdfDoc || !canvasRef.current || !containerRef.current || renderingRef.current) return;
@@ -223,16 +261,14 @@ function PdfViewer({
         const ctx = canvas.getContext('2d')!;
         const containerWidth = containerRef.current.clientWidth - 32; // subtract padding
         const unscaledViewport = page.getViewport({ scale: 1 });
-        // Scale so PDF fills the container width, then apply user zoom
-        const fitScale = (containerWidth / unscaledViewport.width) * zoom;
+        const fitScale = containerWidth / unscaledViewport.width;
         const dpr = window.devicePixelRatio || 1;
-        const renderScale = fitScale * dpr;
         const viewport = page.getViewport({ scale: fitScale });
+        const renderViewport = page.getViewport({ scale: fitScale * dpr });
         canvas.width = Math.round(viewport.width * dpr);
         canvas.height = Math.round(viewport.height * dpr);
         canvas.style.width = `${Math.round(viewport.width)}px`;
         canvas.style.height = `${Math.round(viewport.height)}px`;
-        const renderViewport = page.getViewport({ scale: renderScale });
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
       } catch {
@@ -241,14 +277,17 @@ function PdfViewer({
         renderingRef.current = false;
       }
     },
-    [pdfDoc, zoom]
+    [pdfDoc]
   );
 
+  // Render current page (fit-to-width) and reset pan/zoom to the new page.
   useEffect(() => {
-    if (pdfDoc) renderPage(currentPage);
+    if (!pdfDoc) return;
+    renderPage(currentPage);
+    instanceRef.current?.resetTransform();
   }, [pdfDoc, currentPage, renderPage]);
 
-  // Re-render on container resize to refit
+  // Re-fit on container resize (e.g. window/panel resize).
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -256,7 +295,9 @@ function PdfViewer({
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
-        if (pdfDoc) renderPage(currentPage);
+        if (!pdfDoc) return;
+        renderPage(currentPage);
+        instanceRef.current?.resetTransform();
       });
     });
     observer.observe(container);
@@ -266,56 +307,6 @@ function PdfViewer({
     };
   }, [pdfDoc, currentPage, renderPage]);
 
-  // Trackpad zoom (Ctrl+scroll) and pinch-to-zoom (touch)
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || isBlocked) return;
-
-    const clampZoom = (z: number) => Math.min(3, Math.max(0.5, z));
-
-    const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const delta = -e.deltaY * 0.01;
-      setZoom((z) => clampZoom(z + delta));
-    };
-
-    let lastDist = 0;
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        lastDist = Math.hypot(dx, dy);
-      }
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length !== 2) return;
-      e.preventDefault();
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const dist = Math.hypot(dx, dy);
-      if (lastDist > 0) {
-        const scale = dist / lastDist;
-        setZoom((z) => clampZoom(z * scale));
-      }
-      lastDist = dist;
-    };
-    const onTouchEnd = () => {
-      lastDist = 0;
-    };
-
-    container.addEventListener('wheel', onWheel, { passive: false });
-    container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: false });
-    container.addEventListener('touchend', onTouchEnd, { passive: true });
-    return () => {
-      container.removeEventListener('wheel', onWheel);
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onTouchEnd);
-    };
-  }, [isBlocked]);
-
   const goTo = (page: number) => {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
@@ -324,19 +315,30 @@ function PdfViewer({
     <div className="relative">
       <div
         ref={containerRef}
-        className={`bg-muted rounded-xl overflow-auto h-[60vh] md:h-[75vh] min-h-0 p-4 ${
+        className={`bg-muted rounded-xl overflow-hidden h-[60vh] md:h-[75vh] min-h-0 p-4 flex items-center justify-center ${
           isBlocked ? 'blur-md pointer-events-none select-none' : ''
         }`}
       >
-        <canvas
-          ref={canvasRef}
-          className="shadow-lg rounded bg-white mx-auto"
-          style={{ display: 'block' }}
-        />
+        <TransformWrapper
+          ref={instanceRef}
+          {...VIEWER_TRANSFORM_PROPS}
+          disabled={isBlocked}
+          onTransform={(_ref, state) => setScale(state.scale)}
+        >
+          <TransformComponent wrapperClass="!cursor-grab active:!cursor-grabbing">
+            <canvas
+              ref={canvasRef}
+              className="shadow-lg rounded bg-white mx-auto"
+              style={{ display: 'block' }}
+            />
+          </TransformComponent>
+        </TransformWrapper>
       </div>
 
       {isErrorDoc && !reprocessing && <ErrorOverlay />}
-      {reprocessing && <ProcessingOverlay onCancel={onCancelReprocess} isReprocess={isReprocess} />}
+      {reprocessing && (
+        <ProcessingOverlay onCancel={onCancelReprocess} isReprocess={isReprocess} />
+      )}
 
       {!isBlocked && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-0.5 max-w-[calc(100vw-1.5rem)] bg-background/80 backdrop-blur rounded-lg p-0.5 shadow-md">
@@ -362,20 +364,30 @@ function PdfViewer({
             <ChevronRight className="h-4 w-4" />
           </Button>
           <div className="w-px h-5 bg-border mx-0.5" />
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))} title={t('zoomOut')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => instanceRef.current?.zoomOut(0.4)}
+            title={t('zoomOut')}
+          >
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground w-8 text-center tabular-nums">
-            {Math.round(zoom * 100)}%
+          <span className="text-xs text-muted-foreground w-9 text-center tabular-nums">
+            {Math.round(scale * 100)}%
           </span>
-          <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(3, z + 0.25))} title={t('zoomIn')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => instanceRef.current?.zoomIn(0.4)}
+            title={t('zoomIn')}
+          >
             <ZoomIn className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setZoom(1)}
-            disabled={zoom === 1}
+            onClick={() => instanceRef.current?.resetTransform()}
+            disabled={scale === 1}
             title={t('zoomReset')}
           >
             <Maximize2 className="h-4 w-4" />
@@ -420,9 +432,7 @@ function ErrorOverlay() {
       <div className="text-center p-8 bg-background/70 backdrop-blur-sm rounded-2xl">
         <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
         <p className="font-medium text-foreground mb-2">{t('errorTitle')}</p>
-        <p className="text-sm text-muted-foreground">
-          {t('errorDesc')}
-        </p>
+        <p className="text-sm text-muted-foreground">{t('errorDesc')}</p>
       </div>
     </div>
   );
