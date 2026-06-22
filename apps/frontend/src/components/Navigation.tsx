@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { authApi } from '@/lib/api-client';
+import { useTheme } from 'next-themes';
 import { LocaleSwitcher } from './LocaleSwitcher';
 
 const navItems = [
@@ -29,22 +30,17 @@ export function Navigation() {
   const t = useTranslations('Nav');
   const tCommon = useTranslations('Common');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isDark, setIsDark] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
+  // Avoid hydration mismatch: render the light-mode affordance until mounted,
+  // then reflect the resolved theme.
+  const isDark = mounted && resolvedTheme === 'dark';
 
   useEffect(() => {
-    const stored = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const initialTheme = stored || (prefersDark ? 'dark' : 'light');
-    setIsDark(initialTheme === 'dark');
-    document.documentElement.classList.toggle('dark', initialTheme === 'dark');
+    setMounted(true);
   }, []);
 
-  const toggleTheme = () => {
-    const newTheme = isDark ? 'light' : 'dark';
-    setIsDark(!isDark);
-    localStorage.setItem('theme', newTheme);
-    document.documentElement.classList.toggle('dark', !isDark);
-  };
+  const toggleTheme = () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
 
   const handleLogout = () => {
     authApi.logout();

@@ -16,7 +16,7 @@
   },
   "Nav": {
     "documents": "Dokumente",
-    "upload": "Upload",
+    "upload": "Hochladen",
     "archive": "Archiv",
     "lightMode": "Heller Modus",
     "darkMode": "Dunkler Modus",
@@ -97,7 +97,7 @@
   },
   "Upload": {
     "breadcrumbDocs": "Dokumente",
-    "breadcrumbUpload": "Upload",
+    "breadcrumbUpload": "Hochladen",
     "title": "Dokument hochladen",
     "subtitle": "Laden Sie Rechnungen, Verträge oder Angebote zur KI-gestützten Verarbeitung hoch",
     "dropHint": "Dateien hierher ziehen",

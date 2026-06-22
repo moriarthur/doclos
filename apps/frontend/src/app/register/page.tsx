@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { authApi, type RegisterData } from '@/lib/api-client';
@@ -23,6 +23,13 @@ export default function RegisterPage() {
   const [apiError, setApiError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent native form submission (and credential leakage into the URL) before
+  // client hydration attaches the React onSubmit handler.
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const {
     register,
@@ -187,7 +194,7 @@ export default function RegisterPage() {
                 type="submit"
                 className="w-full py-3"
                 isLoading={isSubmitting || registerMutation.isPending}
-                disabled={!!errors.confirmPassword && password !== confirmPassword}
+                disabled={!mounted || (!!errors.confirmPassword && password !== confirmPassword)}
               >
                 {isSubmitting || registerMutation.isPending ? t('submitting') : t('submit')}
               </Button>

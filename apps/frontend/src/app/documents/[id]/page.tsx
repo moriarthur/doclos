@@ -199,7 +199,7 @@ export default function DocumentDetailPage() {
     return (
       <div className="flex">
         <Navigation />
-        <main className="flex-1 md:ml-64 min-h-screen p-10">
+        <main className="flex-1 md:ml-64 min-h-screen min-w-0 overflow-x-hidden p-10">
           <Card>
             <CardContent className="p-16 text-center">
               <FileText className="h-16 w-16 mx-auto mb-6 text-muted-foreground" />
@@ -280,13 +280,13 @@ export default function DocumentDetailPage() {
       <Navigation />
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 min-h-screen min-w-0">
+      <main className="flex-1 md:ml-64 min-h-screen min-w-0 overflow-x-clip">
         {/* Mobile header spacer */}
         <div className="h-16 md:hidden" />
 
         <div className="p-6 md:p-10">
           {/* Header */}
-          <div className="flex flex-col gap-4 mb-8 md:flex-row md:items-center animate-fade-in">
+          <div className="flex flex-col gap-4 mb-8 lg:flex-row lg:items-center animate-fade-in">
             <div className="flex items-center gap-4 min-w-0 flex-1">
               <Link href="/" className="shrink-0">
                 <Button variant="ghost" size="sm">
@@ -299,8 +299,8 @@ export default function DocumentDetailPage() {
                 <p className="text-sm text-muted-foreground uppercase tracking-wide mb-2">
                   {t('eyebrow')}
                 </p>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h1 className="font-serif text-3xl font-bold text-brand">
+                <div className="flex items-center gap-3 flex-wrap min-w-0">
+                  <h1 className="font-serif text-3xl font-bold text-brand truncate min-w-0">
                     {invoiceData
                       ? getFieldValue('supplier_name', invoiceData?.supplier_name) || tCommon('docPlaceholder')
                       : tDocType(document.type) || document.original_filename || tCommon('docPlaceholder')}
@@ -312,7 +312,7 @@ export default function DocumentDetailPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1 md:ml-auto">
+            <div className="flex items-center gap-1 lg:ml-auto shrink-0">
               <ExportMenu
                 variant="detail"
                 documentId={docId}
