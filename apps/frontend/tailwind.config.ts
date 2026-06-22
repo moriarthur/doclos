@@ -10,44 +10,22 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Anthropic-inspired warm, earthy palette
-        background: {
-          DEFAULT: '#FAF9F7', // Warm cream
-          dark: '#1A1915',
-        },
-        foreground: {
-          DEFAULT: '#1C1917', // Warm charcoal
-          dark: '#FAF9F7',
-        },
-        card: {
-          DEFAULT: '#FFFFFF',
-          dark: '#24231E',
-        },
-        cardForeground: {
-          DEFAULT: '#1C1917',
-          dark: '#FAF9F7',
-        },
-        primary: {
-          DEFAULT: '#D9775F', // Terracotta/coral
-          light: '#E8A490',
-          dark: '#B8563E',
-        },
-        brand: {
-          DEFAULT: '#884F40', // Warm brown
-        },
-        accent: {
-          DEFAULT: '#C4A77D', // Warm beige/gold
-          light: '#D4BFA0',
-          dark: '#A48D5D',
-        },
+        // Anthropic-inspired warm, earthy palette.
+        // Values live as CSS variables in globals.css (:root + .dark) so all
+        // utilities switch automatically with the `dark` class (next-themes).
+        // RGB triplets + <alpha-value> keep opacity modifiers (bg-card/50, etc.).
+        background: 'rgb(var(--background) / <alpha-value>)',
+        foreground: 'rgb(var(--foreground) / <alpha-value>)',
+        card: 'rgb(var(--card) / <alpha-value>)',
         muted: {
-          DEFAULT: '#E8E4DD',
-          dark: '#2D2B26',
+          DEFAULT: 'rgb(var(--muted) / <alpha-value>)',
+          foreground: 'rgb(var(--muted-foreground) / <alpha-value>)',
         },
-        border: {
-          DEFAULT: '#E5E2DA',
-          dark: '#3A3832',
-        },
+        primary: 'rgb(var(--primary) / <alpha-value>)',
+        brand: 'rgb(var(--brand) / <alpha-value>)',
+        accent: 'rgb(var(--accent) / <alpha-value>)',
+        border: 'rgb(var(--border) / <alpha-value>)',
+        ring: 'rgb(var(--ring) / <alpha-value>)',
       },
       fontFamily: {
         // Elegant serif for headings, clean sans for body - Anthropic style

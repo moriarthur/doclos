@@ -16,7 +16,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   const baseStyles = 'inline-flex items-center justify-center rounded-lg font-medium transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none';
 
   const variants = {
-    primary: 'bg-[#D9775F] text-white hover:bg-[#B8563E] focus:ring-[#D9775F]/50 shadow-sm',
+    primary: 'bg-primary text-white hover:bg-primary/90 focus:ring-primary/50 shadow-sm',
     secondary: 'bg-white dark:bg-card text-foreground hover:bg-gray-50 dark:hover:bg-gray-800 border border-border focus:ring-border/50',
     ghost: 'text-foreground hover:bg-muted transition-colors',
     danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500/50 shadow-sm',

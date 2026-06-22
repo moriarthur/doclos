@@ -13,7 +13,7 @@ export default function NotFound() {
       <Navigation />
       <main className="flex-1 md:ml-64 min-h-screen flex items-center justify-center">
         <div className="text-center px-6">
-          <FileQuestion className="h-20 w-20 mx-auto mb-6" style={{ color: 'rgb(136, 79, 64)' }} />
+          <FileQuestion className="h-20 w-20 mx-auto mb-6 text-brand" />
           <h1 className="font-serif text-5xl font-bold text-brand mb-3">404</h1>
           <p className="text-lg text-muted-foreground mb-8">
             {t('desc')}

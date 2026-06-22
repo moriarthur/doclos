@@ -187,13 +187,13 @@ export default function DashboardPage() {
       <Navigation />
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 min-h-screen min-w-0">
+      <main className="flex-1 md:ml-64 min-h-screen min-w-0 overflow-x-hidden">
         {/* Mobile header spacer */}
         <div className="h-16 md:hidden" />
 
         <div className="p-6 md:p-10 max-w-7xl mx-auto">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6 mb-10 animate-fade-in">
+          <div className="flex flex-col sm:flex-row flex-wrap sm:items-end sm:justify-between gap-6 mb-10 animate-fade-in">
             <div>
               <p className="text-sm text-muted-foreground uppercase tracking-wide mb-2">
                 {t('eyebrow')}
@@ -405,7 +405,7 @@ export default function DashboardPage() {
 
                           {/* Document Info */}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2.5 mb-2">
+                            <div className="flex items-center gap-2.5 mb-2 min-w-0">
                               <span className="font-serif font-medium text-foreground truncate">
                                 {doc.company_name || tCommon('unknownSupplier')}
                               </span>
@@ -438,7 +438,7 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Actions (hidden in selection mode) */}
-                        <div className={`flex items-center gap-1 ml-4 ${selectionMode ? 'hidden' : ''}`}>
+                        <div className={`flex items-center gap-1 ml-4 shrink-0 ${selectionMode ? 'hidden' : ''}`}>
                           <span className={`h-2 w-2 rounded-full shrink-0 mr-1 ${
                             doc.status === 'uploaded' ? 'bg-blue-500' :
                             doc.status === 'processing' ? 'bg-yellow-500' :

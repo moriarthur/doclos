@@ -2,8 +2,9 @@ import type { Metadata } from 'next';
 import { Source_Serif_4, Inter } from 'next/font/google';
 import './globals.css';
 import { QueryProvider } from '@/lib/react-query-provider';
+import { ThemeProvider } from '@/lib/theme-provider';
 import { NextIntlClientProvider } from 'next-intl';
-import { getLocale } from 'next-intl/server';
+import { getLocale, getMessages } from 'next-intl/server';
 
 const sourceSerif = Source_Serif_4({
   subsets: ['latin'],
@@ -30,17 +31,20 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getLocale();
+  const messages = await getMessages();
   return (
     <html lang={locale} suppressHydrationWarning>
       <body
         className={`${sourceSerif.variable} ${inter.variable} font-sans antialiased`}
       >
-        <NextIntlClientProvider>
-          <QueryProvider>
-            <div className="min-h-screen bg-background">
-              {children}
-            </div>
-          </QueryProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <ThemeProvider>
+            <QueryProvider>
+              <div className="min-h-screen bg-background">
+                {children}
+              </div>
+            </QueryProvider>
+          </ThemeProvider>
         </NextIntlClientProvider>
       </body>
     </html>
