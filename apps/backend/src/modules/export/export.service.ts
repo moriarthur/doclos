@@ -4,7 +4,9 @@ import { Repository, In } from 'typeorm';
 import ExcelJS from 'exceljs';
 import { Invoice } from '../documents/entities/invoice.entity';
 import { InvoiceItem } from '../documents/entities/invoice-item.entity';
+import { DocumentStatus } from '../documents/entities/document.entity';
 import { ExportQueryDto } from './dto/export-query.dto';
+import { ExportI18n, ExportLocale, getExportI18n, resolveExportLocale } from './export.i18n';
 
 // Part 6: Excel Export System
 // Builds polished .xlsx workbooks from a user's extracted invoice data and
@@ -12,7 +14,9 @@ import { ExportQueryDto } from './dto/export-query.dto';
 //   - generateExcel:        a flat list of all invoices (+ Invoice_Items sheet)
 //   - generateDetailExcel:  a one-document report (Document Details page)
 // Styling mirrors the app's warm palette (tailwind.config.ts). `excel` is the
-// only implemented format today; csv/json are reserved.
+// only implemented format today; csv/json are reserved. All labels, sheet names,
+// status values and number/date formats localize to the requested UI locale
+// (`?lang=`, 'de' fallback) via getExportI18n().
 
 const SUPPORTED_FORMATS = ['excel'] as const;
 export type ExportFormat = (typeof SUPPORTED_FORMATS)[number];
@@ -26,8 +30,6 @@ const COLOR = {
   white: 'FFFFFFFF',
   border: 'FFE5E2DA',
 } as const;
-
-const MONEY_FMT = '#,##0.00';
 
 @Injectable()
 export class ExportService {
@@ -46,7 +48,10 @@ export class ExportService {
     query: ExportQueryDto,
     _format: ExportFormat,
     ids?: string[],
+    lang?: string,
   ): Promise<Buffer> {
+    const t = getExportI18n(lang);
+
     const qb = this.invoicesRepository
       .createQueryBuilder('invoice')
       .leftJoinAndSelect('invoice.document', 'document')
@@ -60,7 +65,7 @@ export class ExportService {
     if (query.company) qb.andWhere('invoice.supplier_name ILIKE :company', { company: `%${query.company}%` });
 
     const invoices = await qb.orderBy('invoice.invoice_date', 'DESC').getMany();
-    this.logger.log(`Exporting ${invoices.length} invoice(s) for user ${userId}`);
+    this.logger.log(`Exporting ${invoices.length} invoice(s) for user ${userId} (lang=${resolveExportLocale(lang)})`);
 
     const itemsByInvoice = new Map<string, InvoiceItem[]>();
     if (invoices.length > 0) {
@@ -79,24 +84,24 @@ export class ExportService {
     workbook.created = new Date();
 
     // --- Sheet 1: Invoices ---
-    const invoicesSheet = workbook.addWorksheet('Invoices');
+    const invoicesSheet = workbook.addWorksheet(t.strings.sheetInvoices);
     const cols = [
-      { header: 'Invoice Number', key: 'invoice_number', width: 22 },
-      { header: 'Supplier', key: 'supplier_name', width: 30 },
-      { header: 'Invoice Date', key: 'invoice_date', width: 14 },
-      { header: 'Due Date', key: 'due_date', width: 14 },
-      { header: 'Amount Total', key: 'amount_total', width: 15 },
-      { header: 'VAT Amount', key: 'vat_amount', width: 13 },
-      { header: 'Currency', key: 'currency', width: 10 },
-      { header: 'Items', key: 'items_count', width: 9 },
-      { header: 'Status', key: 'status', width: 16 },
+      { header: t.strings.invoiceNumber, key: 'invoice_number', width: 22 },
+      { header: t.strings.supplier, key: 'supplier_name', width: 30 },
+      { header: t.strings.invoiceDate, key: 'invoice_date', width: 14 },
+      { header: t.strings.dueDate, key: 'due_date', width: 14 },
+      { header: t.strings.amountTotal, key: 'amount_total', width: 15 },
+      { header: t.strings.vatAmount, key: 'vat_amount', width: 13 },
+      { header: t.strings.currency, key: 'currency', width: 10 },
+      { header: t.strings.items, key: 'items_count', width: 9 },
+      { header: t.strings.status, key: 'status', width: 16 },
     ];
     invoicesSheet.columns = cols;
     const colCount = cols.length;
 
     // Title bar
     invoicesSheet.mergeCells(1, 1, 1, colCount);
-    this.styleTitle(invoicesSheet.getCell(1, 1), 'Doclos — Invoices');
+    this.styleTitle(invoicesSheet.getCell(1, 1), t.strings.titleInvoices);
     invoicesSheet.getRow(1).height = 26;
 
     // Header row
@@ -109,18 +114,19 @@ export class ExportService {
 
     // Data rows
     const moneyKeys = new Set(['amount_total', 'vat_amount']);
+    const dateKeys = new Set(['invoice_date', 'due_date']);
     const rightKeys = new Set(['amount_total', 'vat_amount', 'items_count']);
     invoices.forEach((inv, idx) => {
       const row = invoicesSheet.addRow({
         invoice_number: inv.invoice_number,
         supplier_name: inv.supplier_name,
-        invoice_date: inv.invoice_date ? this.fmtDate(inv.invoice_date) : '',
-        due_date: inv.due_date ? this.fmtDate(inv.due_date) : '',
-        amount_total: inv.amount_total,
-        vat_amount: inv.vat_amount,
+        invoice_date: this.toExcelDate(inv.invoice_date),
+        due_date: this.toExcelDate(inv.due_date),
+        amount_total: inv.amount_total != null ? Number(inv.amount_total) : null,
+        vat_amount: inv.vat_amount != null ? Number(inv.vat_amount) : null,
         currency: inv.currency,
         items_count: itemsByInvoice.get(inv.id)?.length ?? 0,
-        status: inv.document?.status,
+        status: this.translateStatus(inv.document?.status, t),
       });
       const zebra = idx % 2 === 1;
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
@@ -128,6 +134,9 @@ export class ExportService {
         this.styleData(cell, {
           zebra,
           money: moneyKeys.has(key),
+          date: dateKeys.has(key),
+          moneyFmt: t.numFmt.money,
+          dateFmt: t.numFmt.date,
           align: rightKeys.has(key) ? 'right' : key === 'currency' ? 'center' : 'left',
         });
       });
@@ -137,18 +146,18 @@ export class ExportService {
     invoicesSheet.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: colCount } };
 
     // --- Sheet 2: Invoice_Items ---
-    const itemsSheet = workbook.addWorksheet('Invoice_Items');
+    const itemsSheet = workbook.addWorksheet(t.strings.sheetInvoiceItems);
     const itemCols = [
-      { header: 'Invoice Number', key: 'invoice_number', width: 22 },
-      { header: 'Description', key: 'description', width: 42 },
-      { header: 'Quantity', key: 'quantity', width: 10 },
-      { header: 'Unit Price', key: 'unit_price', width: 13 },
-      { header: 'Line Total', key: 'line_total', width: 13 },
+      { header: t.strings.invoiceNumber, key: 'invoice_number', width: 22 },
+      { header: t.strings.description, key: 'description', width: 42 },
+      { header: t.strings.quantity, key: 'quantity', width: 10 },
+      { header: t.strings.unitPrice, key: 'unit_price', width: 13 },
+      { header: t.strings.lineTotal, key: 'line_total', width: 13 },
     ];
     itemsSheet.columns = itemCols;
 
     itemsSheet.mergeCells(1, 1, 1, itemCols.length);
-    this.styleTitle(itemsSheet.getCell(1, 1), 'Doclos — Invoice Items');
+    this.styleTitle(itemsSheet.getCell(1, 1), t.strings.titleInvoiceItems);
     itemsSheet.getRow(1).height = 26;
     itemCols.forEach((c, i) => {
       const cell = itemsSheet.getCell(2, i + 1);
@@ -165,9 +174,9 @@ export class ExportService {
         const row = itemsSheet.addRow({
           invoice_number: inv.invoice_number,
           description: item.description,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          line_total: item.line_total,
+          quantity: item.quantity != null ? Number(item.quantity) : null,
+          unit_price: item.unit_price != null ? Number(item.unit_price) : null,
+          line_total: item.line_total != null ? Number(item.line_total) : null,
         });
         const zebra = itemIdx % 2 === 1;
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
@@ -175,6 +184,7 @@ export class ExportService {
           this.styleData(cell, {
             zebra,
             money: itemMoney.has(key),
+            moneyFmt: t.numFmt.money,
             align: itemRight.has(key) ? 'right' : 'left',
           });
         });
@@ -187,7 +197,15 @@ export class ExportService {
   }
 
   /** Detail export — a single document's invoice report (Document Details page). */
-  async generateDetailExcel(userId: string, documentId: string, _format: ExportFormat): Promise<Buffer> {
+  async generateDetailExcel(
+    userId: string,
+    documentId: string,
+    _format: ExportFormat,
+    lang?: string,
+  ): Promise<Buffer> {
+    const t = getExportI18n(lang);
+    const locale = resolveExportLocale(lang);
+
     const invoice = await this.invoicesRepository
       .createQueryBuilder('invoice')
       .leftJoinAndSelect('invoice.document', 'document')
@@ -208,14 +226,14 @@ export class ExportService {
     workbook.creator = 'Doclos';
     workbook.created = new Date();
 
-    const ws = workbook.addWorksheet('Invoice');
+    const ws = workbook.addWorksheet(t.strings.sheetInvoice);
     ws.columns = [{ width: 28 }, { width: 26 }, { width: 16 }, { width: 16 }, { width: 12 }];
 
     const cur = invoice.currency || '';
 
     // Title bar
     ws.mergeCells('A1:E1');
-    this.styleTitle(ws.getCell('A1'), invoice.invoice_number ? `Invoice ${invoice.invoice_number}` : 'Invoice', 16);
+    this.styleTitle(ws.getCell('A1'), invoice.invoice_number ? `${t.strings.invoice} ${invoice.invoice_number}` : t.strings.invoice, 16);
     ws.getRow(1).height = 32;
 
     // Meta block — label/value pairs in two columns, beige labels.
@@ -231,14 +249,14 @@ export class ExportService {
         ws.getCell(`C${row}`).border = this.allBorders();
       }
     };
-    meta(3, 'Invoice Number', invoice.invoice_number || '-', 'Status', invoice.document?.status || '-');
-    meta(4, 'Supplier', invoice.supplier_name || '-', 'Currency', cur || '-');
+    meta(3, t.strings.invoiceNumber, invoice.invoice_number || '-', t.strings.status, this.translateStatus(invoice.document?.status, t) || '-');
+    meta(4, t.strings.supplier, invoice.supplier_name || '-', t.strings.currency, cur || '-');
     meta(
       5,
-      'Invoice Date',
-      invoice.invoice_date ? this.fmtDate(invoice.invoice_date) : '-',
-      'Due Date',
-      invoice.due_date ? this.fmtDate(invoice.due_date) : '-',
+      t.strings.invoiceDate,
+      invoice.invoice_date ? this.formatLocaleDate(invoice.invoice_date, locale) : '-',
+      t.strings.dueDate,
+      invoice.due_date ? this.formatLocaleDate(invoice.due_date, locale) : '-',
     );
     ws.mergeCells('A6:E6');
     const addr = ws.getCell('A6');
@@ -247,7 +265,7 @@ export class ExportService {
 
     // Items header
     const headerRow = 8;
-    ['Description', 'Quantity', 'Unit Price', 'Line Total'].forEach((h, i) => {
+    [t.strings.description, t.strings.quantity, t.strings.unitPrice, t.strings.lineTotal].forEach((h, i) => {
       const cell = ws.getCell(headerRow, i + 1);
       cell.value = h;
       this.styleHeader(cell);
@@ -259,20 +277,20 @@ export class ExportService {
     let itemsTotal = 0;
     items.forEach((item, idx) => {
       ws.getCell(`A${row}`).value = item.description || '';
-      ws.getCell(`B${row}`).value = item.quantity ?? '';
-      ws.getCell(`C${row}`).value = item.unit_price ?? '';
-      ws.getCell(`D${row}`).value = item.line_total ?? '';
+      ws.getCell(`B${row}`).value = item.quantity != null ? Number(item.quantity) : '';
+      ws.getCell(`C${row}`).value = item.unit_price != null ? Number(item.unit_price) : '';
+      ws.getCell(`D${row}`).value = item.line_total != null ? Number(item.line_total) : '';
       const zebra = idx % 2 === 1;
       this.styleData(ws.getCell(`A${row}`), { zebra });
       this.styleData(ws.getCell(`B${row}`), { zebra, align: 'right' });
-      this.styleData(ws.getCell(`C${row}`), { zebra, money: true, align: 'right' });
-      this.styleData(ws.getCell(`D${row}`), { zebra, money: true, align: 'right' });
+      this.styleData(ws.getCell(`C${row}`), { zebra, money: true, moneyFmt: t.numFmt.money, align: 'right' });
+      this.styleData(ws.getCell(`D${row}`), { zebra, money: true, moneyFmt: t.numFmt.money, align: 'right' });
       if (item.line_total != null) itemsTotal += Number(item.line_total);
       row++;
     });
     if (items.length === 0) {
       ws.mergeCells(`A${row}:D${row}`);
-      ws.getCell(`A${row}`).value = 'No line items';
+      ws.getCell(`A${row}`).value = t.strings.noLineItems;
       this.styleValue(ws.getCell(`A${row}`), ws.getCell(`A${row}`).value);
       row++;
     }
@@ -288,7 +306,7 @@ export class ExportService {
       l.border = this.allBorders();
       const v = ws.getCell(`D${row}`);
       v.value = value ?? 0;
-      v.numFmt = MONEY_FMT;
+      v.numFmt = t.numFmt.money;
       v.alignment = { horizontal: 'right', vertical: 'middle' };
       v.font = { bold, color: { argb: COLOR.brand } };
       v.fill = solidFill(COLOR.accentLight);
@@ -297,9 +315,9 @@ export class ExportService {
       ws.getCell(`E${row}`).border = this.allBorders();
       row++;
     };
-    totalRow('Items Total', itemsTotal);
-    if (invoice.vat_amount != null) totalRow('VAT', Number(invoice.vat_amount));
-    totalRow('Amount Total', invoice.amount_total != null ? Number(invoice.amount_total) : 0, true);
+    totalRow(t.strings.totalsItemsTotal, itemsTotal);
+    if (invoice.vat_amount != null) totalRow(t.strings.totalsVat, Number(invoice.vat_amount));
+    totalRow(t.strings.totalsAmountTotal, invoice.amount_total != null ? Number(invoice.amount_total) : 0, true);
     if (cur) {
       ws.getCell(`E${row - 1}`).value = cur;
       ws.getCell(`E${row - 1}`).alignment = { horizontal: 'center', vertical: 'middle' };
@@ -307,6 +325,51 @@ export class ExportService {
     }
 
     return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  // --- i18n / formatting helpers ---
+
+  private translateStatus(status: string | null | undefined, t: ExportI18n): string {
+    if (!status) return '';
+    return t.status[status as DocumentStatus] ?? status;
+  }
+
+  /**
+   * Parse a DB date (Date | ISO string | 'YYYY-MM-DD') into its calendar
+   * components — timezone-neutral, so the day is never shifted by the host TZ.
+   */
+  private parsePlainDate(v: Date | string | null | undefined): { y: number; m: number; d: number } | null {
+    if (!v) return null;
+    if (v instanceof Date) {
+      return Number.isNaN(v.getTime()) ? null : { y: v.getFullYear(), m: v.getMonth() + 1, d: v.getDate() };
+    }
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+    if (m) return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? null : { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
+  }
+
+  /**
+   * Excel date serial for a DB date, computed as an INTEGER via Date.UTC so
+   * ExcelJS stores a whole day (no time fraction) and never shifts the day due
+   * to the host timezone (a known ExcelJS quirk when a JS Date is assigned
+   * directly). Returns null for empty/invalid input (empty cell).
+   */
+  private toExcelDate(v: Date | string | null | undefined): number | null {
+    const d = this.parsePlainDate(v);
+    if (!d) return null;
+    const ms = Date.UTC(d.y, d.m - 1, d.d) - Date.UTC(1899, 11, 30);
+    return Math.floor(ms / 86_400_000);
+  }
+
+  /** Locale-formatted date string for the detail report's single meta cells. */
+  private formatLocaleDate(v: Date | string | null | undefined, locale: ExportLocale): string {
+    const d = this.parsePlainDate(v);
+    if (!d) return '-';
+    const yyyy = d.y;
+    const mm = String(d.m).padStart(2, '0');
+    const dd = String(d.d).padStart(2, '0');
+    return locale === 'en' ? `${yyyy}-${mm}-${dd}` : `${dd}.${mm}.${yyyy}`;
   }
 
   // --- Styling helpers ---
@@ -327,13 +390,21 @@ export class ExportService {
 
   private styleData(
     cell: ExcelJS.Cell,
-    opts: { zebra?: boolean; money?: boolean; align?: 'left' | 'right' | 'center' } = {},
+    opts: {
+      zebra?: boolean;
+      money?: boolean;
+      date?: boolean;
+      moneyFmt?: string;
+      dateFmt?: string;
+      align?: 'left' | 'right' | 'center';
+    } = {},
   ) {
     const align = opts.align ?? 'left';
     cell.border = this.allBorders();
     if (opts.zebra) cell.fill = solidFill(COLOR.cream);
     cell.alignment = { vertical: 'middle', horizontal: align, indent: align === 'left' ? 1 : 0 };
-    if (opts.money) cell.numFmt = MONEY_FMT;
+    if (opts.money && opts.moneyFmt) cell.numFmt = opts.moneyFmt;
+    else if (opts.date && opts.dateFmt) cell.numFmt = opts.dateFmt;
   }
 
   private styleLabel(cell: ExcelJS.Cell, value: ExcelJS.CellValue) {
@@ -353,11 +424,6 @@ export class ExportService {
   private allBorders() {
     const t = { style: 'thin' as const, color: { argb: COLOR.border } };
     return { top: t, left: t, bottom: t, right: t };
-  }
-
-  private fmtDate(d: Date | string): string {
-    const date = d instanceof Date ? d : new Date(d);
-    return date.toISOString().slice(0, 10);
   }
 }
 
