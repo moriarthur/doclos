@@ -38,7 +38,7 @@ export class ExportController {
   ) {
     const fmt = this.resolveFormat(format);
     const ids = query.ids ? query.ids.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
-    const buffer = await this.exportService.generateExcel(user.id, query, fmt, ids);
+    const buffer = await this.exportService.generateExcel(user.id, query, fmt, ids, query.lang);
     this.sendWorkbook(res, buffer, 'doclos-invoices.xlsx');
   }
 
@@ -48,10 +48,11 @@ export class ExportController {
     @CurrentUser() user: User,
     @Param('id') id: string,
     @Param('format') format: string,
+    @Query('lang') lang: string | undefined,
     @Res() res: Response,
   ) {
     const fmt = this.resolveFormat(format);
-    const buffer = await this.exportService.generateDetailExcel(user.id, id, fmt);
+    const buffer = await this.exportService.generateDetailExcel(user.id, id, fmt, lang);
     this.sendWorkbook(res, buffer, 'doclos-invoice.xlsx');
   }
 

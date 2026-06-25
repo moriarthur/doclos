@@ -376,6 +376,7 @@ export const exportApi = {
         from_date: params.from_date || undefined,
         to_date: params.to_date || undefined,
         ids: params.ids && params.ids.length > 0 ? params.ids.join(',') : undefined,
+        lang: getLocale(),
       },
       responseType: 'blob',
     });
@@ -386,7 +387,7 @@ export const exportApi = {
   detail: async (documentId: string, format: string): Promise<Blob> => {
     const response = await apiClient.get(
       `/export/document/${documentId}/${encodeURIComponent(format)}`,
-      { responseType: 'blob' },
+      { params: { lang: getLocale() }, responseType: 'blob' },
     );
     return response.data;
   },
