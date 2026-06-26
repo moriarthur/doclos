@@ -92,6 +92,16 @@ export default function DashboardPage() {
       last.pagination.page * last.pagination.limit < last.pagination.total
         ? last.pagination.page + 1
         : undefined,
+    // Poll while any visible document is still queued/processing so the
+    // status dot (animated for uploaded/processing) reflects completion live.
+    refetchInterval: (query) => {
+      const docs = query.state.data?.pages.flatMap((p) => p.data) ?? [];
+      return docs.some(
+        (d) => d.status === 'uploaded' || d.status === 'processing',
+      )
+        ? 2000
+        : false;
+    },
   });
 
   const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
@@ -448,7 +458,7 @@ export default function DashboardPage() {
                             doc.status === 'error' ? 'bg-red-400' :
                             doc.status === 'archived' ? 'bg-gray-400' :
                             'bg-gray-400'
-                          }`} role="img" aria-label={tStatus(doc.status)} title={tStatus(doc.status)} />
+                          } ${(doc.status === 'uploaded' || doc.status === 'processing') ? 'animate-slow-blink' : ''}`} role="img" aria-label={tStatus(doc.status)} title={tStatus(doc.status)} />
                           <Button
                             size="sm"
                             variant="ghost"
