@@ -33,9 +33,114 @@ export interface ExtractionWithConfidence {
   confidence: {
     overall: number;
     fields: Record<string, number>;
+    /** Human-readable concerns the model flagged (e.g. anomalous date). */
+    issues: string[];
   };
   cost: number;
 }
+
+// Part 3: Line-item cleanup — drop summary rows, table headers, hallucinated
+// no-data rows, and exact duplicates that GLM over-extracts from German/EU invoices.
+
+/** A raw item as the LLM may return it (numbers may arrive as German-formatted strings). */
+interface RawItem {
+  description?: string | null;
+  quantity?: number | string | null;
+  unit_price?: number | string | null;
+  line_total?: number | string | null;
+}
+
+/** A cleaned item with coerced numeric fields. */
+interface CleanedItem {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+}
+
+/**
+ * Parse a German/EU formatted number into a number.
+ * Handles "1.234,56" -> 1234.56, "1,234.56" -> 1234.56, "1200,50" -> 1200.5,
+ * "1.200" -> 1200 (grouped thousands), and strips currency symbols / spaces.
+ * Returns null when there is no parseable number.
+ * (Corrects the comma-decimal case the top-level amount coercion does not handle.)
+ */
+export function parseGermanNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+
+  let s = value.trim().replace(/[^0-9.,-]/g, '');
+  if (!s) return null;
+
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+
+  if (hasComma && hasDot) {
+    // The last separator is the decimal separator; the other is a thousands grouping.
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+  } else if (hasComma) {
+    // Comma only: decimal if 1-2 trailing digits, else thousands grouping.
+    if (/,\d{1,2}$/.test(s)) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+  } else if (hasDot) {
+    // Dot only: treat grouped 3-digit blocks as thousands ("1.200" -> 1200).
+    if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+      s = s.replace(/\./g, '');
+    }
+  }
+
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Description is treated as a summary row if it is exactly or starts with one of
+// these terms at a token boundary (anchored leading-token match, NOT includes —
+// so "Versandtaschen 5 Stk" survives while "Versandkosten" is dropped).
+const SUMMARY_PATTERN_SOURCES = [
+  '^(zwischen|gesamt|end)?summe\\b',
+  '^(gesamt|end|rechnungs)?betrag\\b',
+  '^mehrwer(t|ts)?steuer\\b',
+  '^mwst\\b\\.?',
+  '^(ust|umsatzsteuer)\\b',
+  '^versand(kosten)?\\b',
+  '^porto\\b',
+  '^rabatt\\b',
+  '^skonto\\b',
+  '^discount\\b',
+  '^shipping\\b',
+  '^subtotal\\b',
+  '^(vat|tax)\\b',
+  '^total\\b',
+  '^gutschrift\\b',
+  '^zahl(betrag|ungsbetrag)\\b',
+  '^(netto|brutto)\\b',
+];
+
+/** Compiled, case-insensitive. Applied against the normalized (lowercased) description. */
+export const SUMMARY_ROW_PATTERNS: readonly RegExp[] = SUMMARY_PATTERN_SOURCES.map(
+  (src) => new RegExp(src, 'i'),
+);
+
+// A row is the table header if it contains >=3 of these as whole words.
+// (3, not 2: "Total Price" legitimately appears in real item descriptions.)
+export const HEADER_TOKENS: readonly string[] = [
+  'pos', 'position', 'beschreibung', 'bezeichnung', 'artikel', 'menge', 'anzahl',
+  'einheit', 'einzelpreis', 'ep', 'gesamtpreis', 'gp', 'preis', 'betrag',
+  'description', 'qty', 'quantity', 'unit', 'price', 'total', 'amount',
+];
+
+const HEADER_TOKEN_REGEXES: readonly RegExp[] = HEADER_TOKENS.map((tok) => {
+  const escaped = tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`);
+});
 
 @Injectable()
 export class StructuredExtractionService {
@@ -88,7 +193,7 @@ export class StructuredExtractionService {
   private async assessConfidence(
     extraction: InvoiceExtraction,
     text: string,
-  ): Promise<{ overall: number; fields: Record<string, number> }> {
+  ): Promise<{ overall: number; fields: Record<string, number>; issues: string[] }> {
     try {
       const prompt = CONFIDENCE_ASSESSMENT_PROMPT(extraction, text);
       const { data } = await this.aiService.sendJsonMessage<{
@@ -100,6 +205,7 @@ export class StructuredExtractionService {
       return {
         overall: data.overall_confidence,
         fields: data.field_confidence,
+        issues: Array.isArray(data.issues) ? data.issues.map(String) : [],
       };
     } catch (error) {
       this.logger.warn(`Confidence assessment failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -111,6 +217,7 @@ export class StructuredExtractionService {
           amount_total: 0.7,
           invoice_date: 0.7,
         },
+        issues: ['Confidence assessment call failed — using fallback score'],
       };
     }
   }
@@ -147,7 +254,99 @@ export class StructuredExtractionService {
       normalized.currency = normalized.currency.toUpperCase().substring(0, 3);
     }
 
+    // Clean line items: drop summary rows, table headers, hallucinated no-data
+    // rows, and exact duplicates. Runs before persistence and before confidence
+    // scoring. Items are read-only to the client, so this never clobbers edits.
+    normalized.items = this.cleanItems(normalized.items).kept;
+
     return normalized;
+  }
+
+  /**
+   * Clean extracted line items — removes the over-extracted junk GLM tends to
+   * produce for German/EU invoices (summary/totals rows, table header, rows
+   * with no price, exact duplicates).
+   * Pure function: safe to unit-test via normalizeExtraction.
+   * @returns kept items (with coerced numbers) + dropped entries (for logging)
+   */
+  cleanItems(
+    items: RawItem[] | undefined | null,
+  ): { kept: CleanedItem[]; dropped: { reason: string; description: string }[] } {
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return { kept: [], dropped: [] };
+    }
+
+    const dropped: { reason: string; description: string }[] = [];
+    const seen = new Set<string>();
+    const kept: CleanedItem[] = [];
+
+    for (const raw of items) {
+      const description = ((raw?.description as string | null | undefined) ?? '').toString().trim();
+      const normalizedDesc = description.toLowerCase().replace(/\s+/g, ' ').trim();
+      const descForLog = description || '(empty)';
+
+      const quantity = parseGermanNumber(raw?.quantity);
+      const unit_price = parseGermanNumber(raw?.unit_price);
+      const line_total = parseGermanNumber(raw?.line_total);
+
+      // 1. No-data rule: a real line item must carry money. Quantity alone (no
+      //    price) is almost always a header or hallucination.
+      const hasPrice =
+        (unit_price !== null && unit_price > 0) || (line_total !== null && line_total > 0);
+      if (!hasPrice) {
+        dropped.push({ reason: 'no-price', description: descForLog });
+        continue;
+      }
+
+      // 2. Header rule: >=3 column-header tokens.
+      const headerHits = HEADER_TOKEN_REGEXES.filter((re) => re.test(normalizedDesc)).length;
+      if (headerHits >= 3) {
+        dropped.push({ reason: 'header', description: descForLog });
+        continue;
+      }
+
+      // 3. Summary rule: leading-token match against totals/tax/shipping terms.
+      if (normalizedDesc && SUMMARY_ROW_PATTERNS.some((re) => re.test(normalizedDesc))) {
+        dropped.push({ reason: 'summary', description: descForLog });
+        continue;
+      }
+
+      // 4. Dedup: collapse exact duplicates (same description + same numbers).
+      const key = `${normalizedDesc}|${quantity}|${unit_price}|${line_total}`;
+      if (seen.has(key)) {
+        dropped.push({ reason: 'duplicate', description: descForLog });
+        continue;
+      }
+      seen.add(key);
+
+      kept.push({
+        description,
+        quantity: quantity ?? 0,
+        unit_price: unit_price ?? 0,
+        line_total: line_total ?? 0,
+      });
+    }
+
+    this.logger.debug(
+      `Items cleaned: ${dropped.length} dropped (${this.summarizeDropped(dropped)}), ${kept.length} kept`,
+    );
+    // Suspicious: more dropped than kept. Flag so a misfired rule is greppable
+    // during verification (a legit item being eaten would show up here).
+    if (kept.length > 0 && dropped.length > kept.length) {
+      this.logger.warn(
+        `Items cleaning dropped more rows (${dropped.length}) than kept (${kept.length}) — verify no legitimate items were removed`,
+      );
+    }
+
+    return { kept, dropped };
+  }
+
+  private summarizeDropped(dropped: { reason: string }[]): string {
+    const counts: Record<string, number> = {};
+    for (const d of dropped) counts[d.reason] = (counts[d.reason] ?? 0) + 1;
+    return Object.entries(counts)
+      .map(([reason, count]) => `${reason}:${count}`)
+      .join(', ');
   }
 
   /**
@@ -217,13 +416,11 @@ export class StructuredExtractionService {
       }
     }
 
-    // Check item totals
-    if (extraction.items && extraction.items.length > 0) {
-      const itemsTotal = extraction.items.reduce((sum, item) => sum + (item.line_total || 0), 0);
-      if (Math.abs(itemsTotal - (extraction.amount_total || 0)) > (extraction.amount_total || 0) * 0.005) {
-        issues.push(`Sum of line items (${itemsTotal}) differs from total (${extraction.amount_total})`);
-      }
-    }
+    // NOTE: the previous sum(line_items) vs amount_total check was removed.
+    // EU invoices carry netto line items but a brutto amount_total, and cleanItems
+    // strips the VAT/total summary rows, so the two are structurally ~19% apart by
+    // design — the check false-positived on essentially every invoice at any
+    // threshold. Duplicate-driven inflation is already handled by cleanItems dedup.
 
     return {
       isValid: issues.length === 0,

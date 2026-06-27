@@ -17,11 +17,24 @@ Required fields:
 Optional fields:
 - vat_rate: The VAT percentage (e.g., 19)
 - customer_name: The recipient company name
-- items: Array of line items with:
+- items: Array of real line items from the item table only. Each item must be a genuine priced row:
   - description: Item description
   - quantity: Quantity as a number
   - unit_price: Unit price as a number
   - line_total: Line total as a number
+
+  Rules for items (CRITICAL — over-extraction is the failure mode):
+  - A line item MUST carry at least a quantity OR a unit_price OR a line_total. If a row has no
+    number at all, it is NOT a line item — skip it. If the document has no priced rows, return "items": [].
+  - Never emit summary/totals rows as items. Exclude any row whose description is or begins with:
+    Zwischensumme, Subtotal, Summe, Gesamtsumme, Endsumme, Gesamtbetrag, Endbetrag, Rechnungsbetrag,
+    Mehrwertsteuer, MwSt, USt, Umsatzsteuer, VAT, Tax, Versandkosten, Versand, Porto, Shipping,
+    Rabatt, Skonto, Discount, Gutschrift, Zahlbetrag, Zahlungsbetrag, Total, Netto, Brutto.
+  - Never emit the table header row (e.g. Pos/Position/Beschreibung/Menge/Anzahl/Einheit/Einzelpreis/
+    Gesamtpreis/Preis/Betrag/Description/Qty/Quantity/Unit/Price/Total/Amount).
+  - Never invent an item from footer notes, payment terms, bank details, or small print that has no
+    price/quantity on its own row.
+  - Emit exactly one object per real row; never fold totals into a fake item and never split one row.
 
 Important notes:
 - German dates: 10.03.2026 → 2026-03-10
