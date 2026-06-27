@@ -105,6 +105,10 @@ export class DocumentProcessor {
 
       // Update status to processing
       document.status = DocumentStatus.PROCESSING;
+      // Clear any diagnostics from a previous run so stale confidence/issues
+      // never survive a reprocess.
+      document.extraction_confidence = null;
+      document.extraction_issues = null;
       await this.documentsRepository.save(document);
 
       // Clean up artifacts from a previous run so reprocessing never leaves
@@ -196,6 +200,8 @@ export class DocumentProcessor {
         // For non-invoice documents, mark as parsed
         document.status = DocumentStatus.PARSED;
         document.processed_at = new Date();
+        document.extraction_confidence = null;
+        document.extraction_issues = null;
         await this.documentsRepository.save(document);
       }
 
@@ -276,6 +282,16 @@ export class DocumentProcessor {
       }
       const hasMissingCurrency = !normalizedExtraction.currency;
 
+      // Consistency checks (non-blocking observability): surface missing invoice
+      // number, negative amounts, or an illogical date range as warnings. Does not
+      // change document status — the correctness guard below handles routing.
+      const validation = this.structuredExtractionService.validateExtraction(normalizedExtraction);
+      if (!validation.isValid) {
+        for (const issue of validation.issues) {
+          this.logger.warn(`Extraction issue for document ${document.id}: ${issue}`);
+        }
+      }
+
       // Correctness guard: never auto-accept an extraction with no usable total
       // or invoice number. A confidently-wrong "parsed" (e.g. amount_total 0
       // produced from degraded OCR) must route to human validation rather than
@@ -287,6 +303,13 @@ export class DocumentProcessor {
       const hasMissingInvoiceNumber =
         !normalizedExtraction.invoice_number || normalizedExtraction.invoice_number.trim() === '';
       const guardTriggered = hasMissingCurrency || hasBadAmount || hasMissingInvoiceNumber;
+
+      // Human-readable reasons that explain a needs_validation routing when the
+      // correctness guard fires (kept separate from the model's own `issues`).
+      const guardReasons: string[] = [];
+      if (hasMissingCurrency) guardReasons.push('Currency is missing');
+      if (hasBadAmount) guardReasons.push('Total amount is missing or not positive');
+      if (hasMissingInvoiceNumber) guardReasons.push('Invoice number is missing');
 
       let newStatus: DocumentStatus;
       if (guardTriggered) {
@@ -404,6 +427,8 @@ export class DocumentProcessor {
       // Update document status
       document.status = newStatus;
       document.processed_at = new Date();
+      document.extraction_confidence = confidence.overall;
+      document.extraction_issues = [...guardReasons, ...(confidence.issues ?? [])];
       await this.documentsRepository.save(document);
 
       this.logger.log(`Invoice data saved - Status: ${newStatus}`);

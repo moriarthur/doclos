@@ -36,6 +36,8 @@ export class AiService {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly model: string;
+  // Primary + fallback models, tried in order when the primary is unavailable.
+  private readonly models: string[];
   private readonly maxTokens: number;
 
   constructor(private configService: ConfigService) {
@@ -45,6 +47,15 @@ export class AiService {
     // glm-4.7-flash is a reasoning model: thinking tokens consume this budget too
     // 16384 gives enough room for reasoning + JSON extraction output
     this.maxTokens = 16384;
+
+    // Fallback models tried when the primary is overloaded (429 / 5xx / timeout)
+    // on Z.ai. glm-4.7-flash intermittently rate-limits in peak hours; glm-4.5-flash
+    // is a free flash-family alternative. Override via GLM_FALLBACK_MODELS (csv).
+    const fallbacks = (this.configService.get('GLM_FALLBACK_MODELS') || 'glm-4.5-flash')
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+    this.models = Array.from(new Set([this.model, ...fallbacks]));
 
     if (!this.apiKey) {
       this.logger.warn('GLM_API_KEY not set - AI features will be disabled');
@@ -57,89 +68,138 @@ export class AiService {
    * @param systemPrompt - Optional system prompt
    * @returns Response text
    */
-  private async fetchWithRetry(
+  /**
+   * Single HTTP attempt against one model. Never throws for transient failures —
+   * returns a discriminated result so the caller can decide to retry / fail over.
+   * @returns ok with text+usage, or { ok:false, retryable, message }
+   */
+  private async callOnce(
+    model: string,
     messages: ChatMessage[],
-    retries = 5,
-  ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      const controller = new AbortController();
-      const timeout = 120000;
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+  ): Promise<
+    | { ok: true; text: string; usage: { inputTokens: number; outputTokens: number } }
+    | { ok: false; retryable: boolean; message: string }
+  > {
+    const controller = new AbortController();
+    const timeout = 120000;
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      try {
-        const response = await fetch(`${this.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: this.model,
-            messages,
-            max_tokens: this.maxTokens,
-            temperature: 0.3,
-          }),
-          signal: controller.signal,
-        });
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          max_tokens: this.maxTokens,
+          temperature: 0.3,
+        }),
+        signal: controller.signal,
+      });
 
-        clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-        if (!response.ok) {
-          // Retry rate-limit (429) and server errors (5xx). Z.ai (glm-4.7-flash)
-          // is a reasoning model and intermittently 500s on the heavier extraction
-          // call; client errors (4xx) are not retried.
-          const retryable = response.status === 429 || response.status >= 500;
-          if (retryable && attempt < retries) {
-            const delay = Math.pow(2, attempt) * 3000;
-            this.logger.warn(`GLM ${response.status} (retryable), retry ${attempt}/${retries} in ${delay}ms`);
-            await new Promise(r => setTimeout(r, delay));
-            continue;
-          }
-          const errorText = await response.text();
-          this.logger.error(`GLM API error: ${response.status} - ${errorText}`);
-          throw new Error(`GLM API request failed: ${response.status}`);
-        }
+      if (!response.ok) {
+        // Retry rate-limit (429) and server errors (5xx) by failing over to
+        // another model. Client errors (4xx) are not retryable — a fallback model
+        // won't fix a bad request / auth / unknown-model error.
+        const errorText = await response.text();
+        const retryable = response.status === 429 || response.status >= 500;
+        this.logger.error(`GLM API error (${model}): ${response.status} - ${errorText}`);
+        return {
+          ok: false,
+          retryable,
+          message: `GLM API request failed: ${response.status}`,
+        };
+      }
 
-        const data = (await response.json()) as ChatCompletionResponse;
+      const data = (await response.json()) as ChatCompletionResponse;
 
-        if (!data.choices || data.choices.length === 0) {
-          throw new Error('No response from GLM API');
-        }
+      if (!data.choices || data.choices.length === 0) {
+        return { ok: false, retryable: false, message: 'No response from GLM API' };
+      }
 
-        const text = data.choices[0].message.content;
-        const usage = {
+      return {
+        ok: true,
+        text: data.choices[0].message.content,
+        usage: {
           inputTokens: data.usage.prompt_tokens,
           outputTokens: data.usage.completion_tokens,
-        };
+        },
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
 
-        this.logger.debug(
-          `GLM response received - Input: ${usage.inputTokens}, Output: ${usage.outputTokens} tokens`,
-        );
+      // The 120s AbortController fires when Z.ai hangs (glm-4.7-flash reasoning
+      // calls can run past 120s before returning/500ing) — retryable via failover.
+      const isTimeout =
+        error instanceof Error &&
+        (error.name === 'AbortError' || error.message.toLowerCase().includes('timed out'));
+      if (isTimeout) {
+        this.logger.error(`GLM API request timed out after 120s (${model})`);
+        return { ok: false, retryable: true, message: 'AI request timed out - please try again' };
+      }
+      return {
+        ok: false,
+        retryable: false,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
 
-        return { text, usage };
-      } catch (error) {
-        clearTimeout(timeoutId);
+  /**
+   * Send a request, iterating models on transient (429 / 5xx / timeout) failures.
+   * Each model gets a small retry budget with backoff; when it is exhausted the
+   * next fallback model is tried. Non-retryable client errors throw immediately.
+   */
+  private async fetchWithRetry(
+    messages: ChatMessage[],
+  ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
+    const attemptsPerModel = 2;
+    let lastMessage = 'GLM API request failed after retries';
 
-        // Retry on timeout — the 120s AbortController fires when Z.ai hangs
-        // (glm-4.7-flash reasoning calls can run past 120s before returning/500ing).
-        const isTimeout =
-          error instanceof Error &&
-          (error.name === 'AbortError' || error.message.toLowerCase().includes('timed out'));
-        if (isTimeout && attempt < retries) {
+    for (const model of this.models) {
+      for (let attempt = 1; attempt <= attemptsPerModel; attempt++) {
+        const result = await this.callOnce(model, messages);
+
+        if (result.ok) {
+          if (model !== this.model) {
+            this.logger.warn(
+              `GLM request succeeded on fallback model ${model} (primary ${this.model} was unavailable)`,
+            );
+          }
+          this.logger.debug(
+            `GLM response received (${model}) - Input: ${result.usage.inputTokens}, Output: ${result.usage.outputTokens} tokens`,
+          );
+          return { text: result.text, usage: result.usage };
+        }
+
+        lastMessage = result.message;
+
+        // Non-retryable (4xx client error / parse failure) — another model won't help.
+        if (!result.retryable) {
+          throw new Error(result.message);
+        }
+
+        // Retryable: backoff and retry the same model, then fail over to the next.
+        if (attempt < attemptsPerModel) {
           const delay = Math.pow(2, attempt) * 3000;
-          this.logger.warn(`GLM timeout, retry ${attempt}/${retries} in ${delay}ms`);
-          await new Promise(r => setTimeout(r, delay));
-          continue;
+          this.logger.warn(
+            `GLM ${model} transient failure, retry ${attempt}/${attemptsPerModel} in ${delay}ms`,
+          );
+          await new Promise((r) => setTimeout(r, delay));
+        } else if (this.models.length > 1) {
+          this.logger.warn(
+            `GLM ${model} exhausted (${attemptsPerModel} attempts) — failing over to next model`,
+          );
         }
-        if (isTimeout) {
-          this.logger.error('GLM API request timed out after 120s');
-          throw new Error('AI request timed out - please try again');
-        }
-        throw error;
       }
     }
 
-    throw new Error('GLM API request failed after retries');
+    throw new Error(lastMessage);
   }
 
   async sendMessage(

@@ -206,6 +206,8 @@ export class DocumentsService {
       file_url: fileUrl,
       mime_type: document.mime_type,
       original_filename: document.original_filename,
+      extraction_confidence: document.extraction_confidence,
+      extraction_issues: document.extraction_issues,
       invoice: document.invoice
         ? {
             invoice_number: document.invoice.invoice_number
