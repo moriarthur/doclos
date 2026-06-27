@@ -109,6 +109,9 @@ export default function DocumentDetailPage() {
     onSuccess: () => {
       // Refetch to get latest status immediately
       refetch();
+      // Invalidate the documents list so the dashboard reflects the new
+      // processing status (and its blink/poll) without waiting for a refetch.
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
     },
     onError: (err) => {
       console.error('Reprocess failed:', authApi.getErrorMessage(err));
@@ -387,6 +390,41 @@ export default function DocumentDetailPage() {
                         <RefreshCw className="h-4 w-4 mr-1" />
                         {t('reprocessBtn')}
                       </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+          {/* Validation diagnostics: AI confidence + reasons for needs_validation */}
+          {document.status === 'needs_validation' &&
+            (document.extraction_issues?.length || document.extraction_confidence != null) && (
+              <Card className="border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-900/10 animate-slide-up mb-6">
+                <CardContent className="p-5">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-amber-900 dark:text-amber-100 mb-1">
+                        {t('validationTitle')}
+                      </p>
+                      {document.extraction_confidence != null && (
+                        <p className="text-sm text-amber-800 dark:text-amber-200 mb-2">
+                          {t('confidenceLabel')}:{' '}
+                          <span className="font-semibold">
+                            {Math.round(document.extraction_confidence * 100)}%
+                          </span>
+                          <span className="text-amber-700/80 dark:text-amber-300/80">
+                            {' '}— {t('confidenceHint')}
+                          </span>
+                        </p>
+                      )}
+                      {document.extraction_issues?.length > 0 && (
+                        <ul className="text-sm text-amber-800 dark:text-amber-200 space-y-1 list-disc pl-5">
+                          {document.extraction_issues.map((issue: string, i: number) => (
+                            <li key={i}>{issue}</li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </div>
                 </CardContent>

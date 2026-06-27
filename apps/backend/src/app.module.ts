@@ -36,6 +36,14 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
         port: parseInt(process.env.REDIS_PORT || '6379'),
         password: redisPassword,
         tls: process.env.REDIS_URL?.startsWith('rediss://') ? {} : undefined,
+        // Required by Bull: the worker pulls jobs with a blocking command
+        // (BRPOPLPUSH). Without these, ioredis aborts that blocking request
+        // after its retry limit once Upstash drops an idle connection, and the
+        // worker permanently stops consuming the queue (jobs pile up in "wait"
+        // with active=0). maxRetriesPerRequest:null disables that limit;
+        // enableReadyCheck:false avoids ready-check stalls on the bclient.
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
       },
       defaultJobOptions: {
         removeOnComplete: 100,

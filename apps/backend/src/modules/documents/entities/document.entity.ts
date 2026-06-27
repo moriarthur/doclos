@@ -76,4 +76,14 @@ export class Document extends BaseEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   processed_at: Date;
+
+  // AI extraction diagnostics — explain why a doc landed in needs_validation.
+  // `extraction_confidence` is the model's overall score (0-1); `extraction_issues`
+  // mixes rule-based guard reasons (missing currency/amount/invoice number) with
+  // the model's own stated concerns. Null for non-extracted documents.
+  @Column({ name: 'extraction_confidence', type: 'real', nullable: true })
+  extraction_confidence: number | null;
+
+  @Column({ name: 'extraction_issues', type: 'jsonb', nullable: true })
+  extraction_issues: string[] | null;
 }
