@@ -2,7 +2,7 @@
 
 > Project: Document automation SaaS for small businesses and German Mittelstand
 > Status: **Backend + Frontend MVP Complete** | Production ready
-> Last Updated: 2026-06-17
+> Last Updated: 2026-06-29
 
 ---
 
@@ -22,10 +22,10 @@ Doclos automatically processes business documents (invoices, contracts, offers, 
 | **Frontend** | Next.js 15, React, TypeScript, TailwindCSS, shadcn/ui, React Query, React Hook Form, Zod |
 | **Backend** | NestJS, TypeScript |
 | **Database** | PostgreSQL (Supabase) with JSONB, full-text search |
-| **Queue** | Redis (Upstash) + BullMQ |
+| **Queue** | Redis (Upstash) + Bull |
 | **Storage** | Cloudflare R2 (S3-compatible) |
 | **OCR** | Tesseract.js (German/English) |
-| **AI** | **GLM-4.7-Flash (Zhipu AI / Z.ai)** - FREE model |
+| **AI** | **GLM-4.7-Flash (Zhipu AI / Z.ai)** - FREE, with glm-4.5-flash auto-failover |
 | **Workers** | Node.js background workers |
 | **Testing** | Jest |
 | **Monorepo** | Turborepo |
@@ -94,15 +94,23 @@ doclos/
 - `POST /api/v1/documents/upload` - Multipart file upload
 - `GET /api/v1/documents` - List with pagination (status, company, date filters)
 - `GET /api/v1/documents/:id` - Document details with signed URL
+- `GET /api/v1/documents/:id/file` - Download original file (signed URL)
 - `PATCH /api/v1/documents/:id/validate` - Correct AI-extracted values
 - `POST /api/v1/documents/:id/reprocess` - Re-run AI pipeline
+- `PATCH /api/v1/documents/:id` - Update document (e.g. archive)
+- `DELETE /api/v1/documents/:id` - Delete document + dependents
+
+### Search
+- `GET /api/v1/search` - Full-text search (Postgres FTS + ILIKE fallback)
 
 ### Jobs
+- `GET /api/v1/jobs` - List jobs
 - `GET /api/v1/jobs/:id` - Job status with progress
+- `DELETE /api/v1/jobs` / `DELETE /api/v1/jobs/:id` - Clear / delete jobs
 
-### TODO (Not implemented)
-- `GET /api/v1/search` - Search API
-- `GET /api/v1/export/excel` - Excel export
+### Export
+- `GET /api/v1/export/:format` - Export invoices (`xlsx`; locale via `?lang=de|en`)
+- `GET /api/v1/export/document/:id/:format` - Export a single document
 
 ---
 
@@ -127,12 +135,11 @@ Upload → S3 → Queue → Download → OCR (Tesseract) → Classify (GLM) → 
 **API:** https://open.bigmodel.cn/api/paas/v4
 
 **Models Used:**
-- `glm-4-flash` - Fast, cost-effective (default for document processing)
-- `glm-4-air` - Balanced performance
-- `glm-4-plus` - Complex extraction
-- `glm-4` - Standard
+- `glm-4.7-flash` - Primary (fast, free) for classification + extraction
+- `glm-4.5-flash` - Auto-failover when 4.7-flash rate-limits / times out on Z.ai
+- `glm-4-plus`, `glm-4-air`, `glm-4-flash`, `glm-4` - Optional / configurable
 
-**Pricing:** ¥0.1 / 1M tokens (glm-4-flash)
+**Pricing:** ¥0.1 / 1M tokens (glm-4-flash) — effectively free at MVP volume
 
 **Features:**
 - Document classification (invoice, contract, offer, delivery_note)
@@ -192,14 +199,18 @@ pnpm install
 # Start backend (development mode)
 cd apps/backend
 pnpm run start:dev
+# API: http://localhost:3001/api/v1
 
-# Server runs on: http://localhost:3001/api/v1
+# Start frontend (separate terminal)
+cd apps/frontend
+pnpm run dev
+# UI:  http://localhost:3000
 ```
 
 **Build:**
 ```bash
-cd apps/backend
-pnpm run build
+cd apps/backend && pnpm run build    # → dist/
+cd apps/frontend && pnpm run build   # → .next/
 ```
 
 ---
@@ -228,7 +239,7 @@ When working on Doclos:
 
 ## Supported Languages
 
-English, German (i18n via next-i18next) - TODO: Not implemented yet
+English, German — i18n via **next-intl** with a `?lang=de|en` locale switcher (DE default). Also drives Excel export headers / number / date formats.
 
 ---
 

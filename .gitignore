@@ -57,7 +57,6 @@ dump.rdb
 *.traineddata
 
 # Test directories
-tets files/
 test files/
 1000+ PDF_Invoice_Folder/
 
