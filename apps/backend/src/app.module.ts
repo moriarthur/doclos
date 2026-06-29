@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { SearchModule } from './modules/search/search.module';
@@ -20,6 +22,10 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
 
 @Module({
   imports: [
+    // Rate limiting — guards every route; auth routes get a stricter limit
+    // via @Throttle() on AuthController. TTL is in milliseconds (throttler v5+).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+
     // Configuration - loads .env file
     ConfigModule.forRoot({
       isGlobal: true,
@@ -62,6 +68,6 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
     ExportModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
