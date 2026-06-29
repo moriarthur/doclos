@@ -185,7 +185,12 @@
     "stepOcrProgress": "OCR-Verarbeitung ({current}/{total})",
     "stepAiClassify": "AI-Klassifizierung...",
     "stepAiExtract": "AI-Extraktion",
-    "stepValidated": "Validiert"
+    "stepValidated": "Validiert",
+    "validationTitle": "Bitte prüfen",
+    "confidenceLabel": "KI-Sicherheit",
+    "confidenceHint": "Werte sind zuverlässig, bitte trotzdem die markierten Punkte prüfen",
+    "issuesMissingTitle": "Fehlt (bitte ergänzen)",
+    "issuesReviewTitle": "Bitte kurz kontrollieren"
   },
   "DocumentViewer": {
     "loadFailed": "Dokument konnte nicht geladen werden",

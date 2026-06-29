@@ -185,7 +185,12 @@
     "stepOcrProgress": "OCR processing ({current}/{total})",
     "stepAiClassify": "AI classification...",
     "stepAiExtract": "AI extraction",
-    "stepValidated": "Validated"
+    "stepValidated": "Validated",
+    "validationTitle": "Please review",
+    "confidenceLabel": "AI confidence",
+    "confidenceHint": "Values look reliable, please still review the flagged points below",
+    "issuesMissingTitle": "Missing (please fill in)",
+    "issuesReviewTitle": "Please double-check"
   },
   "DocumentViewer": {
     "loadFailed": "Document could not be loaded",

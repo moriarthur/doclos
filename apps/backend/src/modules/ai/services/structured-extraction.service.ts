@@ -5,6 +5,7 @@ import {
   INVOICE_EXTRACTION_PROMPT,
   CONFIDENCE_ASSESSMENT_PROMPT,
 } from '../prompts/extraction.prompts';
+import type { LocalizedIssue } from '../../documents/entities/document.entity';
 
 // Part 3: AI Pipeline - Structured data extraction service
 // Extracts invoice data using Claude LLM
@@ -33,8 +34,12 @@ export interface ExtractionWithConfidence {
   confidence: {
     overall: number;
     fields: Record<string, number>;
-    /** Human-readable concerns the model flagged (e.g. anomalous date). */
-    issues: string[];
+    /**
+     * Bilingual, severity-tagged concerns the model flagged (e.g. anomalous
+     * date, unmatched number). Each is `severity: 'review'` — the processor
+     * prepends the harder `severity: 'missing'` guard failures separately.
+     */
+    issues: LocalizedIssue[];
   };
   cost: number;
 }
@@ -193,19 +198,21 @@ export class StructuredExtractionService {
   private async assessConfidence(
     extraction: InvoiceExtraction,
     text: string,
-  ): Promise<{ overall: number; fields: Record<string, number>; issues: string[] }> {
+  ): Promise<{ overall: number; fields: Record<string, number>; issues: LocalizedIssue[] }> {
     try {
       const prompt = CONFIDENCE_ASSESSMENT_PROMPT(extraction, text);
       const { data } = await this.aiService.sendJsonMessage<{
         overall_confidence: number;
         field_confidence: Record<string, number>;
-        issues: string[];
+        // The prompt requests {de, en} objects, but defend against the model
+        // returning plain strings or a single language (see toLocalizedIssues).
+        issues: Array<{ de: string; en: string } | string>;
       }>(prompt);
 
       return {
         overall: data.overall_confidence,
         fields: data.field_confidence,
-        issues: Array.isArray(data.issues) ? data.issues.map(String) : [],
+        issues: this.toLocalizedIssues(data.issues),
       };
     } catch (error) {
       this.logger.warn(`Confidence assessment failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -217,9 +224,48 @@ export class StructuredExtractionService {
           amount_total: 0.7,
           invoice_date: 0.7,
         },
-        issues: ['Confidence assessment call failed — using fallback score'],
+        issues: [
+          {
+            severity: 'review',
+            message: {
+              de: 'Konfidenzbewertung fehlgeschlagen - es wird ein Ersatzwert verwendet',
+              en: 'Confidence assessment call failed - using fallback score',
+            },
+          },
+        ],
       };
     }
+  }
+
+  /**
+   * Coerce the model's confidence `issues` into bilingual LocalizedIssue entries.
+   * The prompt asks for `{de, en}` objects, but defend against the model returning
+   * plain strings or only one language by mirroring whichever side is present.
+   * All model-flagged concerns are soft hints (`severity: 'review'`); the harder
+   * `severity: 'missing'` guard failures are produced by the document processor.
+   */
+  private toLocalizedIssues(
+    issues: Array<{ de: string; en: string } | string> | undefined,
+  ): LocalizedIssue[] {
+    if (!Array.isArray(issues)) return [];
+    const out: LocalizedIssue[] = [];
+    for (const raw of issues) {
+      let de: string;
+      let en: string;
+      if (typeof raw === 'string') {
+        const text = raw.trim();
+        if (!text) continue;
+        de = en = text;
+      } else {
+        de = (raw.de ?? '').toString().trim();
+        en = (raw.en ?? '').toString().trim();
+        if (!de && !en) continue;
+        if (!de) de = en;
+        if (!en) en = de;
+      }
+      out.push({ severity: 'review', message: { de, en } });
+    }
+    return out;
   }
 
   /**
