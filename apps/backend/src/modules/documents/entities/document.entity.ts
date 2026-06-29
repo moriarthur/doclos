@@ -80,10 +80,25 @@ export class Document extends BaseEntity {
   // AI extraction diagnostics — explain why a doc landed in needs_validation.
   // `extraction_confidence` is the model's overall score (0-1); `extraction_issues`
   // mixes rule-based guard reasons (missing currency/amount/invoice number) with
-  // the model's own stated concerns. Null for non-extracted documents.
+  // the model's own stated concerns. Each issue is bilingual (DE/EN) and tagged
+  // with a severity so the validation card can render in the user's selected UI
+  // locale and group must-fix failures separately from soft hints. Null for
+  // non-extracted documents.
   @Column({ name: 'extraction_confidence', type: 'real', nullable: true })
   extraction_confidence: number | null;
 
   @Column({ name: 'extraction_issues', type: 'jsonb', nullable: true })
-  extraction_issues: string[] | null;
+  extraction_issues: LocalizedIssue[] | null;
+}
+
+/**
+ * Localized extraction diagnostic. Bilingual so the UI can render in the
+ * selected locale (DE/EN) at request time, regardless of when the document was
+ * processed. `severity` separates hard guard failures ('missing' — a required
+ * field could not be extracted and must be filled in) from the model's softer,
+ * please-double-check concerns ('review').
+ */
+export interface LocalizedIssue {
+  severity: 'missing' | 'review';
+  message: { de: string; en: string };
 }

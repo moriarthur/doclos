@@ -71,7 +71,10 @@ Return JSON with these fields:
 
 Return JSON only.`;
 
-// Prompt for confidence scoring
+// Prompt for confidence scoring.
+// `issues` are returned BILINGUAL (German + English) so the validation card can
+// render in whichever UI locale the user has selected, regardless of when the
+// document was processed. Each issue is one short, concrete sentence per language.
 export const CONFIDENCE_ASSESSMENT_PROMPT = (extraction: unknown, text: string) => `Assess the confidence of this extraction.
 
 Extracted data:
@@ -83,6 +86,9 @@ ${text.substring(0, 1000)}
 Return JSON with:
 - overall_confidence: 0-1
 - field_confidence: Object mapping field names to 0-1 scores
-- issues: Array of potential problems detected
+- issues: Array of potential problems detected. Each item MUST be an object
+  { "de": "<German sentence>", "en": "<English sentence>" } where both describe
+  the SAME concern. Keep each sentence short and concrete (e.g. an unmatched
+  number, a missing address, an anomaly). Empty array if nothing is wrong.
 
 Return JSON only.`;

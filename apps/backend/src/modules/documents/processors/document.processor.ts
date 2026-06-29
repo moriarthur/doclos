@@ -4,6 +4,7 @@ import { Job } from 'bull';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Document, DocumentStatus, DocumentType } from '../entities/document.entity';
+import type { LocalizedIssue } from '../entities/document.entity';
 import { Customer } from '../entities/customer.entity';
 import { Invoice } from '../entities/invoice.entity';
 import { InvoiceItem } from '../entities/invoice-item.entity';
@@ -304,12 +305,32 @@ export class DocumentProcessor {
         !normalizedExtraction.invoice_number || normalizedExtraction.invoice_number.trim() === '';
       const guardTriggered = hasMissingCurrency || hasBadAmount || hasMissingInvoiceNumber;
 
-      // Human-readable reasons that explain a needs_validation routing when the
-      // correctness guard fires (kept separate from the model's own `issues`).
-      const guardReasons: string[] = [];
-      if (hasMissingCurrency) guardReasons.push('Currency is missing');
-      if (hasBadAmount) guardReasons.push('Total amount is missing or not positive');
-      if (hasMissingInvoiceNumber) guardReasons.push('Invoice number is missing');
+      // Human-readable, bilingual reasons that explain a needs_validation routing
+      // when the correctness guard fires (kept separate from the model's own
+      // `issues`, which are severity 'review'). Severity 'missing' drives the
+      // "please fill in" group in the validation card.
+      const guardReasons: LocalizedIssue[] = [];
+      if (hasMissingCurrency) {
+        guardReasons.push({
+          severity: 'missing',
+          message: { de: 'Währung fehlt', en: 'Currency is missing' },
+        });
+      }
+      if (hasBadAmount) {
+        guardReasons.push({
+          severity: 'missing',
+          message: {
+            de: 'Gesamtbetrag fehlt oder ist nicht positiv',
+            en: 'Total amount is missing or not positive',
+          },
+        });
+      }
+      if (hasMissingInvoiceNumber) {
+        guardReasons.push({
+          severity: 'missing',
+          message: { de: 'Rechnungsnummer fehlt', en: 'Invoice number is missing' },
+        });
+      }
 
       let newStatus: DocumentStatus;
       if (guardTriggered) {

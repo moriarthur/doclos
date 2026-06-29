@@ -42,6 +42,47 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/AlertDialog';
 
+/**
+ * Normalize extraction diagnostics into localized, grouped bullet lists.
+ *
+ * Issues arrive bilingual + severity-tagged from the backend
+ * (`{ severity: 'missing' | 'review', message: { de, en } }`); we render the
+ * side matching the user's selected UI locale, falling back to the other
+ * language if the preferred one is absent. Legacy documents (processed before
+ * this change) still carry plain English strings — treat those as soft
+ * 'review' hints so old data renders sensibly instead of breaking.
+ */
+function splitValidationIssues(
+  raw: unknown,
+  locale: string,
+): { missing: string[]; review: string[] } {
+  const missing: string[] = [];
+  const review: string[] = [];
+  if (!Array.isArray(raw)) return { missing, review };
+
+  for (const item of raw) {
+    let text: string | null = null;
+    let severity: 'missing' | 'review' = 'review';
+
+    if (typeof item === 'string') {
+      text = item.trim();
+    } else if (item && typeof item === 'object') {
+      const obj = item as { severity?: unknown; message?: unknown };
+      severity = obj.severity === 'missing' ? 'missing' : 'review';
+      const msg = obj.message as { de?: string; en?: string } | undefined;
+      if (msg && typeof msg === 'object') {
+        const preferred = locale === 'en' ? msg.en : msg.de;
+        const fallback = locale === 'en' ? msg.de : msg.en;
+        text = (preferred ?? fallback ?? '').toString().trim() || null;
+      }
+    }
+
+    if (text) (severity === 'missing' ? missing : review).push(text);
+  }
+
+  return { missing, review };
+}
+
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -233,6 +274,9 @@ export default function DocumentDetailPage() {
   const showInvoiceSections = isParsed && !!invoiceData;
   const showTypeCard = isParsed && !invoiceData && !!document.type && document.type !== 'invoice';
 
+  // Validation diagnostics, grouped and rendered in the user's selected locale.
+  const validationIssues = splitValidationIssues(document?.extraction_issues, locale);
+
   // Validation
   const getFieldError = (field: string): string | null => {
     if (editingSection !== 'invoice' && editingSection !== 'supplier') return null;
@@ -418,12 +462,34 @@ export default function DocumentDetailPage() {
                           </span>
                         </p>
                       )}
-                      {document.extraction_issues?.length > 0 && (
-                        <ul className="text-sm text-amber-800 dark:text-amber-200 space-y-1 list-disc pl-5">
-                          {document.extraction_issues.map((issue: string, i: number) => (
-                            <li key={i}>{issue}</li>
-                          ))}
-                        </ul>
+                      {(validationIssues.missing.length > 0 ||
+                        validationIssues.review.length > 0) && (
+                        <div className="space-y-3">
+                          {validationIssues.missing.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300 mb-1">
+                                {t('issuesMissingTitle')}
+                              </p>
+                              <ul className="text-sm text-amber-800 dark:text-amber-200 space-y-1 list-disc pl-5">
+                                {validationIssues.missing.map((issue, i) => (
+                                  <li key={`m-${i}`}>{issue}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {validationIssues.review.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300 mb-1">
+                                {t('issuesReviewTitle')}
+                              </p>
+                              <ul className="text-sm text-amber-800 dark:text-amber-200 space-y-1 list-disc pl-5">
+                                {validationIssues.review.map((issue, i) => (
+                                  <li key={`r-${i}`}>{issue}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
