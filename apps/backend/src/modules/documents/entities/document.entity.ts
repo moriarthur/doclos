@@ -89,6 +89,16 @@ export class Document extends BaseEntity {
 
   @Column({ name: 'extraction_issues', type: 'jsonb', nullable: true })
   extraction_issues: LocalizedIssue[] | null;
+
+  // Type-specific structured extraction (S5.1 document-types). Holds the fields
+  // that don't fit the shared invoice/invoice_items shape — a contract's parties
+  // + contract_value, a delivery note's delivery_date / order_reference, a PO's
+  // expected_delivery_date / delivery_terms, an offer's validity_date. Written by
+  // the processor's per-type extraction path and read by document.type in S5.2 UI
+  // / S5.3 export. Null for invoices (which live in the invoice entity) and for
+  // unknown documents (no extraction).
+  @Column({ name: 'metadata', type: 'jsonb', nullable: true })
+  metadata: Record<string, unknown> | null;
 }
 
 /**
