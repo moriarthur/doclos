@@ -13,7 +13,7 @@ import { Job as JobEntity, JobStatus } from '../../jobs/entities/job.entity';
 import { S3Service } from '../../storage/services/s3.service';
 import { OcrService } from '../../ocr/services/ocr.service';
 import { DocumentClassifierService } from '../../ai/services/document-classifier.service';
-import { StructuredExtractionService } from '../../ai/services/structured-extraction.service';
+import { StructuredExtractionService, sanitizeMetadata } from '../../ai/services/structured-extraction.service';
 
 // Part 3: AI Pipeline - Document processing worker
 // Part 8: Infrastructure & Deployment - Queue system with BullMQ
@@ -444,7 +444,7 @@ export class DocumentProcessor {
       document.processed_at = new Date();
       document.extraction_confidence = confidence.overall;
       document.extraction_issues = [...guardReasons, ...(confidence.issues ?? [])];
-      document.metadata = carrier.metadata;
+      document.metadata = sanitizeMetadata(carrier.metadata);
       await this.documentsRepository.save(document);
 
       this.logger.log(`${type} data saved - Status: ${newStatus}`);
@@ -686,7 +686,7 @@ export class DocumentProcessor {
       document.processed_at = new Date();
       document.extraction_confidence = confidence.overall;
       document.extraction_issues = [...guardReasons, ...(confidence.issues ?? [])];
-      document.metadata = metadata;
+      document.metadata = sanitizeMetadata(metadata);
       await this.documentsRepository.save(document);
 
       this.logger.log(`Contract data saved - Status: ${newStatus}`);
