@@ -83,6 +83,77 @@ function splitValidationIssues(
   return { missing, review };
 }
 
+// --- S5.2 per-type UI -------------------------------------------------------
+// The invoice-carrier fields (number / date / amount / supplier / items) are
+// shared across commercial types but labelled per type. Delivery notes render
+// the items table without price columns (items usually carry only a quantity).
+// `METADATA_FIELDS` mirrors the backend per-type whitelist so the UI edits the
+// same keys the service accepts.
+
+type CarrierLabel = 'number' | 'date' | 'detailsTitle';
+
+/** i18n key (under DocumentDetail) for a carrier field, by document type. */
+const CARRIER_LABEL_KEY: Record<CarrierLabel, Record<string, string>> = {
+  number: {
+    invoice: 'invoiceNumber',
+    purchase_order: 'orderNumber',
+    offer: 'offerNumber',
+    delivery_note: 'deliveryNoteNumber',
+  },
+  date: {
+    invoice: 'invoiceDate',
+    purchase_order: 'orderDate',
+    offer: 'offerDate',
+    delivery_note: 'deliveryDate',
+  },
+  detailsTitle: {
+    invoice: 'invoiceDetails',
+    purchase_order: 'orderDetails',
+    offer: 'offerDetails',
+    delivery_note: 'deliveryNoteDetails',
+  },
+};
+
+type MetaKind = 'string' | 'number' | 'date';
+interface MetaFieldConfig {
+  key: string;
+  /** i18n key under DocumentDetail. */
+  label: string;
+  kind: MetaKind;
+}
+
+const METADATA_FIELDS: Record<string, MetaFieldConfig[]> = {
+  purchase_order: [
+    { key: 'customer_name', label: 'customer', kind: 'string' },
+    { key: 'expected_delivery_date', label: 'expectedDelivery', kind: 'date' },
+    { key: 'delivery_terms', label: 'deliveryTerms', kind: 'string' },
+    { key: 'payment_terms', label: 'paymentTerms', kind: 'string' },
+  ],
+  offer: [
+    { key: 'customer_name', label: 'customer', kind: 'string' },
+    { key: 'validity_date', label: 'validityDate', kind: 'date' },
+    { key: 'validity_terms', label: 'validityTerms', kind: 'string' },
+  ],
+  delivery_note: [
+    { key: 'recipient_name', label: 'recipient', kind: 'string' },
+    { key: 'recipient_address', label: 'recipientAddress', kind: 'string' },
+    { key: 'order_reference', label: 'orderReference', kind: 'string' },
+  ],
+  contract: [
+    { key: 'seller_name', label: 'seller', kind: 'string' },
+    { key: 'buyer_name', label: 'buyer', kind: 'string' },
+    { key: 'contract_value', label: 'contractValue', kind: 'number' },
+    { key: 'currency', label: 'currency', kind: 'string' },
+    { key: 'effective_date', label: 'effectiveDate', kind: 'date' },
+    { key: 'end_date', label: 'endDate', kind: 'date' },
+    { key: 'subject', label: 'contractSubject', kind: 'string' },
+    { key: 'term_description', label: 'contractTerm', kind: 'string' },
+  ],
+};
+
+/** Whether the items table should show price columns (false for delivery notes). */
+const showItemPrices = (type: string) => type !== 'delivery_note';
+
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -272,14 +343,16 @@ export default function DocumentDetailPage() {
   // empty sections full of dashes.
   const isParsed = ['parsed', 'needs_validation', 'validated', 'archived'].includes(document.status);
   const showInvoiceSections = isParsed && !!invoiceData;
-  const showTypeCard = isParsed && !invoiceData && !!document.type && document.type !== 'invoice';
+  const metadataFields = METADATA_FIELDS[document.type] || [];
+  const showMetadataCard = isParsed && metadataFields.length > 0;
+  const showUnknownCard = isParsed && document.type === 'unknown';
 
   // Validation diagnostics, grouped and rendered in the user's selected locale.
   const validationIssues = splitValidationIssues(document?.extraction_issues, locale);
 
   // Validation
   const getFieldError = (field: string): string | null => {
-    if (editingSection !== 'invoice' && editingSection !== 'supplier') return null;
+    if (editingSection !== 'invoice' && editingSection !== 'supplier' && editingSection !== 'metadata') return null;
     const value = editedFields[field];
     if (value === undefined) return null; // unchanged field
 
@@ -313,6 +386,17 @@ export default function DocumentDetailPage() {
       case 'supplier_name': {
         if (!value.trim()) return t('errSupplierEmpty');
         break;
+      }
+    }
+    // Metadata field validation (S5.2): dates must be ISO, numbers finite.
+    // Empty is allowed — metadata fields are nullable.
+    const metaConfig = (METADATA_FIELDS[document.type] || []).find((f) => f.key === field);
+    if (metaConfig && value.trim() !== '') {
+      if (metaConfig.kind === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return t('errDateFormat');
+      }
+      if (metaConfig.kind === 'number' && isNaN(Number(value))) {
+        return t('errAmountInvalid');
       }
     }
     return null;
@@ -531,8 +615,8 @@ export default function DocumentDetailPage() {
 
             {/* Extracted Data */}
             <div className="space-y-6 min-w-0" style={{ animationDelay: '100ms' }}>
-              {/* Non-invoice classification card */}
-              {showTypeCard && (
+              {/* Unknown document — no structured extraction available */}
+              {showUnknownCard && (
                 <Card className="animate-slide-up" style={{ animationDelay: '100ms' }}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
@@ -559,7 +643,7 @@ export default function DocumentDetailPage() {
                     <div className="flex items-center justify-between">
                       <CardTitle className="flex items-center gap-2 text-lg">
                         <Settings className="h-5 w-5 text-primary" />
-                        {t('invoiceDetails')}
+                        {t(CARRIER_LABEL_KEY.detailsTitle[document.type] || 'invoiceDetails')}
                       </CardTitle>
                       {['needs_validation', 'parsed', 'validated'].includes(document.status) &&
                         (editingSection === 'invoice' ? (
@@ -601,14 +685,14 @@ export default function DocumentDetailPage() {
                       <div className="py-3 border-b border-border gap-3">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground shrink-0">
-                            {t('invoiceNumber')}
+                            {t(CARRIER_LABEL_KEY.number[document.type] || 'invoiceNumber')}
                           </span>
                           {editingSection === 'invoice' ? (
                             <Input
                               value={getFieldValue('invoice_number', invoiceData?.invoice_number)}
                               onChange={(e) => handleFieldChange('invoice_number', e.target.value)}
                               className={`max-w-[200px] h-8 text-sm ${getFieldError('invoice_number') ? 'border-red-400 focus:ring-red-200' : ''}`}
-                              placeholder={t('invoiceNumber')}
+                              placeholder={t(CARRIER_LABEL_KEY.number[document.type] || 'invoiceNumber')}
                             />
                           ) : (
                             <span className="font-medium text-foreground truncate">
@@ -628,7 +712,7 @@ export default function DocumentDetailPage() {
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
                             <Calendar className="h-4 w-4" />
-                            {t('invoiceDate')}
+                            {t(CARRIER_LABEL_KEY.date[document.type] || 'invoiceDate')}
                           </span>
                           {editingSection === 'invoice' ? (
                             <Input
@@ -656,7 +740,8 @@ export default function DocumentDetailPage() {
                         )}
                       </div>
 
-                      {/* Due Date */}
+                      {/* Due Date (invoice only — PO/offer/DN carry no due date) */}
+                      {document.type === 'invoice' && (
                       <div className="py-3 border-b border-border gap-3">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
@@ -685,6 +770,7 @@ export default function DocumentDetailPage() {
                           </p>
                         )}
                       </div>
+                      )}
 
                       {/* Amount */}
                       <div className="py-3 gap-3">
@@ -770,7 +856,10 @@ export default function DocumentDetailPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                       <Package className="h-5 w-5 text-primary" />
-                      {t('items', { count: invoiceData.items.length })}
+                      {t(
+                        document.type === 'delivery_note' ? 'deliveredItems' : 'items',
+                        { count: invoiceData.items.length },
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -787,12 +876,16 @@ export default function DocumentDetailPage() {
                             <th className="text-right py-2 px-3 font-medium text-muted-foreground">
                               {t('colUnit')}
                             </th>
-                            <th className="text-right py-2 px-3 font-medium text-muted-foreground">
-                              {t('colUnitPrice')}
-                            </th>
-                            <th className="text-right py-2 px-3 font-medium text-muted-foreground">
-                              {t('colTotal')}
-                            </th>
+                            {showItemPrices(document.type) && (
+                              <>
+                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                                  {t('colUnitPrice')}
+                                </th>
+                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                                  {t('colTotal')}
+                                </th>
+                              </>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -807,48 +900,54 @@ export default function DocumentDetailPage() {
                               <td className="py-3 px-3 text-right text-muted-foreground">
                                 {item.unit || t('unitDefault')}
                               </td>
-                              <td className="py-3 px-3 text-right text-foreground">
-                                {item.unit_price
-                                  ? formatAmount(
-                                      item.unit_price,
-                                      editedFields.currency || invoiceData.currency,
-                                      locale
-                                    ).formatted
-                                  : '-'}
+                              {showItemPrices(document.type) && (
+                                <>
+                                  <td className="py-3 px-3 text-right text-foreground">
+                                    {item.unit_price
+                                      ? formatAmount(
+                                          item.unit_price,
+                                          editedFields.currency || invoiceData.currency,
+                                          locale,
+                                        ).formatted
+                                      : '-'}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-medium text-foreground">
+                                    {item.total_price
+                                      ? formatAmount(
+                                          item.total_price,
+                                          editedFields.currency || invoiceData.currency,
+                                          locale,
+                                        ).formatted
+                                      : '-'}
+                                  </td>
+                                </>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                        {showItemPrices(document.type) && (
+                          <tfoot>
+                            <tr className="border-t-2 border-border">
+                              <td
+                                colSpan={4}
+                                className="py-3 px-3 text-right font-medium text-foreground"
+                              >
+                                {t('grandTotal')}
                               </td>
-                              <td className="py-3 px-3 text-right font-medium text-foreground">
-                                {item.total_price
+                              <td className="py-3 px-3 text-right font-serif font-semibold text-lg text-foreground">
+                                {getFieldValue('amount_total', invoiceData?.amount_total)
                                   ? formatAmount(
-                                      item.total_price,
+                                      Number(
+                                        getFieldValue('amount_total', invoiceData?.amount_total),
+                                      ),
                                       editedFields.currency || invoiceData.currency,
-                                      locale
+                                      locale,
                                     ).formatted
                                   : '-'}
                               </td>
                             </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t-2 border-border">
-                            <td
-                              colSpan={4}
-                              className="py-3 px-3 text-right font-medium text-foreground"
-                            >
-                              {t('grandTotal')}
-                            </td>
-                            <td className="py-3 px-3 text-right font-serif font-semibold text-lg text-foreground">
-                              {getFieldValue('amount_total', invoiceData?.amount_total)
-                                ? formatAmount(
-                                    Number(
-                                      getFieldValue('amount_total', invoiceData?.amount_total)
-                                    ),
-                                    editedFields.currency || invoiceData.currency,
-                                    locale
-                                  ).formatted
-                                : '-'}
-                            </td>
-                          </tr>
-                        </tfoot>
+                          </tfoot>
+                        )}
                       </table>
                     </div>
                   </CardContent>
@@ -953,6 +1052,112 @@ export default function DocumentDetailPage() {
                     </CardContent>
                   </Card>
                 )}
+
+              {/* Per-type metadata (S5.2). For contract this is the primary
+                  detail card (no invoice carrier); for PO/offer/delivery_note
+                  it renders the type-specific extras next to the carrier
+                  sections. Editable scalar fields, validated by kind. */}
+              {showMetadataCard && (
+                <Card className="animate-slide-up" style={{ animationDelay: '175ms' }}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <FileText className="h-5 w-5 text-primary" />
+                        {document.type === 'contract' ? t('contractDetails') : t('furtherDetails')}
+                      </CardTitle>
+                      {['needs_validation', 'parsed', 'validated'].includes(document.status) &&
+                        (editingSection === 'metadata' ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={cancelEditing}
+                              disabled={validateMutation.isPending}
+                              title={tCommon('cancel')}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={saveSection}
+                              disabled={validateMutation.isPending || hasErrors()}
+                              title={tCommon('save')}
+                            >
+                              <Save className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEditing('metadata')}
+                            title={tCommon('edit')}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        ))}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {metadataFields.map((f) => {
+                        const raw = (document.metadata as Record<string, unknown> | null)?.[f.key];
+                        const value = getFieldValue(f.key, raw as string | number | null);
+                        const error = getFieldError(f.key);
+                        return (
+                          <div
+                            key={f.key}
+                            className="py-3 border-b border-border gap-3 last:border-b-0"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm text-muted-foreground shrink-0">
+                                {t(f.label)}
+                              </span>
+                              {editingSection === 'metadata' ? (
+                                f.kind === 'date' ? (
+                                  <Input
+                                    type="text"
+                                    value={value}
+                                    onChange={(e) => handleFieldChange(f.key, e.target.value)}
+                                    className={`max-w-[200px] h-8 text-sm ${error ? 'border-red-400 focus:ring-red-200' : ''}`}
+                                    placeholder={t('datePlaceholder')}
+                                  />
+                                ) : f.kind === 'number' ? (
+                                  <Input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={value}
+                                    onChange={(e) => handleFieldChange(f.key, e.target.value)}
+                                    className={`max-w-[160px] h-8 text-sm ${error ? 'border-red-400 focus:ring-red-200' : ''}`}
+                                    placeholder="0.00"
+                                  />
+                                ) : (
+                                  <Input
+                                    value={value}
+                                    onChange={(e) => handleFieldChange(f.key, e.target.value)}
+                                    className={`max-w-[260px] h-8 text-sm ${error ? 'border-red-400 focus:ring-red-200' : ''}`}
+                                    placeholder={t(f.label)}
+                                  />
+                                )
+                              ) : (
+                                <span className="font-medium text-foreground truncate text-right">
+                                  {f.kind === 'date' && value
+                                    ? formatDate(value, locale)
+                                    : value || '-'}
+                                </span>
+                              )}
+                            </div>
+                            {error && (
+                              <p className="text-xs text-red-500 mt-1 text-right">{error}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Processing Timeline */}
               <Card className="animate-slide-up" style={{ animationDelay: '200ms' }}>

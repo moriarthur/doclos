@@ -122,6 +122,73 @@ export interface ExtractionWithConfidence<T = InvoiceExtraction> {
   cost: number;
 }
 
+// --- S5.2 metadata sanitization -------------------------------------------
+// LLM-extracted (and user-edited) metadata is persisted to JSONB and later
+// rendered in the UI / exported to Excel. Sanitize at the persist boundary so
+// every consumer is safe by default:
+//  - strings: strip HTML tags + control chars, trim, cap length, and strip a
+//    leading = + - @ so the value cannot become a spreadsheet formula
+//    (CSV/Excel injection) when exported.
+//  - numbers: keep only finite numbers; everything else -> null.
+//  - objects: recurse; arrays: sanitize each element and drop nulls.
+// Pure + idempotent on already-clean data. Exported so the processor (extraction
+// persist) and documents.service (user edits) share one implementation.
+const MAX_METADATA_STRING_LENGTH = 2000;
+
+function sanitizeString(raw: string): string | null {
+  const stripped = raw
+    .replace(/<[^>]*>/g, ' ') // HTML tags
+    .replace(/[\u0000-\u001F\u007F]/g, ' ') // control chars (incl. DEL)
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!stripped) return null;
+  // Spreadsheet formula injection: a leading = + - @ makes Excel treat the cell
+  // as a formula. Strip a leading run of those (plus any residual whitespace).
+  const safe = stripped.replace(/^[=+\-@\s]+/, '');
+  return safe.length > MAX_METADATA_STRING_LENGTH
+    ? safe.slice(0, MAX_METADATA_STRING_LENGTH)
+    : safe;
+}
+
+/** Sanitize a single metadata value (used by the recursive object walk). */
+export function sanitizeMetadataValue(value: unknown): unknown {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return sanitizeString(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    const out: unknown[] = [];
+    for (const v of value) {
+      const s = sanitizeMetadataValue(v);
+      if (s !== null) out.push(s);
+    }
+    return out;
+  }
+  if (typeof value === 'object') {
+    return sanitizeMetadata(value as Record<string, unknown>);
+  }
+  return null;
+}
+
+/**
+ * Sanitize a metadata object field-by-field. Returns a NEW object; never mutates
+ * the input. Keys are also untrusted (LLM output), so they are reduced to plain
+ * `[A-Za-z0-9_]` identifiers (capped). Scalar nulls are preserved (an explicit
+ * "not found" should survive a reprocess); nested array nulls are dropped.
+ */
+export function sanitizeMetadata(
+  fields: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  if (!fields || typeof fields !== 'object') return null;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const cleanKey = String(key).replace(/[^A-Za-z0-9_]/g, '').slice(0, 64);
+    if (!cleanKey) continue;
+    out[cleanKey] = sanitizeMetadataValue(value);
+  }
+  return out;
+}
+
 // Part 3: Line-item cleanup — drop summary rows, table headers, hallucinated
 // no-data rows, and exact duplicates that GLM over-extracts from German/EU invoices.
 

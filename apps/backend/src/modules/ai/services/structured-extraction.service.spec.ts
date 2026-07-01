@@ -1,4 +1,4 @@
-import { StructuredExtractionService, parseGermanNumber } from './structured-extraction.service';
+import { StructuredExtractionService, parseGermanNumber, sanitizeMetadata } from './structured-extraction.service';
 import { AiService } from './ai.service';
 import { DocumentType } from '../../documents/entities/document.entity';
 
@@ -388,5 +388,69 @@ describe('StructuredExtractionService.validateByType', () => {
 
   it('unknown: never produces issues', () => {
     expect(service.validateByType(DocumentType.UNKNOWN, {})).toEqual([]);
+  });
+});
+
+describe('sanitizeMetadata', () => {
+  it('strips HTML tags and collapses whitespace', () => {
+    expect(sanitizeMetadata({ subject: 'Wartung <script>alert(1)</script> IT' })?.subject).toBe('Wartung alert(1) IT');
+  });
+
+  it('strips a leading formula trigger (= + - @) to prevent CSV/Excel injection', () => {
+    expect(sanitizeMetadata({ a: '=CMD("calc")' })?.a).toBe('CMD("calc")');
+    expect(sanitizeMetadata({ b: '+1+1' })?.b).toBe('1+1');
+    expect(sanitizeMetadata({ c: '@SUM(A1)' })?.c).toBe('SUM(A1)');
+  });
+
+  it('caps string length at 2000 chars', () => {
+    const out = sanitizeMetadata({ subject: 'a'.repeat(3000) })?.subject as string;
+    expect(out.length).toBe(2000);
+  });
+
+  it('keeps finite numbers, drops NaN/Infinity', () => {
+    expect(sanitizeMetadata({ contract_value: 24000 })?.contract_value).toBe(24000);
+    expect(sanitizeMetadata({ bad: NaN })?.bad).toBeNull();
+    expect(sanitizeMetadata({ inf: Infinity })?.inf).toBeNull();
+  });
+
+  it('keeps ISO date strings intact', () => {
+    expect(sanitizeMetadata({ effective_date: '2026-01-01' })?.effective_date).toBe('2026-01-01');
+  });
+
+  it('keeps booleans', () => {
+    expect(sanitizeMetadata({ flag: true })?.flag).toBe(true);
+  });
+
+  it('recurses into nested objects and arrays (dropping null array entries)', () => {
+    const out = sanitizeMetadata({
+      nested: { html: '<b>x</b>', n: 5 },
+      arr: ['=bad', 'ok', null],
+    });
+    expect(out?.nested).toEqual({ html: 'x', n: 5 });
+    expect(out?.arr).toEqual(['bad', 'ok']);
+  });
+
+  it('reduces untrusted keys to plain [A-Za-z0-9_] identifiers', () => {
+    const out = sanitizeMetadata({
+      valid_key: 'a',
+      'ev<!-- -->il': 'b',
+      'has space': 'c',
+    } as Record<string, unknown>);
+    expect(Object.keys(out ?? {})).toEqual(['valid_key', 'evil', 'hasspace']);
+  });
+
+  it('returns null for null/undefined/non-object input', () => {
+    expect(sanitizeMetadata(null)).toBeNull();
+    expect(sanitizeMetadata(undefined)).toBeNull();
+  });
+
+  it('preserves explicit null scalar values (a "not found" survives a reprocess)', () => {
+    expect(sanitizeMetadata({ subject: null })?.subject).toBeNull();
+  });
+
+  it('is idempotent on already-clean data', () => {
+    const clean = { subject: 'Wartung', contract_value: 24000, effective_date: '2026-01-01' };
+    expect(sanitizeMetadata(clean)).toEqual(clean);
+    expect(sanitizeMetadata(sanitizeMetadata(clean) ?? {})).toEqual(clean);
   });
 });

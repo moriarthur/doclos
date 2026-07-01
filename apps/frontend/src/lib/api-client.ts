@@ -209,6 +209,88 @@ export interface Document {
   created_at: string;
 }
 
+// --- Document detail (GET /documents/:id) — S5.2 per-type UI ----------------
+export type DocumentType =
+  | 'invoice'
+  | 'contract'
+  | 'offer'
+  | 'delivery_note'
+  | 'purchase_order'
+  | 'unknown';
+
+/** Extraction diagnostic for a single field (value + model confidence). */
+export interface FieldWithConfidence {
+  value: string;
+  confidence?: number;
+}
+
+export interface InvoiceItemDto {
+  description: string | null;
+  quantity: number | null;
+  unit_price: number | null;
+  total_price: number | null;
+}
+
+/** Shared invoice-carrier shape (invoice / purchase_order / offer / delivery_note). */
+export interface InvoiceDetailDto {
+  invoice_number?: FieldWithConfidence;
+  amount_total?: FieldWithConfidence;
+  currency?: string;
+  invoice_date?: string;
+  due_date?: string;
+  supplier_name?: FieldWithConfidence;
+  supplier_address?: FieldWithConfidence;
+  items: InvoiceItemDto[];
+}
+
+export interface ExtractionIssue {
+  severity: 'missing' | 'review';
+  message: { de: string; en: string };
+}
+
+// Per-type metadata (S5.1 storage). All fields nullable — extraction may miss any.
+export interface PurchaseOrderMetadata {
+  customer_name?: string | null;
+  expected_delivery_date?: string | null;
+  delivery_terms?: string | null;
+  payment_terms?: string | null;
+}
+export interface OfferMetadata {
+  customer_name?: string | null;
+  validity_date?: string | null;
+  validity_terms?: string | null;
+}
+export interface DeliveryNoteMetadata {
+  delivery_note_number?: string | null;
+  delivery_date?: string | null;
+  recipient_name?: string | null;
+  recipient_address?: string | null;
+  order_reference?: string | null;
+}
+export interface ContractMetadata {
+  seller_name?: string | null;
+  buyer_name?: string | null;
+  effective_date?: string | null;
+  end_date?: string | null;
+  contract_value?: number | null;
+  currency?: string | null;
+  subject?: string | null;
+  term_description?: string | null;
+}
+
+export interface DocumentDetail {
+  id: string;
+  type: DocumentType;
+  status: string;
+  file_url: string;
+  mime_type: string;
+  original_filename: string;
+  extraction_confidence: number | null;
+  extraction_issues: ExtractionIssue[] | null;
+  metadata: Record<string, unknown> | null;
+  invoice?: InvoiceDetailDto;
+}
+
 export interface DocumentsResponse {
   data: Document[];
   pagination: {
@@ -304,8 +386,8 @@ export const documentsApi = {
     return response.data;
   },
 
-  getDetail: async (id: string) => {
-    const response = await apiClient.get(`/documents/${id}`);
+  getDetail: async (id: string): Promise<DocumentDetail> => {
+    const response = await apiClient.get<DocumentDetail>(`/documents/${id}`);
     return response.data;
   },
 

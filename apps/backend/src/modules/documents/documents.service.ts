@@ -11,10 +11,45 @@ import { FieldExtraction } from './entities/field-extraction.entity';
 import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
 import { S3Service } from '../storage/services/s3.service';
+import { sanitizeMetadata } from '../ai/services/structured-extraction.service';
 
 // Part 3: AI Pipeline - Document processing workflow
 // Part 4: API Specification - Document upload and processing
 // Part 8: Infrastructure & Deployment - S3 storage
+
+// Per-type metadata field whitelist (S5.2 editing). Single source of truth for
+// which metadata keys are editable per document type + their value kind (for
+// validation). Mirrors the S5.1 processor's buildCommercialCarrier.
+const METADATA_FIELDS_BY_TYPE: Partial<Record<DocumentType, Record<string, 'string' | 'number' | 'date'>>> = {
+  [DocumentType.PURCHASE_ORDER]: {
+    customer_name: 'string',
+    expected_delivery_date: 'date',
+    delivery_terms: 'string',
+    payment_terms: 'string',
+  },
+  [DocumentType.OFFER]: {
+    customer_name: 'string',
+    validity_date: 'date',
+    validity_terms: 'string',
+  },
+  [DocumentType.DELIVERY_NOTE]: {
+    delivery_note_number: 'string',
+    delivery_date: 'date',
+    recipient_name: 'string',
+    recipient_address: 'string',
+    order_reference: 'string',
+  },
+  [DocumentType.CONTRACT]: {
+    seller_name: 'string',
+    buyer_name: 'string',
+    effective_date: 'date',
+    end_date: 'date',
+    contract_value: 'number',
+    currency: 'string',
+    subject: 'string',
+    term_description: 'string',
+  },
+};
 
 @Injectable()
 export class DocumentsService {
@@ -208,6 +243,7 @@ export class DocumentsService {
       original_filename: document.original_filename,
       extraction_confidence: document.extraction_confidence,
       extraction_issues: document.extraction_issues,
+      metadata: document.metadata,
       invoice: document.invoice
         ? {
             invoice_number: document.invoice.invoice_number
@@ -305,6 +341,45 @@ export class DocumentsService {
       }
       document.invoice.validated = true;
       await this.invoicesRepository.save(document.invoice);
+    }
+
+    // Apply per-type metadata edits (S5.2). Only whitelisted fields for this
+    // document's type are accepted; dates/numbers are type-validated. Sanitized
+    // before merge — user input is untrusted at the persist boundary too
+    // (HTML/formula injection guard, shared with the extraction path).
+    const typeFields = METADATA_FIELDS_BY_TYPE[document.type] ?? {};
+    const metadataEdits: Record<string, unknown> = {};
+    for (const [field, kind] of Object.entries(typeFields)) {
+      if (fields[field] === undefined) continue;
+      const raw = fields[field];
+      if (raw === null || raw === '') {
+        metadataEdits[field] = null;
+        continue;
+      }
+      if (kind === 'number') {
+        const num = Number(raw);
+        if (!Number.isFinite(num)) {
+          throw new BadRequestException(`${field} muss eine Zahl sein`);
+        }
+        metadataEdits[field] = num;
+      } else if (kind === 'date') {
+        const dateStr = String(raw);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          throw new BadRequestException(`Ungültiges Datumsformat für ${field} (JJJJ-MM-TT)`);
+        }
+        metadataEdits[field] = dateStr;
+      } else {
+        metadataEdits[field] = String(raw);
+      }
+    }
+    if (Object.keys(metadataEdits).length > 0) {
+      const currentMeta = (document.metadata ?? {}) as Record<string, unknown>;
+      const oldMeta: Record<string, unknown> = {};
+      for (const k of Object.keys(metadataEdits)) {
+        oldMeta[k] = currentMeta[k] ?? null;
+      }
+      oldValues.metadata = oldMeta;
+      document.metadata = { ...currentMeta, ...(sanitizeMetadata(metadataEdits) ?? {}) };
     }
 
     // Update document status
