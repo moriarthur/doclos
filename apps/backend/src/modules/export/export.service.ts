@@ -4,7 +4,7 @@ import { Repository, In } from 'typeorm';
 import ExcelJS from 'exceljs';
 import { Invoice } from '../documents/entities/invoice.entity';
 import { InvoiceItem } from '../documents/entities/invoice-item.entity';
-import { DocumentStatus } from '../documents/entities/document.entity';
+import { DocumentStatus, DocumentType, Document } from '../documents/entities/document.entity';
 import { ExportQueryDto } from './dto/export-query.dto';
 import { ExportI18n, ExportLocale, getExportI18n, resolveExportLocale } from './export.i18n';
 
@@ -40,13 +40,36 @@ export class ExportService {
     private invoicesRepository: Repository<Invoice>,
     @InjectRepository(InvoiceItem)
     private invoiceItemsRepository: Repository<InvoiceItem>,
+    @InjectRepository(Document)
+    private documentsRepository: Repository<Document>,
   ) {}
 
-  /** List export — all of the user's invoices matching the filters (dashboard). */
+  /** List export — dispatches to a per-type list builder (default: invoices). */
   async generateExcel(
     userId: string,
     query: ExportQueryDto,
     _format: ExportFormat,
+    ids?: string[],
+    lang?: string,
+  ): Promise<Buffer> {
+    const type = (query.type as DocumentType) ?? DocumentType.INVOICE;
+    switch (type) {
+      case DocumentType.CONTRACT:
+        return this.generateContractList(userId, query, ids, lang);
+      case DocumentType.PURCHASE_ORDER:
+      case DocumentType.OFFER:
+      case DocumentType.DELIVERY_NOTE:
+        return this.generateCommercialList(userId, query, ids, lang, type);
+      case DocumentType.INVOICE:
+      default:
+        return this.generateInvoiceList(userId, query, ids, lang);
+    }
+  }
+
+  /** Invoice list export: invoices sheet + invoice_items sheet (real invoices only). */
+  private async generateInvoiceList(
+    userId: string,
+    query: ExportQueryDto,
     ids?: string[],
     lang?: string,
   ): Promise<Buffer> {
@@ -55,7 +78,10 @@ export class ExportService {
     const qb = this.invoicesRepository
       .createQueryBuilder('invoice')
       .leftJoinAndSelect('invoice.document', 'document')
-      .where('document.user_id = :userId', { userId });
+      .where('document.user_id = :userId', { userId })
+      // S5.3: the invoices table also holds PO/offer/delivery_note carrier rows —
+      // export only real invoices from the invoice bucket.
+      .andWhere('document.type = :type', { type: DocumentType.INVOICE });
 
     // Selection export: limit to the chosen documents when ids are supplied.
     if (ids && ids.length > 0) qb.andWhere('invoice.document_id IN (:...ids)', { ids });
@@ -118,15 +144,15 @@ export class ExportService {
     const rightKeys = new Set(['amount_total', 'vat_amount', 'items_count']);
     invoices.forEach((inv, idx) => {
       const row = invoicesSheet.addRow({
-        invoice_number: inv.invoice_number,
-        supplier_name: inv.supplier_name,
+        invoice_number: this.escapeCell(inv.invoice_number),
+        supplier_name: this.escapeCell(inv.supplier_name),
         invoice_date: this.toExcelDate(inv.invoice_date),
         due_date: this.toExcelDate(inv.due_date),
         amount_total: inv.amount_total != null ? Number(inv.amount_total) : null,
         vat_amount: inv.vat_amount != null ? Number(inv.vat_amount) : null,
-        currency: inv.currency,
+        currency: this.escapeCell(inv.currency),
         items_count: itemsByInvoice.get(inv.id)?.length ?? 0,
-        status: this.translateStatus(inv.document?.status, t),
+        status: this.escapeCell(this.translateStatus(inv.document?.status, t)),
       });
       const zebra = idx % 2 === 1;
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
@@ -172,8 +198,8 @@ export class ExportService {
     for (const inv of invoices) {
       for (const item of itemsByInvoice.get(inv.id) ?? []) {
         const row = itemsSheet.addRow({
-          invoice_number: inv.invoice_number,
-          description: item.description,
+          invoice_number: this.escapeCell(inv.invoice_number),
+          description: this.escapeCell(item.description),
           quantity: item.quantity != null ? Number(item.quantity) : null,
           unit_price: item.unit_price != null ? Number(item.unit_price) : null,
           line_total: item.line_total != null ? Number(item.line_total) : null,
@@ -196,7 +222,232 @@ export class ExportService {
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
-  /** Detail export — a single document's invoice report (Document Details page). */
+  /** Contract list export: one row per `document.type='contract'` (metadata-only). */
+  private async generateContractList(
+    userId: string,
+    query: ExportQueryDto,
+    ids?: string[],
+    lang?: string,
+  ): Promise<Buffer> {
+    const t = getExportI18n(lang);
+    const qb = this.documentsRepository
+      .createQueryBuilder('document')
+      .where('document.user_id = :userId', { userId })
+      .andWhere('document.type = :type', { type: DocumentType.CONTRACT });
+    if (ids && ids.length > 0) qb.andWhere('document.id IN (:...ids)', { ids });
+    if (query.status) qb.andWhere('document.status = :status', { status: query.status });
+    // Contracts carry no carrier row — filter company/date against metadata JSON.
+    if (query.company) {
+      qb.andWhere(
+        "coalesce(document.metadata->>'seller_name', '') ILIKE :company OR coalesce(document.metadata->>'buyer_name', '') ILIKE :company",
+        { company: `%${query.company}%` },
+      );
+    }
+    if (query.from_date) qb.andWhere("document.metadata->>'effective_date' >= :fromDate", { fromDate: query.from_date });
+    if (query.to_date) qb.andWhere("document.metadata->>'effective_date' <= :toDate", { toDate: query.to_date });
+    const docs = await qb.orderBy('document.created_at', 'DESC').getMany();
+    this.logger.log(`Exporting ${docs.length} contract(s) for user ${userId} (lang=${resolveExportLocale(lang)})`);
+
+    const cols = [
+      { header: t.strings.seller, key: 'seller_name', width: 30 },
+      { header: t.strings.buyer, key: 'buyer_name', width: 30 },
+      { header: t.strings.effectiveDate, key: 'effective_date', width: 14 },
+      { header: t.strings.endDate, key: 'end_date', width: 14 },
+      { header: t.strings.contractValue, key: 'contract_value', width: 15 },
+      { header: t.strings.currency, key: 'currency', width: 10 },
+      { header: t.strings.contractSubject, key: 'subject', width: 36 },
+      { header: t.strings.contractTerm, key: 'term_description', width: 20 },
+      { header: t.strings.status, key: 'status', width: 16 },
+    ];
+    const meta = (d: Document, k: string) => (d.metadata as Record<string, unknown> | null)?.[k];
+    const rows = docs.map((d) => ({
+      seller_name: this.escapeCell(this.asString(meta(d, 'seller_name'))),
+      buyer_name: this.escapeCell(this.asString(meta(d, 'buyer_name'))),
+      effective_date: this.toExcelDate(this.asString(meta(d, 'effective_date'))),
+      end_date: this.toExcelDate(this.asString(meta(d, 'end_date'))),
+      contract_value: meta(d, 'contract_value') != null ? Number(meta(d, 'contract_value')) : null,
+      currency: this.escapeCell(this.asString(meta(d, 'currency'))),
+      subject: this.escapeCell(this.asString(meta(d, 'subject'))),
+      term_description: this.escapeCell(this.asString(meta(d, 'term_description'))),
+      status: this.escapeCell(this.translateStatus(d.status, t)),
+    }));
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Doclos';
+    workbook.created = new Date();
+    this.buildListSheet(workbook, t, t.strings.sheetContracts, t.strings.titleContracts, cols, rows, {
+      moneyKeys: new Set(['contract_value']),
+      dateKeys: new Set(['effective_date', 'end_date']),
+      rightKeys: new Set(['contract_value']),
+      centerKeys: new Set(['currency']),
+    });
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  /** PO / offer / delivery_note list export: carrier columns + type-specific metadata extras. */
+  private async generateCommercialList(
+    userId: string,
+    query: ExportQueryDto,
+    ids: string[] | undefined,
+    lang: string | undefined,
+    type: DocumentType,
+  ): Promise<Buffer> {
+    const t = getExportI18n(lang);
+    const qb = this.invoicesRepository
+      .createQueryBuilder('invoice')
+      .leftJoinAndSelect('invoice.document', 'document')
+      .where('document.user_id = :userId', { userId })
+      .andWhere('document.type = :type', { type });
+    if (ids && ids.length > 0) qb.andWhere('invoice.document_id IN (:...ids)', { ids });
+    if (query.from_date) qb.andWhere('invoice.invoice_date >= :fromDate', { fromDate: query.from_date });
+    if (query.to_date) qb.andWhere('invoice.invoice_date <= :toDate', { toDate: query.to_date });
+    if (query.status) qb.andWhere('document.status = :status', { status: query.status });
+    if (query.company) qb.andWhere('invoice.supplier_name ILIKE :company', { company: `%${query.company}%` });
+    const invoices = await qb.orderBy('invoice.invoice_date', 'DESC').getMany();
+    this.logger.log(`Exporting ${invoices.length} ${type}(s) for user ${userId} (lang=${resolveExportLocale(lang)})`);
+
+    const itemsByInvoice = new Map<string, number>();
+    if (invoices.length > 0) {
+      const items = await this.invoiceItemsRepository.find({
+        where: { invoice_id: In(invoices.map((i) => i.id)) },
+      });
+      for (const it of items) itemsByInvoice.set(it.invoice_id, (itemsByInvoice.get(it.invoice_id) ?? 0) + 1);
+    }
+
+    const isPO = type === DocumentType.PURCHASE_ORDER;
+    const isOffer = type === DocumentType.OFFER;
+    const numberLabel = isPO ? t.strings.orderNumber : isOffer ? t.strings.offerNumber : t.strings.deliveryNoteNumber;
+    const dateLabel = isPO ? t.strings.orderDate : isOffer ? t.strings.offerDate : t.strings.deliveryDate;
+    const sheetName = isPO ? t.strings.sheetPurchaseOrders : isOffer ? t.strings.sheetOffers : t.strings.sheetDeliveryNotes;
+    const title = isPO ? t.strings.titlePurchaseOrders : isOffer ? t.strings.titleOffers : t.strings.titleDeliveryNotes;
+
+    const cols: Array<{ header: string; key: string; width: number }> = [
+      { header: numberLabel, key: 'number', width: 22 },
+      { header: dateLabel, key: 'date', width: 14 },
+      { header: t.strings.supplier, key: 'supplier_name', width: 30 },
+      { header: t.strings.amountTotal, key: 'amount_total', width: 15 },
+      { header: t.strings.currency, key: 'currency', width: 10 },
+      { header: t.strings.items, key: 'items_count', width: 9 },
+      ...(isPO
+        ? [
+            { header: t.strings.expectedDelivery, key: 'expected_delivery_date', width: 16 },
+            { header: t.strings.paymentTerms, key: 'payment_terms', width: 26 },
+          ]
+        : []),
+      ...(isOffer
+        ? [
+            { header: t.strings.validityDate, key: 'validity_date', width: 14 },
+            { header: t.strings.validityTerms, key: 'validity_terms', width: 22 },
+          ]
+        : []),
+      ...(type === DocumentType.DELIVERY_NOTE
+        ? [
+            { header: t.strings.recipient, key: 'recipient_name', width: 28 },
+            { header: t.strings.orderReference, key: 'order_reference', width: 22 },
+          ]
+        : []),
+      { header: t.strings.status, key: 'status', width: 16 },
+    ];
+
+    const meta = (inv: Invoice, k: string) =>
+      (inv.document?.metadata as Record<string, unknown> | null | undefined)?.[k];
+    const rows = invoices.map((inv) => {
+      const base: Record<string, ExcelJS.CellValue> = {
+        number: this.escapeCell(inv.invoice_number),
+        date: this.toExcelDate(inv.invoice_date),
+        supplier_name: this.escapeCell(inv.supplier_name),
+        amount_total: inv.amount_total != null ? Number(inv.amount_total) : null,
+        currency: this.escapeCell(inv.currency),
+        items_count: itemsByInvoice.get(inv.id) ?? 0,
+        status: this.escapeCell(this.translateStatus(inv.document?.status, t)),
+      };
+      if (isPO) {
+        base['expected_delivery_date'] = this.toExcelDate(this.asString(meta(inv, 'expected_delivery_date')));
+        base['payment_terms'] = this.escapeCell(this.asString(meta(inv, 'payment_terms')));
+      } else if (isOffer) {
+        base['validity_date'] = this.toExcelDate(this.asString(meta(inv, 'validity_date')));
+        base['validity_terms'] = this.escapeCell(this.asString(meta(inv, 'validity_terms')));
+      } else {
+        base['recipient_name'] = this.escapeCell(this.asString(meta(inv, 'recipient_name')));
+        base['order_reference'] = this.escapeCell(this.asString(meta(inv, 'order_reference')));
+      }
+      return base;
+    });
+
+    const moneyKeys = new Set(['amount_total']);
+    const rightKeys = new Set(['amount_total', 'items_count']);
+    const centerKeys = new Set(['currency']);
+    const dateKeys = new Set(
+      isPO ? ['date', 'expected_delivery_date'] : isOffer ? ['date', 'validity_date'] : ['date'],
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Doclos';
+    workbook.created = new Date();
+    this.buildListSheet(workbook, t, sheetName, title, cols, rows, { moneyKeys, dateKeys, rightKeys, centerKeys });
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  /** Shared flat-list sheet builder: title bar + header row + zebra data rows + frozen header + autofilter. */
+  private buildListSheet(
+    workbook: ExcelJS.Workbook,
+    t: ExportI18n,
+    sheetName: string,
+    title: string,
+    cols: Array<{ header: string; key: string; width: number }>,
+    rows: Array<Record<string, ExcelJS.CellValue>>,
+    opts: {
+      moneyKeys?: Set<string>;
+      dateKeys?: Set<string>;
+      rightKeys?: Set<string>;
+      centerKeys?: Set<string>;
+    } = {},
+  ): ExcelJS.Worksheet {
+    const ws = workbook.addWorksheet(sheetName);
+    ws.columns = cols;
+    const colCount = cols.length;
+
+    ws.mergeCells(1, 1, 1, colCount);
+    this.styleTitle(ws.getCell(1, 1), title);
+    ws.getRow(1).height = 26;
+    cols.forEach((c, i) => {
+      const cell = ws.getCell(2, i + 1);
+      cell.value = c.header;
+      this.styleHeader(cell);
+    });
+    ws.getRow(2).height = 20;
+
+    const moneyKeys = opts.moneyKeys ?? new Set<string>();
+    const dateKeys = opts.dateKeys ?? new Set<string>();
+    const rightKeys = opts.rightKeys ?? new Set<string>();
+    const centerKeys = opts.centerKeys ?? new Set<string>();
+    rows.forEach((rowData, idx) => {
+      const row = ws.addRow(rowData);
+      const zebra = idx % 2 === 1;
+      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+        const key = cols[colNumber - 1].key;
+        this.styleData(cell, {
+          zebra,
+          money: moneyKeys.has(key),
+          date: dateKeys.has(key),
+          moneyFmt: t.numFmt.money,
+          dateFmt: t.numFmt.date,
+          align: rightKeys.has(key) ? 'right' : centerKeys.has(key) ? 'center' : 'left',
+        });
+      });
+    });
+    ws.views = [{ state: 'frozen', ySplit: 2 }];
+    ws.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: colCount } };
+    return ws;
+  }
+
+  /** Coerce a metadata value to a string (or null) for export cells. */
+  private asString(v: unknown): string | null {
+    if (v === null || v === undefined) return null;
+    return typeof v === 'string' ? v : String(v);
+  }
+
+  /** Detail export — dispatches on document type to a per-type detail report. */
   async generateDetailExcel(
     userId: string,
     documentId: string,
@@ -206,34 +457,147 @@ export class ExportService {
     const t = getExportI18n(lang);
     const locale = resolveExportLocale(lang);
 
-    const invoice = await this.invoicesRepository
-      .createQueryBuilder('invoice')
-      .leftJoinAndSelect('invoice.document', 'document')
-      .where('invoice.document_id = :documentId', { documentId })
-      .andWhere('document.user_id = :userId', { userId })
-      .getOne();
-
-    if (!invoice) {
-      throw new NotFoundException('No invoice data available for this document');
-    }
-
-    const items = await this.invoiceItemsRepository.find({
-      where: { invoice_id: invoice.id },
-      order: { created_at: 'ASC' },
+    const document = await this.documentsRepository.findOne({
+      where: { id: documentId, user_id: userId },
+      relations: ['invoice'],
     });
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+    const invoice = document.invoice ?? null;
+    const items = invoice
+      ? await this.invoiceItemsRepository.find({
+          where: { invoice_id: invoice.id },
+          order: { created_at: 'ASC' },
+        })
+      : [];
 
+    switch (document.type) {
+      case DocumentType.CONTRACT:
+        return this.generateContractDetail(document, t, locale);
+      case DocumentType.DELIVERY_NOTE:
+        if (!invoice) throw new NotFoundException('No data available for this document');
+        return this.generateCommercialReport(document, invoice, items, t, locale, {
+          numberLabel: t.strings.deliveryNoteNumber,
+          dateLabel: t.strings.deliveryDate,
+          sheetName: t.strings.deliveryNote,
+          bareWord: t.strings.deliveryNote,
+          showPrices: false,
+          extras: this.deliveryNoteExtras(document, locale),
+        });
+      case DocumentType.PURCHASE_ORDER:
+        if (!invoice) throw new NotFoundException('No data available for this document');
+        return this.generateCommercialReport(document, invoice, items, t, locale, {
+          numberLabel: t.strings.orderNumber,
+          dateLabel: t.strings.orderDate,
+          sheetName: t.strings.order,
+          bareWord: t.strings.order,
+          showPrices: true,
+          extras: this.purchaseOrderExtras(document, locale),
+        });
+      case DocumentType.OFFER:
+        if (!invoice) throw new NotFoundException('No data available for this document');
+        return this.generateCommercialReport(document, invoice, items, t, locale, {
+          numberLabel: t.strings.offerNumber,
+          dateLabel: t.strings.offerDate,
+          sheetName: t.strings.offer,
+          bareWord: t.strings.offer,
+          showPrices: true,
+          extras: this.offerExtras(document, locale),
+        });
+      case DocumentType.UNKNOWN:
+        return this.generateUnknownDetail(document, t);
+      case DocumentType.INVOICE:
+      default:
+        if (!invoice) throw new NotFoundException('No invoice data available for this document');
+        return this.generateCommercialReport(document, invoice, items, t, locale, {
+          numberLabel: t.strings.invoiceNumber,
+          dateLabel: t.strings.invoiceDate,
+          sheetName: t.strings.sheetInvoice,
+          bareWord: t.strings.invoice,
+          showPrices: true,
+          extras: invoice.due_date
+            ? ([[t.strings.dueDate, this.formatLocaleDate(invoice.due_date, locale)] as [string, ExcelJS.CellValue]])
+            : [],
+        });
+    }
+  }
+
+  /** Per-type extras: PO expected-delivery + payment terms. */
+  private purchaseOrderExtras(document: Document, locale: ExportLocale): Array<[string, ExcelJS.CellValue]> {
+    const m = (k: string) => (document.metadata as Record<string, unknown> | null)?.[k];
+    const out: Array<[string, ExcelJS.CellValue]> = [];
+    const ed = this.asString(m('expected_delivery_date'));
+    if (ed) out.push([this.exportI18nFor(locale).strings.expectedDelivery, this.formatLocaleDate(ed, locale)]);
+    const pt = this.asString(m('payment_terms'));
+    if (pt) out.push([this.exportI18nFor(locale).strings.paymentTerms, this.escapeCell(pt)]);
+    return out;
+  }
+
+  /** Per-type extras: offer validity date + terms. */
+  private offerExtras(document: Document, locale: ExportLocale): Array<[string, ExcelJS.CellValue]> {
+    const m = (k: string) => (document.metadata as Record<string, unknown> | null)?.[k];
+    const s = this.exportI18nFor(locale).strings;
+    const out: Array<[string, ExcelJS.CellValue]> = [];
+    const vd = this.asString(m('validity_date'));
+    if (vd) out.push([s.validityDate, this.formatLocaleDate(vd, locale)]);
+    const vt = this.asString(m('validity_terms'));
+    if (vt) out.push([s.validityTerms, this.escapeCell(vt)]);
+    return out;
+  }
+
+  /** Per-type extras: delivery-note recipient + order reference. */
+  private deliveryNoteExtras(document: Document, locale: ExportLocale): Array<[string, ExcelJS.CellValue]> {
+    const m = (k: string) => (document.metadata as Record<string, unknown> | null)?.[k];
+    const s = this.exportI18nFor(locale).strings;
+    const out: Array<[string, ExcelJS.CellValue]> = [];
+    const r = this.asString(m('recipient_name'));
+    if (r) out.push([s.recipient, this.escapeCell(r)]);
+    const ra = this.asString(m('recipient_address'));
+    if (ra) out.push([s.recipientAddress, this.escapeCell(ra)]);
+    const oref = this.asString(m('order_reference'));
+    if (oref) out.push([s.orderReference, this.escapeCell(oref)]);
+    return out;
+  }
+
+  /** Resolve the i18n bundle from a locale (extras helpers build labels in the doc's locale). */
+  private exportI18nFor(locale: ExportLocale): ExportI18n {
+    return getExportI18n(locale === 'en' ? 'en' : 'de');
+  }
+
+  /** Generic commercial detail report (invoice / PO / offer / delivery_note). */
+  private async generateCommercialReport(
+    document: Document,
+    invoice: Invoice,
+    items: InvoiceItem[],
+    t: ExportI18n,
+    locale: ExportLocale,
+    opts: {
+      numberLabel: string;
+      dateLabel: string;
+      sheetName: string;
+      bareWord: string;
+      showPrices: boolean;
+      extras: Array<[string, ExcelJS.CellValue]>;
+    },
+  ): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Doclos';
     workbook.created = new Date();
 
-    const ws = workbook.addWorksheet(t.strings.sheetInvoice);
+    const ws = workbook.addWorksheet(opts.sheetName);
     ws.columns = [{ width: 28 }, { width: 26 }, { width: 16 }, { width: 16 }, { width: 12 }];
 
     const cur = invoice.currency || '';
+    const e = (v: ExcelJS.CellValue) => this.escapeCell(v);
 
     // Title bar
     ws.mergeCells('A1:E1');
-    this.styleTitle(ws.getCell('A1'), invoice.invoice_number ? `${t.strings.invoice} ${invoice.invoice_number}` : t.strings.invoice, 16);
+    this.styleTitle(
+      ws.getCell('A1'),
+      invoice.invoice_number ? `${opts.bareWord} ${e(invoice.invoice_number)}` : opts.bareWord,
+      16,
+    );
     ws.getRow(1).height = 32;
 
     // Meta block — label/value pairs in two columns, beige labels.
@@ -249,23 +613,29 @@ export class ExportService {
         ws.getCell(`C${row}`).border = this.allBorders();
       }
     };
-    meta(3, t.strings.invoiceNumber, invoice.invoice_number || '-', t.strings.status, this.translateStatus(invoice.document?.status, t) || '-');
-    meta(4, t.strings.supplier, invoice.supplier_name || '-', t.strings.currency, cur || '-');
-    meta(
-      5,
-      t.strings.invoiceDate,
-      invoice.invoice_date ? this.formatLocaleDate(invoice.invoice_date, locale) : '-',
-      t.strings.dueDate,
-      invoice.due_date ? this.formatLocaleDate(invoice.due_date, locale) : '-',
-    );
+    meta(3, opts.numberLabel, e(invoice.invoice_number) || '-', t.strings.status, e(this.translateStatus(document.status, t)) || '-');
+    meta(4, opts.dateLabel, invoice.invoice_date ? this.formatLocaleDate(invoice.invoice_date, locale) : '-', t.strings.currency, e(cur) || '-');
+    meta(5, t.strings.supplier, e(invoice.supplier_name) || '-');
     ws.mergeCells('A6:E6');
     const addr = ws.getCell('A6');
-    addr.value = invoice.supplier_address || '';
+    addr.value = e(invoice.supplier_address || '');
     this.styleValue(addr, addr.value);
 
+    // Per-type extras rows (each: label A, value B:E merged).
+    let nextRow = 7;
+    for (const [label, value] of opts.extras) {
+      this.styleLabel(ws.getCell(`A${nextRow}`), label);
+      ws.mergeCells(`B${nextRow}:E${nextRow}`);
+      this.styleValue(ws.getCell(`B${nextRow}`), value);
+      nextRow++;
+    }
+
     // Items header
-    const headerRow = 8;
-    [t.strings.description, t.strings.quantity, t.strings.unitPrice, t.strings.lineTotal].forEach((h, i) => {
+    const headerRow = nextRow + 1;
+    const itemHeaders = opts.showPrices
+      ? [t.strings.description, t.strings.quantity, t.strings.unitPrice, t.strings.lineTotal]
+      : [t.strings.description, t.strings.quantity];
+    itemHeaders.forEach((h, i) => {
       const cell = ws.getCell(headerRow, i + 1);
       cell.value = h;
       this.styleHeader(cell);
@@ -276,54 +646,124 @@ export class ExportService {
     let row = headerRow + 1;
     let itemsTotal = 0;
     items.forEach((item, idx) => {
-      ws.getCell(`A${row}`).value = item.description || '';
+      ws.getCell(`A${row}`).value = e(item.description || '');
       ws.getCell(`B${row}`).value = item.quantity != null ? Number(item.quantity) : '';
-      ws.getCell(`C${row}`).value = item.unit_price != null ? Number(item.unit_price) : '';
-      ws.getCell(`D${row}`).value = item.line_total != null ? Number(item.line_total) : '';
+      if (opts.showPrices) {
+        ws.getCell(`C${row}`).value = item.unit_price != null ? Number(item.unit_price) : '';
+        ws.getCell(`D${row}`).value = item.line_total != null ? Number(item.line_total) : '';
+      }
       const zebra = idx % 2 === 1;
       this.styleData(ws.getCell(`A${row}`), { zebra });
       this.styleData(ws.getCell(`B${row}`), { zebra, align: 'right' });
-      this.styleData(ws.getCell(`C${row}`), { zebra, money: true, moneyFmt: t.numFmt.money, align: 'right' });
-      this.styleData(ws.getCell(`D${row}`), { zebra, money: true, moneyFmt: t.numFmt.money, align: 'right' });
+      if (opts.showPrices) {
+        this.styleData(ws.getCell(`C${row}`), { zebra, money: true, moneyFmt: t.numFmt.money, align: 'right' });
+        this.styleData(ws.getCell(`D${row}`), { zebra, money: true, moneyFmt: t.numFmt.money, align: 'right' });
+      }
       if (item.line_total != null) itemsTotal += Number(item.line_total);
       row++;
     });
     if (items.length === 0) {
-      ws.mergeCells(`A${row}:D${row}`);
+      ws.mergeCells(`A${row}:${opts.showPrices ? 'D' : 'B'}${row}`);
       ws.getCell(`A${row}`).value = t.strings.noLineItems;
       this.styleValue(ws.getCell(`A${row}`), ws.getCell(`A${row}`).value);
       row++;
     }
 
-    // Totals (beige accent, bold)
-    const totalRow = (label: string, value: number | null, bold = false) => {
-      ws.mergeCells(`A${row}:C${row}`);
-      const l = ws.getCell(`A${row}`);
-      l.value = label;
-      l.alignment = { horizontal: 'right', vertical: 'middle' };
-      l.font = { bold, color: { argb: COLOR.brand } };
-      l.fill = solidFill(COLOR.accentLight);
-      l.border = this.allBorders();
-      const v = ws.getCell(`D${row}`);
-      v.value = value ?? 0;
-      v.numFmt = t.numFmt.money;
-      v.alignment = { horizontal: 'right', vertical: 'middle' };
-      v.font = { bold, color: { argb: COLOR.brand } };
-      v.fill = solidFill(COLOR.accentLight);
-      v.border = this.allBorders();
-      ws.getCell(`E${row}`).fill = solidFill(COLOR.accentLight);
-      ws.getCell(`E${row}`).border = this.allBorders();
-      row++;
-    };
-    totalRow(t.strings.totalsItemsTotal, itemsTotal);
-    if (invoice.vat_amount != null) totalRow(t.strings.totalsVat, Number(invoice.vat_amount));
-    totalRow(t.strings.totalsAmountTotal, invoice.amount_total != null ? Number(invoice.amount_total) : 0, true);
-    if (cur) {
-      ws.getCell(`E${row - 1}`).value = cur;
-      ws.getCell(`E${row - 1}`).alignment = { horizontal: 'center', vertical: 'middle' };
-      ws.getCell(`E${row - 1}`).font = { bold: true, color: { argb: COLOR.brand } };
+    // Totals (price-bearing types only — beige accent, bold)
+    if (opts.showPrices) {
+      const totalRow = (label: string, value: number | null, bold = false) => {
+        ws.mergeCells(`A${row}:C${row}`);
+        const l = ws.getCell(`A${row}`);
+        l.value = label;
+        l.alignment = { horizontal: 'right', vertical: 'middle' };
+        l.font = { bold, color: { argb: COLOR.brand } };
+        l.fill = solidFill(COLOR.accentLight);
+        l.border = this.allBorders();
+        const v = ws.getCell(`D${row}`);
+        v.value = value ?? 0;
+        v.numFmt = t.numFmt.money;
+        v.alignment = { horizontal: 'right', vertical: 'middle' };
+        v.font = { bold, color: { argb: COLOR.brand } };
+        v.fill = solidFill(COLOR.accentLight);
+        v.border = this.allBorders();
+        ws.getCell(`E${row}`).fill = solidFill(COLOR.accentLight);
+        ws.getCell(`E${row}`).border = this.allBorders();
+        row++;
+      };
+      totalRow(t.strings.totalsItemsTotal, itemsTotal);
+      if (invoice.vat_amount != null) totalRow(t.strings.totalsVat, Number(invoice.vat_amount));
+      totalRow(t.strings.totalsAmountTotal, invoice.amount_total != null ? Number(invoice.amount_total) : 0, true);
+      if (cur) {
+        ws.getCell(`E${row - 1}`).value = cur;
+        ws.getCell(`E${row - 1}`).alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getCell(`E${row - 1}`).font = { bold: true, color: { argb: COLOR.brand } };
+      }
     }
 
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  /** Contract detail report — metadata only (no carrier/items/totals). */
+  private async generateContractDetail(
+    document: Document,
+    t: ExportI18n,
+    locale: ExportLocale,
+  ): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Doclos';
+    workbook.created = new Date();
+
+    const ws = workbook.addWorksheet(t.strings.contract);
+    ws.columns = [{ width: 28 }, { width: 60 }];
+
+    const meta = (document.metadata as Record<string, unknown> | null) ?? {};
+    const e = (v: ExcelJS.CellValue) => this.escapeCell(v);
+    const title = meta.subject ? `${t.strings.contract} ${e(this.asString(meta.subject))}` : t.strings.contract;
+
+    ws.mergeCells('A1:B1');
+    this.styleTitle(ws.getCell('A1'), title, 16);
+    ws.getRow(1).height = 32;
+
+    const rows: Array<{ label: string; value: ExcelJS.CellValue; money?: boolean }> = [
+      { label: t.strings.seller, value: e(this.asString(meta.seller_name)) || '-' },
+      { label: t.strings.buyer, value: e(this.asString(meta.buyer_name)) || '-' },
+      { label: t.strings.effectiveDate, value: this.formatLocaleDate(this.asString(meta.effective_date), locale) },
+      { label: t.strings.endDate, value: this.formatLocaleDate(this.asString(meta.end_date), locale) },
+      {
+        label: t.strings.contractValue,
+        value: meta.contract_value != null ? Number(meta.contract_value) : '-',
+        money: true,
+      },
+      { label: t.strings.currency, value: e(this.asString(meta.currency)) || '-' },
+      { label: t.strings.contractSubject, value: e(this.asString(meta.subject)) || '-' },
+      { label: t.strings.contractTerm, value: e(this.asString(meta.term_description)) || '-' },
+      { label: t.strings.status, value: e(this.translateStatus(document.status, t)) || '-' },
+    ];
+    rows.forEach((r, i) => {
+      const row = 3 + i;
+      this.styleLabel(ws.getCell(`A${row}`), r.label);
+      const v = ws.getCell(`B${row}`);
+      this.styleValue(v, r.value);
+      if (r.money) v.numFmt = t.numFmt.money;
+    });
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  /** Unknown-document detail report — minimal (no structured data was extracted). */
+  private async generateUnknownDetail(document: Document, t: ExportI18n): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Doclos';
+    workbook.created = new Date();
+    const ws = workbook.addWorksheet('Document');
+    ws.columns = [{ width: 28 }, { width: 60 }];
+    ws.mergeCells('A1:B1');
+    this.styleTitle(ws.getCell('A1'), this.escapeCell(document.original_filename) || 'Document', 16);
+    ws.getRow(1).height = 32;
+    this.styleLabel(ws.getCell('A3'), t.strings.status);
+    this.styleValue(ws.getCell('B3'), this.escapeCell(this.translateStatus(document.status, t)) || '-');
+    ws.mergeCells('A4:B4');
+    this.styleValue(ws.getCell('A4'), t.strings.noStructuredData);
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
@@ -332,6 +772,16 @@ export class ExportService {
   private translateStatus(status: string | null | undefined, t: ExportI18n): string {
     if (!status) return '';
     return t.status[status as DocumentStatus] ?? status;
+  }
+
+  /**
+   * Formula-injection guard for exported cells: Excel/CSV treat a cell whose
+   * content starts with = + - @ as a formula. Strip a leading run of those
+   * (plus whitespace) from string values; leave numbers/nulls untouched.
+   */
+  private escapeCell(v: ExcelJS.CellValue): ExcelJS.CellValue {
+    if (typeof v === 'string') return v.replace(/^[=+\-@\s]+/, '');
+    return v;
   }
 
   /**

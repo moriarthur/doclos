@@ -26,4 +26,8 @@ export class ExportQueryDto {
   @IsOptional()
   @IsIn(['de', 'en'])
   lang?: string; // UI locale for localized export headers/labels ('de' fallback)
+
+  @IsOptional()
+  @IsIn(['invoice', 'contract', 'offer', 'delivery_note', 'purchase_order'])
+  type?: string; // document-type bucket to export (default 'invoice' in the service)
 }

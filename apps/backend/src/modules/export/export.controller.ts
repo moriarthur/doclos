@@ -23,12 +23,21 @@ import { User } from '../auth/entities/user.entity';
 const SUPPORTED_FORMATS = ['excel'] as const;
 export type ExportFormat = (typeof SUPPORTED_FORMATS)[number];
 
+// Download filename per document-type bucket.
+const EXPORT_FILENAMES: Record<string, string> = {
+  invoice: 'doclos-invoices.xlsx',
+  contract: 'doclos-contracts.xlsx',
+  offer: 'doclos-offers.xlsx',
+  delivery_note: 'doclos-delivery-notes.xlsx',
+  purchase_order: 'doclos-purchase-orders.xlsx',
+};
+
 @Controller('export')
 @UseGuards(JwtAuthGuard)
 export class ExportController {
   constructor(private exportService: ExportService) {}
 
-  /** List export — all of the user's invoices matching the filters (dashboard). */
+  /** List export — a type bucket of the user's documents matching the filters. */
   @Get(':format')
   async exportList(
     @CurrentUser() user: User,
@@ -39,7 +48,8 @@ export class ExportController {
     const fmt = this.resolveFormat(format);
     const ids = query.ids ? query.ids.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
     const buffer = await this.exportService.generateExcel(user.id, query, fmt, ids, query.lang);
-    this.sendWorkbook(res, buffer, 'doclos-invoices.xlsx');
+    const type = query.type || 'invoice';
+    this.sendWorkbook(res, buffer, EXPORT_FILENAMES[type] ?? 'doclos-export.xlsx');
   }
 
   /** Detail export — a single document's invoice report (Document Details page). */

@@ -37,6 +37,41 @@ export interface ExportStrings {
   totalsItemsTotal: string;
   totalsVat: string;
   totalsAmountTotal: string;
+  // --- S5.3 per-type export ---
+  sheetContracts: string;
+  sheetPurchaseOrders: string;
+  sheetOffers: string;
+  sheetDeliveryNotes: string;
+  titleContracts: string;
+  titlePurchaseOrders: string;
+  titleOffers: string;
+  titleDeliveryNotes: string;
+  orderNumber: string;
+  orderDate: string;
+  offerNumber: string;
+  offerDate: string;
+  deliveryNoteNumber: string;
+  deliveryDate: string;
+  expectedDelivery: string;
+  deliveryTerms: string;
+  paymentTerms: string;
+  validityDate: string;
+  validityTerms: string;
+  recipient: string;
+  recipientAddress: string;
+  orderReference: string;
+  seller: string;
+  buyer: string;
+  contractValue: string;
+  contractSubject: string;
+  contractTerm: string;
+  effectiveDate: string;
+  endDate: string;
+  contract: string; // bare word for "Contract {subject}" title
+  order: string;
+  offer: string;
+  deliveryNote: string;
+  noStructuredData: string;
 }
 
 export interface ExportI18n {
@@ -76,6 +111,40 @@ const TRANSLATIONS: Record<ExportLocale, ExportI18n> = {
       totalsItemsTotal: 'Zwischensumme',
       totalsVat: 'MwSt.',
       totalsAmountTotal: 'Gesamtbetrag',
+      sheetContracts: 'Verträge',
+      sheetPurchaseOrders: 'Bestellungen',
+      sheetOffers: 'Angebote',
+      sheetDeliveryNotes: 'Lieferscheine',
+      titleContracts: 'Doclos — Verträge',
+      titlePurchaseOrders: 'Doclos — Bestellungen',
+      titleOffers: 'Doclos — Angebote',
+      titleDeliveryNotes: 'Doclos — Lieferscheine',
+      orderNumber: 'Bestellnummer',
+      orderDate: 'Bestelldatum',
+      offerNumber: 'Angebotsnummer',
+      offerDate: 'Angebotsdatum',
+      deliveryNoteNumber: 'Lieferscheinnummer',
+      deliveryDate: 'Lieferdatum',
+      expectedDelivery: 'Wunschlieferdatum',
+      deliveryTerms: 'Lieferbedingungen',
+      paymentTerms: 'Zahlungsbedingungen',
+      validityDate: 'Gültig bis',
+      validityTerms: 'Gültigkeit',
+      recipient: 'Empfänger',
+      recipientAddress: 'Empfängeradresse',
+      orderReference: 'Bestell-Referenz',
+      seller: 'Verkäufer',
+      buyer: 'Käufer',
+      contractValue: 'Vertragswert',
+      contractSubject: 'Gegenstand',
+      contractTerm: 'Laufzeit',
+      effectiveDate: 'Vertragsbeginn',
+      endDate: 'Vertragsende',
+      contract: 'Vertrag',
+      order: 'Bestellung',
+      offer: 'Angebot',
+      deliveryNote: 'Lieferschein',
+      noStructuredData: 'Keine strukturierten Daten',
     },
     status: {
       [DocumentStatus.UPLOADED]: 'Hochgeladen',
@@ -114,6 +183,40 @@ const TRANSLATIONS: Record<ExportLocale, ExportI18n> = {
       totalsItemsTotal: 'Items Total',
       totalsVat: 'VAT',
       totalsAmountTotal: 'Amount Total',
+      sheetContracts: 'Contracts',
+      sheetPurchaseOrders: 'Purchase Orders',
+      sheetOffers: 'Offers',
+      sheetDeliveryNotes: 'Delivery Notes',
+      titleContracts: 'Doclos — Contracts',
+      titlePurchaseOrders: 'Doclos — Purchase Orders',
+      titleOffers: 'Doclos — Offers',
+      titleDeliveryNotes: 'Doclos — Delivery Notes',
+      orderNumber: 'Order Number',
+      orderDate: 'Order Date',
+      offerNumber: 'Offer Number',
+      offerDate: 'Offer Date',
+      deliveryNoteNumber: 'Delivery Note Number',
+      deliveryDate: 'Delivery Date',
+      expectedDelivery: 'Expected Delivery',
+      deliveryTerms: 'Delivery Terms',
+      paymentTerms: 'Payment Terms',
+      validityDate: 'Valid Until',
+      validityTerms: 'Validity',
+      recipient: 'Recipient',
+      recipientAddress: 'Recipient Address',
+      orderReference: 'Order Reference',
+      seller: 'Seller',
+      buyer: 'Buyer',
+      contractValue: 'Contract Value',
+      contractSubject: 'Subject',
+      contractTerm: 'Term',
+      effectiveDate: 'Effective Date',
+      endDate: 'End Date',
+      contract: 'Contract',
+      order: 'Order',
+      offer: 'Offer',
+      deliveryNote: 'Delivery Note',
+      noStructuredData: 'No structured data',
     },
     status: {
       [DocumentStatus.UPLOADED]: 'Uploaded',
