@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job, JobStatus } from './entities/job.entity';
@@ -18,11 +18,25 @@ export class JobsService {
     private documentsRepository: Repository<Document>,
   ) {}
 
-  async getJobStatus(jobId: string) {
+  // P0-1 (audit): every job/document access must be scoped to the owning user
+  private async assertOwnership(documentId: string | null, userId: string) {
+    if (!documentId) {
+      throw new NotFoundException('Job not found');
+    }
+    const document = await this.documentsRepository.findOne({
+      where: { id: documentId, user_id: userId },
+    });
+    if (!document) {
+      throw new NotFoundException('Job not found');
+    }
+  }
+
+  async getJobStatus(jobId: string, userId: string) {
     const job = await this.jobsRepository.findOne({ where: { id: jobId } });
     if (!job) {
       throw new NotFoundException('Job not found');
     }
+    await this.assertOwnership(job.document_id, userId);
 
     // Use progress from job if available
     const progress = job.progress
@@ -51,7 +65,9 @@ export class JobsService {
     };
   }
 
-  async getDocumentJobs(documentId: string) {
+  async getDocumentJobs(documentId: string, userId: string) {
+    await this.assertOwnership(documentId, userId);
+
     const jobs = await this.jobsRepository.find({
       where: { document_id: documentId },
       order: { created_at: 'DESC' },
@@ -89,14 +105,15 @@ export class JobsService {
     };
   }
 
-  async cancelJob(jobId: string) {
+  async cancelJob(jobId: string, userId: string) {
     const job = await this.jobsRepository.findOne({ where: { id: jobId } });
     if (!job) {
       throw new NotFoundException('Job not found');
     }
+    await this.assertOwnership(job.document_id, userId);
 
     if (job.status !== JobStatus.PROCESSING && job.status !== JobStatus.PENDING) {
-      throw new Error('Cannot cancel a job that is not processing or pending');
+      throw new BadRequestException('Cannot cancel a job that is not processing or pending');
     }
 
     job.status = JobStatus.FAILED;
@@ -113,7 +130,9 @@ export class JobsService {
     return { message: 'Job cancelled successfully' };
   }
 
-  async cancelByDocument(documentId: string) {
+  async cancelByDocument(documentId: string, userId: string) {
+    await this.assertOwnership(documentId, userId);
+
     const job = await this.jobsRepository.findOne({
       where: { document_id: documentId },
       order: { created_at: 'DESC' },
