@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB — must match backend MAX_UPLOAD_BYTES (P0-4)
 const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/tiff'];
 
 // Smart filename truncation - shows beginning, middle with ellipsis, and extension
@@ -255,7 +255,7 @@ export default function UploadPage() {
                       id="file-upload"
                       className="hidden"
                       multiple
-                      accept=".pdf,.png,.jpg,.jpeg,.tiff"
+                      accept=".pdf,.png,.jpg,.jpeg,.tiff,.webp"
                       onChange={handleFileInput}
                     />
                     <label
