@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -20,12 +20,14 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
+    // P0-3 (audit): normalize email so john@x.com and JOHN@x.com are one account
+    const email = dto.email.toLowerCase().trim();
     // Check if user exists
     const existingUser = await this.usersRepository.findOne({
-      where: { email: dto.email },
+      where: { email },
     });
     if (existingUser) {
-      throw new UnauthorizedException('User already exists');
+      throw new ConflictException('User already exists');
     }
 
     // Hash password
@@ -33,7 +35,7 @@ export class AuthService {
 
     // Create user
     const user = this.usersRepository.create({
-      email: dto.email,
+      email,
       name: dto.name,
       password_hash,
     });
@@ -48,9 +50,11 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
+    // P0-3 (audit): match the register-side normalization
+    const email = dto.email.toLowerCase().trim();
     // Find user
     const user = await this.usersRepository.findOne({
-      where: { email: dto.email },
+      where: { email },
     });
     if (!user || !user.password_hash) {
       throw new UnauthorizedException('Invalid credentials');
@@ -73,9 +77,14 @@ export class AuthService {
 
   async refreshTokens(dto: RefreshTokenDto) {
     try {
-      const payload = this.jwtService.verify(dto.refresh_token, {
+      const payload = this.jwtService.verify<{ sub: string; type?: string }>(dto.refresh_token, {
         secret: process.env.JWT_SECRET,
       });
+
+      // P0-3 (audit): refresh endpoint must accept refresh tokens only
+      if (payload.type !== 'refresh') {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
 
       const user = await this.usersRepository.findOne({
         where: { id: payload.sub },
@@ -91,13 +100,20 @@ export class AuthService {
   }
 
   private async generateTokens(userId: string) {
-    const payload = { sub: userId };
-    const access_token = this.jwtService.sign(payload, {
-      expiresIn: process.env.JWT_ACCESS_EXPIRATION || '15m',
-    });
-    const refresh_token = this.jwtService.sign(payload, {
-      expiresIn: process.env.JWT_REFRESH_EXPIRATION || '30d',
-    });
+    // P0-3 (audit): access and refresh are no longer interchangeable —
+    // JwtStrategy rejects tokens without type 'access'
+    const access_token = this.jwtService.sign(
+      { sub: userId, type: 'access' },
+      {
+        expiresIn: process.env.JWT_ACCESS_EXPIRATION || '15m',
+      },
+    );
+    const refresh_token = this.jwtService.sign(
+      { sub: userId, type: 'refresh' },
+      {
+        expiresIn: process.env.JWT_REFRESH_EXPIRATION || '30d',
+      },
+    );
     return { access_token, refresh_token };
   }
 

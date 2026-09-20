@@ -30,9 +30,9 @@ cp .env.example .env
 ### 4. Initialize database
 
 ```bash
-# Create database schema
+# Create schema from entities (dev only), then apply migrations
 cd apps/backend
-npx typeorm schema:sync -d src/database/data-source.ts
+pnpm db:reset && pnpm db:migrate
 ```
 
 ### 5. Start development

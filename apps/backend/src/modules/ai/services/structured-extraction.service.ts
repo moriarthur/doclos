@@ -132,14 +132,13 @@ export class StructuredExtractionService {
       normalized.due_date = this.normalizeDate(normalized.due_date);
     }
 
-    // Ensure amounts are numbers
+    // Ensure amounts are numbers — P1-2 (audit): German-formatted amounts
+    // ("1.200,50", "1200,50") must not be fed to parseFloat raw
     if (normalized.amount_total && typeof normalized.amount_total === 'string') {
-      const amountStr = normalized.amount_total as string;
-      normalized.amount_total = parseFloat(amountStr.replace(/[^\d.-]/g, ''));
+      normalized.amount_total = this.parseAmount(normalized.amount_total);
     }
     if (normalized.vat_amount && typeof normalized.vat_amount === 'string') {
-      const vatStr = normalized.vat_amount as string;
-      normalized.vat_amount = parseFloat(vatStr.replace(/[^\d.-]/g, ''));
+      normalized.vat_amount = this.parseAmount(normalized.vat_amount as string);
     }
 
     // Validate currency code
@@ -158,23 +157,46 @@ export class StructuredExtractionService {
    */
   private normalizeDate(dateStr: string): string | null {
     try {
-      // Try parsing as ISO
-      const isoDate = new Date(dateStr);
-      if (!isNaN(isoDate.getTime())) {
-        return isoDate.toISOString().split('T')[0];
-      }
-
-      // Try German format (DD.MM.YYYY)
+      // P1-1 (audit): German DD.MM.YYYY must be checked BEFORE new Date(),
+      // which parses "03.04.2026" as MM.DD.YYYY and silently swaps day/month
       const germanMatch = dateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
       if (germanMatch) {
         const [, day, month, year] = germanMatch;
         return `${year}-${month}-${day}`;
       }
 
+      // Strict ISO only — anything else is unparseable, not a Date() gamble
+      if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+        const isoDate = new Date(dateStr);
+        if (!isNaN(isoDate.getTime())) {
+          return isoDate.toISOString().split('T')[0];
+        }
+      }
+
       return null;
     } catch {
       return null;
     }
+  }
+
+  /**
+   * P1-2 (audit): parse an amount string that may use German formatting.
+   * "1.200,50" → 1200.5, "1200,50" → 1200.5, "€1200.50" → 1200.5
+   * (the old strip-then-parseFloat turned "1.200,50" into 1.2)
+   */
+  private parseAmount(value: string): number {
+    const trimmed = value.trim();
+    // German with thousands separators: 1.200,50 (also negative)
+    if (/^-?\d{1,3}(\.\d{3})+,\d{2}$/.test(trimmed)) {
+      return parseFloat(trimmed.replace(/\./g, '').replace(',', '.'));
+    }
+    // German decimal comma without separators: 1200,50
+    if (/^-?\d+,\d{2}$/.test(trimmed)) {
+      return parseFloat(trimmed.replace(',', '.'));
+    }
+    // Fallback: strip currency symbols/spaces — plain "1200.50", US "1,200.50"
+    const n = parseFloat(trimmed.replace(/[^\d.-]/g, ''));
+    return isNaN(n) ? NaN : n;
   }
 
   /**

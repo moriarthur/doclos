@@ -303,11 +303,13 @@ export class DocumentProcessor {
         this.logger.log('Confidence low - needs validation');
       }
 
-      // Find or create customer
+      // Find or create customer — scoped to the owning user
+      // (P0-2: without the user_id filter, suppliers leaked across tenants)
       let customer: Customer | null = null;
       if (normalizedExtraction.supplier_name) {
         const existingCustomer = await this.customersRepository.findOne({
           where: {
+            user_id: document.user_id,
             name: normalizedExtraction.supplier_name,
           },
         });
@@ -316,6 +318,7 @@ export class DocumentProcessor {
           customer = existingCustomer;
         } else {
           customer = this.customersRepository.create({
+            user_id: document.user_id,
             name: normalizedExtraction.supplier_name,
             address: normalizedExtraction.supplier_address || undefined,
           });
@@ -408,13 +411,10 @@ export class DocumentProcessor {
 
       this.logger.log(`Invoice data saved - Status: ${newStatus}`);
     } catch (error) {
+      // P1-7 (audit): log and rethrow only — the outer handler owns the final
+      // status (ERROR). The old inner write of NEEDS_VALIDATION was instantly
+      // overwritten, contradicting the retry/reprocess UX.
       this.logger.error(`Invoice extraction failed: ${error instanceof Error ? error.message : String(error)}`);
-
-      // Mark document as needing validation on error
-      document.status = DocumentStatus.NEEDS_VALIDATION;
-      document.processed_at = new Date();
-      await this.documentsRepository.save(document);
-
       throw error;
     }
   }
