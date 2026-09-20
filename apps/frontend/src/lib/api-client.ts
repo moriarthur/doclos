@@ -291,6 +291,16 @@ export const documentsApi = {
     return response.data;
   },
 
+  // P1-6 (audit): fetch the raw file through apiClient so the 401-refresh
+  // interceptor applies (DocumentViewer previously used raw fetch with the
+  // localStorage token, which failed once the 15-min access token expired)
+  getFile: async (id: string): Promise<Blob> => {
+    const response = await apiClient.get<Blob>(`/documents/${id}/file`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
   upload: async (file: File, type?: string): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('file', file);

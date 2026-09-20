@@ -5,9 +5,10 @@ import { useTranslations } from 'next-intl';
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { CancelableLoader } from '@/components/ui/CancelableLoader';
+import { documentsApi } from '@/lib/api-client';
 
 interface DocumentViewerProps {
-  url: string;
+  documentId: string;
   mimeType: string;
   error?: boolean;
   reprocessing?: boolean;
@@ -16,7 +17,7 @@ interface DocumentViewerProps {
 }
 
 export function DocumentViewer({
-  url,
+  documentId,
   mimeType,
   error: isErrorDoc = false,
   reprocessing = false,
@@ -30,29 +31,30 @@ export function DocumentViewer({
 
   useEffect(() => {
     let objectUrl: string;
-    const token = localStorage.getItem('access_token');
+    let cancelled = false;
 
-    fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('fetch failed');
-        return res.blob();
-      })
+    // P1-6 (audit): fetch through apiClient so the 401-refresh interceptor
+    // applies — raw fetch with the localStorage token failed silently once
+    // the 15-min access token expired
+    documentsApi
+      .getFile(documentId)
       .then((blob) => {
+        if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
         setBlobUrl(objectUrl);
         setLoading(false);
       })
       .catch(() => {
+        if (cancelled) return;
         setFetchError(true);
         setLoading(false);
       });
 
     return () => {
+      cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [url]);
+  }, [documentId]);
 
   if (loading) {
     return (
@@ -68,14 +70,16 @@ export function DocumentViewer({
         <div className="text-center p-8">
           <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <p className="text-sm text-muted-foreground mb-3">{t('loadFailed')}</p>
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary hover:underline text-sm"
-          >
-            {t('openNewTab')}
-          </a>
+          {blobUrl && (
+            <a
+              href={blobUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline text-sm"
+            >
+              {t('openNewTab')}
+            </a>
+          )}
         </div>
       </div>
     );
