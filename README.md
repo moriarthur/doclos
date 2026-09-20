@@ -71,7 +71,7 @@ doclos/
 # Prerequisites: Node ≥20, pnpm ≥8, Docker
 
 # Clone and install
-git clone https://github.com/moriarthur/Doclos.git
+git clone https://github.com/moriarthur/doclos.git
 cd Doclos
 pnpm install
 

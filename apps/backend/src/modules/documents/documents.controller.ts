@@ -23,19 +23,13 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User } from '../auth/entities/user.entity';
 import { ValidateDocumentDto } from './dto/validate-document.dto';
 import { DocumentType } from './entities/document.entity';
+import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
 
 // Part 4: API Specification - Document endpoints
 
 // Allowed upload MIME types + max size. Multer defaults to in-memory storage, so
 // capping size bounds memory pressure (DoS hardening).
-const UPLOAD_MIME_TYPES = [
-  'application/pdf',
-  'image/png',
-  'image/jpeg',
-  'image/tiff',
-  'image/webp',
-];
-const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB
+// Constants live in upload-constraints.ts (P0-4: shared with the service).
 
 @Controller('documents')
 @UseGuards(JwtAuthGuard)

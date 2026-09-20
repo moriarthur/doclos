@@ -61,8 +61,11 @@ export const dataSourceOptions: DataSourceOptions = {
     Job,
     AuditLog,
   ],
-  migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
-  synchronize: process.env.NODE_ENV !== 'production', // Use migrations in production
+  // P1-5 (audit): __dirname is src/database — the old path pointed at a
+  // nonexistent src/database/database/migrations
+  migrations: [__dirname + '/migrations/*{.ts,.js}'],
+  // P1-5 (audit): schema changes go through migrations only — never sync
+  synchronize: false,
   // Log only failed queries — normal per-query logging was flooding the logs.
   logging: ['error'],
   // Supabase Pooler requires SSL; rejectUnauthorized disabled for dev behind corporate proxy/AV

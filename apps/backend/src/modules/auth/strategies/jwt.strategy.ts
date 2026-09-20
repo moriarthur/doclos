@@ -20,7 +20,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: { sub: string }) {
+  async validate(payload: { sub: string; type?: string }) {
+    // P0-3 (audit): refresh tokens must not authenticate API routes
+    if (payload.type !== 'access') {
+      throw new UnauthorizedException('Invalid token type');
+    }
     const user = await this.authService.findById(payload.sub);
     if (!user) {
       throw new UnauthorizedException();

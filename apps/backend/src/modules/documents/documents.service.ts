@@ -1,6 +1,12 @@
-import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  UnsupportedMediaTypeException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import * as crypto from 'crypto';
@@ -11,6 +17,26 @@ import { FieldExtraction } from './entities/field-extraction.entity';
 import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
 import { S3Service } from '../storage/services/s3.service';
+import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
+
+// P0-4 (audit): magic bytes for every allowed upload type. The client-declared
+// Content-Type is not trusted — the first bytes of the buffer must match.
+const MAGIC_BYTES: Array<{ mime: string; test: (b: Buffer) => boolean }> = [
+  { mime: 'application/pdf', test: (b) => b.subarray(0, 5).toString('latin1') === '%PDF-' },
+  { mime: 'image/png', test: (b) => b.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])) },
+  { mime: 'image/jpeg', test: (b) => b.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) },
+  {
+    mime: 'image/tiff',
+    test: (b) =>
+      b.subarray(0, 4).equals(Buffer.from([0x49, 0x49, 0x2a, 0x00])) ||
+      b.subarray(0, 4).equals(Buffer.from([0x4d, 0x4d, 0x00, 0x2a])),
+  },
+  {
+    mime: 'image/webp',
+    test: (b) =>
+      b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
+  },
+];
 
 // Part 3: AI Pipeline - Document processing workflow
 // Part 4: API Specification - Document upload and processing
@@ -31,10 +57,9 @@ export class DocumentsService {
     private fieldExtractionsRepository: Repository<FieldExtraction>,
     @InjectRepository(AuditLog)
     private auditLogsRepository: Repository<AuditLog>,
-    @InjectRepository(Job)
-    private jobsRepository: Repository<Job>,
     @InjectQueue('documents') private documentsQueue: Queue,
     private s3Service: S3Service,
+    private dataSource: DataSource,
   ) {}
 
   async uploadDocument(
@@ -42,21 +67,28 @@ export class DocumentsService {
     userId: string,
     metadata?: { type?: DocumentType },
   ) {
-    // Validate file size (10MB max)
-    const maxSize = parseInt(process.env.MAX_FILE_SIZE || '10485760', 10);
-    if (file.size > maxSize) {
+    // P0-4 (audit): same limits as the multer filter — shared constants,
+    // not drift-prone env defaults
+    if (file.size > MAX_UPLOAD_BYTES) {
       throw new BadRequestException('File too large');
     }
-
-    // Validate file type
-    const allowedTypes = (process.env.ALLOWED_FILE_TYPES || 'application/pdf,image/png,image/jpeg,image/tiff').split(',');
-    if (!allowedTypes.includes(file.mimetype)) {
+    if (!UPLOAD_MIME_TYPES.includes(file.mimetype)) {
       throw new BadRequestException('Invalid file type');
     }
 
-    // Generate S3 key
+    // P0-4 (audit): sniff magic bytes — a renamed file (fake .pdf) is rejected;
+    // declared Content-Type must agree with the actual bytes
+    const sniffed = MAGIC_BYTES.find((m) => m.test(file.buffer));
+    if (!sniffed || sniffed.mime !== file.mimetype) {
+      throw new UnsupportedMediaTypeException('File content does not match its declared type');
+    }
+
+    // P0-4 (audit): sanitized S3 key — UUID-based; only a bounded extension
+    // survives from the original name, raw user input never reaches the key
     const date = new Date();
-    const s3Key = `uploads/${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${crypto.randomUUID()}-${file.originalname}`;
+    const datePath = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+    const ext = (file.originalname.match(/\.[A-Za-z0-9]{1,10}$/) || [''])[0].toLowerCase();
+    const s3Key = `uploads/${datePath}/${crypto.randomUUID()}${ext}`;
 
     // Upload to S3
     await this.s3Service.uploadFile(s3Key, file.buffer, file.mimetype);
@@ -425,47 +457,51 @@ export class DocumentsService {
       throw new NotFoundException('Document not found');
     }
 
-    // Delete file from S3
+    // P1-4 (audit): tear down the whole graph in ONE transaction, committed
+    // BEFORE the S3 delete. The old order (S3 first) could leave a live DB row
+    // pointing at a deleted file if any DB step failed.
+    await this.dataSource.transaction(async (manager) => {
+      // The FKs are circular and NOT ON DELETE CASCADE at the DB level
+      // (documents.invoiceId -> invoices.id, invoices.document_id -> documents.id),
+      // so a single `remove(document)` FK-violates on any extracted document.
+      // Clear the invoice FK on the document, then delete items -> invoice ->
+      // extractions -> jobs -> document.
+      if (document.invoiceId) {
+        const invoiceId = document.invoiceId;
+        // Clear documents.invoiceId first, else deleting the invoice violates the FK.
+        document.invoiceId = null as any;
+        await manager.save(document);
+        await manager.delete(InvoiceItem, { invoice_id: invoiceId });
+        await manager.delete(Invoice, { id: invoiceId });
+        this.logger.log(`Deleted invoice ${invoiceId} and its items`);
+      }
+
+      // Remaining dependents that reference the document directly
+      await manager.delete(FieldExtraction, { document_id: documentId });
+      await manager.delete(Job, { document_id: documentId });
+      await manager.delete(Document, { id: documentId, user_id: userId });
+
+      // Write audit log
+      await manager.save(AuditLog, {
+        entity_type: 'document',
+        entity_id: documentId,
+        user_id: userId,
+        action: 'delete',
+        old_value: {
+          filename: document.original_filename,
+          status: document.status,
+        },
+        new_value: undefined,
+      });
+    });
+
+    // S3 delete AFTER the DB commit; on failure the row is already gone and an
+    // orphaned object is acceptable (the reverse never is)
     try {
       await this.s3Service.deleteFile(document.s3_key);
       this.logger.log(`Deleted file from S3: ${document.s3_key}`);
     } catch (error) {
-      this.logger.error(`Failed to delete file from S3: ${document.s3_key}`, error);
-      // Continue with database deletion even if S3 deletion fails
+      this.logger.error(`Failed to delete file from S3 (orphaned object): ${document.s3_key}`, error);
     }
-
-    // Tear down the related graph. The FKs are circular and NOT ON DELETE
-    // CASCADE at the DB level (documents.invoiceId -> invoices.id,
-    // invoices.document_id -> documents.id), so the prior single `remove(document)`
-    // always 500'd with an FK violation on any extracted document. Mirrors the
-    // reprocess cleanup in document.processor.ts: clear the invoice FK on the
-    // document, then delete items -> invoice -> extractions -> jobs -> document.
-    if (document.invoiceId) {
-      const invoiceId = document.invoiceId;
-      // Clear documents.invoiceId first, else deleting the invoice violates the FK.
-      document.invoiceId = null as any;
-      await this.documentsRepository.save(document);
-      await this.invoiceItemsRepository.delete({ invoice_id: invoiceId });
-      await this.invoicesRepository.delete({ id: invoiceId });
-      this.logger.log(`Deleted invoice ${invoiceId} and its items`);
-    }
-
-    // Remaining dependents that reference the document directly
-    await this.fieldExtractionsRepository.delete({ document_id: documentId });
-    await this.jobsRepository.delete({ document_id: documentId });
-    await this.documentsRepository.delete({ id: documentId, user_id: userId });
-
-    // Write audit log
-    await this.auditLogsRepository.save({
-      entity_type: 'document',
-      entity_id: documentId,
-      user_id: userId,
-      action: 'delete',
-      old_value: {
-        filename: document.original_filename,
-        status: document.status,
-      },
-      new_value: undefined,
-    });
   }
 }
