@@ -35,6 +35,13 @@ export default async function RootLayout({
       <body
         className={`${sourceSerif.variable} ${inter.variable} font-sans antialiased`}
       >
+        {/* Apply the theme class before first paint (no flash of light theme);
+            see globals.css for the variable definitions. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');var d=t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList.toggle('dark',d);}catch(e){}})()`,
+          }}
+        />
         <NextIntlClientProvider>
           <QueryProvider>
             <div className="min-h-screen bg-background">

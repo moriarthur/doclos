@@ -32,11 +32,8 @@ export function Navigation() {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const initialTheme = stored || (prefersDark ? 'dark' : 'light');
-    setIsDark(initialTheme === 'dark');
-    document.documentElement.classList.toggle('dark', initialTheme === 'dark');
+    // Theme class is applied pre-hydration by the script in app/layout.tsx
+    setIsDark(document.documentElement.classList.contains('dark'));
   }, []);
 
   const toggleTheme = () => {
