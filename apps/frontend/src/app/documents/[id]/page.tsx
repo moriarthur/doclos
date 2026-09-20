@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { CancelableLoader } from '@/components/ui/CancelableLoader';
+import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatAmount } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -48,6 +49,7 @@ export default function DocumentDetailPage() {
   const queryClient = useQueryClient();
   const docId = params.id as string;
   const t = useTranslations('DocumentDetail');
+  const { showError } = useToast();
   const tCommon = useTranslations('Common');
   const tStatus = useTranslations('Status');
   const tDocType = useTranslations('DocType');
@@ -100,7 +102,8 @@ export default function DocumentDetailPage() {
       refetch();
     },
     onError: (err) => {
-      console.error('Validation failed:', authApi.getErrorMessage(err));
+      // U-1 (audit): surface failures instead of logging them silently
+      showError(authApi.getErrorMessage(err));
     },
   });
 
@@ -111,7 +114,7 @@ export default function DocumentDetailPage() {
       refetch();
     },
     onError: (err) => {
-      console.error('Reprocess failed:', authApi.getErrorMessage(err));
+      showError(authApi.getErrorMessage(err));
     },
   });
 
@@ -123,7 +126,7 @@ export default function DocumentDetailPage() {
       router.push('/archive');
     },
     onError: (err) => {
-      console.error('Archive failed:', authApi.getErrorMessage(err));
+      showError(authApi.getErrorMessage(err));
     },
   });
 
@@ -134,7 +137,7 @@ export default function DocumentDetailPage() {
       router.push('/');
     },
     onError: (err) => {
-      console.error('Delete failed:', authApi.getErrorMessage(err));
+      showError(authApi.getErrorMessage(err));
     },
   });
 
@@ -145,7 +148,7 @@ export default function DocumentDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
     },
     onError: (err) => {
-      console.error('Unarchive failed:', authApi.getErrorMessage(err));
+      showError(authApi.getErrorMessage(err));
     },
   });
 
