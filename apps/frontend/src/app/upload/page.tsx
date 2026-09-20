@@ -19,7 +19,7 @@ import {
 import Link from 'next/link';
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB — must match backend MAX_UPLOAD_BYTES (P0-4)
-const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/tiff'];
+const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/tiff', 'image/webp'];
 
 // Smart filename truncation - shows beginning, middle with ellipsis, and extension
 function truncateFileName(filename: string, maxLength: number = 25): string {
