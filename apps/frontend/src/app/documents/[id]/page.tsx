@@ -406,7 +406,7 @@ export default function DocumentDetailPage() {
               <CardContent>
                 {document.file_url ? (
                   <DocumentViewer
-                    url={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/documents/${docId}/file`}
+                    documentId={docId}
                     mimeType={document.mime_type || 'application/pdf'}
                     error={document.status === 'error'}
                     reprocessing={document.status === 'processing' || reprocessMutation.isPending}
