@@ -259,9 +259,12 @@ export class OcrService {
    */
   private normalizeText(text: string): string {
     return text
-      // Remove excessive whitespace
-      .replace(/\s+/g, ' ')
-      // Remove duplicate newlines
+      // P1-3 (audit): normalize line endings, then collapse HORIZONTAL
+      // whitespace only — newlines are line-item boundaries for the LLM;
+      // collapsing them into spaces destroyed the structure extraction needs
+      .replace(/\r\n?/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      // Collapse 3+ consecutive newlines
       .replace(/\n{3,}/g, '\n\n')
       // Remove common OCR artifacts
       .replace(/[│|]/g, 'I')
