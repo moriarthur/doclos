@@ -202,7 +202,11 @@ function PdfViewer({
     let cancelled = false;
     import('pdfjs-dist').then(async (pdfjs) => {
       if (cancelled) return;
-      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+      // P1-8 (audit): self-hosted worker (public/pdf.worker.min.mjs) instead
+      // of a public CDN — no availability/CSP/supply-chain risk. If pdfjs-dist
+      // is ever bumped, re-copy the worker or pdf.js falls back to the
+      // main thread with a version-mismatch warning.
+      pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
       try {
         const doc = await pdfjs.getDocument(blobUrl).promise;
         if (cancelled) return;
