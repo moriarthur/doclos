@@ -132,14 +132,13 @@ export class StructuredExtractionService {
       normalized.due_date = this.normalizeDate(normalized.due_date);
     }
 
-    // Ensure amounts are numbers
+    // Ensure amounts are numbers — P1-2 (audit): German-formatted amounts
+    // ("1.200,50", "1200,50") must not be fed to parseFloat raw
     if (normalized.amount_total && typeof normalized.amount_total === 'string') {
-      const amountStr = normalized.amount_total as string;
-      normalized.amount_total = parseFloat(amountStr.replace(/[^\d.-]/g, ''));
+      normalized.amount_total = this.parseAmount(normalized.amount_total);
     }
     if (normalized.vat_amount && typeof normalized.vat_amount === 'string') {
-      const vatStr = normalized.vat_amount as string;
-      normalized.vat_amount = parseFloat(vatStr.replace(/[^\d.-]/g, ''));
+      normalized.vat_amount = this.parseAmount(normalized.vat_amount as string);
     }
 
     // Validate currency code
