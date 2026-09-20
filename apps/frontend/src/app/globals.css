@@ -4,6 +4,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Semantic palette as CSS variables (RGB triplets) — referenced by
+   tailwind.config.ts via rgb(var(--x) / <alpha-value>). The .dark overrides
+   are activated by the `dark` class on <html>, applied pre-hydration by the
+   script in app/layout.tsx. */
+:root {
+  --background: 250 249 247;       /* #FAF9F7 warm cream */
+  --foreground: 28 25 23;          /* #1C1917 warm charcoal */
+  --card: 255 255 255;
+  --primary: 217 119 95;           /* #D9775F terracotta (same in both themes) */
+  --brand: 136 79 64;              /* #884F40 warm brown */
+  --accent: 196 167 125;           /* #C4A77D warm beige/gold (same in both themes) */
+  --muted: 232 228 221;            /* #E8E4DD */
+  --muted-foreground: 120 113 108; /* stone-500 */
+  --border: 229 226 218;           /* #E5E2DA */
+}
+
+.dark {
+  --background: 26 25 21;          /* #1A1915 */
+  --foreground: 250 249 247;
+  --card: 36 34 30;                /* #24231E */
+  --primary: 217 119 95;
+  --brand: 232 164 144;            /* lighter coral — #884F40 unreadable on dark */
+  --accent: 196 167 125;
+  --muted: 45 43 38;               /* #2D2B26 */
+  --muted-foreground: 168 162 158; /* stone-400 */
+  --border: 58 56 50;              /* #3A3832 */
+}
+
 @layer base {
   * {
     border-color: rgb(229 226 218);
@@ -14,16 +42,11 @@
   }
 
   body {
-    background-color: rgb(250 249 247);
-    color: rgb(28 25 23);
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-  }
-
-  .dark body {
-    background-color: rgb(26 25 21);
-    color: rgb(250 249 247);
   }
 
   /* Elegant selection color */
