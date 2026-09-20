@@ -70,16 +70,6 @@ export function DocumentViewer({
         <div className="text-center p-8">
           <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <p className="text-sm text-muted-foreground mb-3">{t('loadFailed')}</p>
-          {blobUrl && (
-            <a
-              href={blobUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline text-sm"
-            >
-              {t('openNewTab')}
-            </a>
-          )}
         </div>
       </div>
     );

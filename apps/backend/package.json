@@ -19,10 +19,9 @@
     "db:migrate": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "db:migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "db:migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
-    "db:reset": "npm run schema:drop && npm run schema:sync",
+    "db:reset": "npm run schema:drop && typeorm-ts-node-commonjs schema:sync -d src/database/data-source.ts",
     "db:seed": "ts-node src/database/seeds/run.seed.ts",
     "schema:drop": "ts-node src/database/drop.schema.ts",
-    "schema:sync": "typeorm-ts-node-commonjs schema:sync -d src/database/data-source.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
