@@ -303,11 +303,13 @@ export class DocumentProcessor {
         this.logger.log('Confidence low - needs validation');
       }
 
-      // Find or create customer
+      // Find or create customer — scoped to the owning user
+      // (P0-2: without the user_id filter, suppliers leaked across tenants)
       let customer: Customer | null = null;
       if (normalizedExtraction.supplier_name) {
         const existingCustomer = await this.customersRepository.findOne({
           where: {
+            user_id: document.user_id,
             name: normalizedExtraction.supplier_name,
           },
         });
@@ -316,6 +318,7 @@ export class DocumentProcessor {
           customer = existingCustomer;
         } else {
           customer = this.customersRepository.create({
+            user_id: document.user_id,
             name: normalizedExtraction.supplier_name,
             address: normalizedExtraction.supplier_address || undefined,
           });
