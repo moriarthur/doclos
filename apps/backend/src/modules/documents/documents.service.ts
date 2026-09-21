@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   UnsupportedMediaTypeException,
   Logger,
@@ -382,6 +383,12 @@ export class DocumentsService {
 
     if (!document) {
       throw new NotFoundException('Document not found');
+    }
+
+    // P2-3 (audit): a second reprocess while a job is already running would
+    // queue a duplicate job racing the first one
+    if (document.status === DocumentStatus.PROCESSING) {
+      throw new ConflictException('Document is already being processed');
     }
 
     // Reset status
