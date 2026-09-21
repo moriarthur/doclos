@@ -281,35 +281,4 @@ export class OcrService {
     // If Tesseract confidence is below threshold, recommend cloud OCR
     return !this.tesseractService.isQualityAcceptable(ocrResult.confidence);
   }
-
-  /**
-   * Normalize German number format (1.200,50 -> 1200.50)
-   * Part 3: AI Pipeline - Currency normalization
-   * @param text - Text containing numbers
-   * @returns Text with normalized numbers
-   */
-  normalizeNumbers(text: string): string {
-    return text
-      // German format: 1.200,50 -> 1200.50
-      .replace(/(\d+)\.(\d{3}),(\d{2})/g, '$1$2.$3')
-      // German format: 1,50 -> 1.50
-      .replace(/(\d+),(\d{2})/g, '$1.$2');
-  }
-
-  /**
-   * Normalize dates to ISO format
-   * Part 3: AI Pipeline - Date normalization
-   * @param text - Text containing dates
-   * @returns Text with normalized dates
-   */
-  normalizeDates(text: string): string {
-    return text
-      // German format: 10.03.2026 -> 2026-03-10
-      .replace(/(\d{2})\.(\d{2})\.(\d{4})/g, '$3-$2-$1')
-      // German format: 10.03.26 -> 2026-03-10 (assuming 20xx)
-      .replace(/(\d{2})\.(\d{2})\.(\d{2})\b/g, (_match, day, month, year) => {
-        const fullYear = parseInt(year) > 50 ? `19${year}` : `20${year}`;
-        return `${fullYear}-${month}-${day}`;
-      });
-  }
 }
