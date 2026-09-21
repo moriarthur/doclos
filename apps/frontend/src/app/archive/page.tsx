@@ -109,6 +109,8 @@ export default function ArchivePage() {
   };
 
   const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
+  // U-9 (audit): export makes no sense with no rows — hide the menu entirely
+  const total = data?.pages[0]?.pagination.total ?? 0;
 
   // U-6 (audit): filtering happens server-side now (FTS + status=archived)
   const filteredDocuments = allDocuments;
@@ -190,11 +192,13 @@ export default function ArchivePage() {
                 <ListChecks className="h-4 w-4" />
                 {selectionMode ? t('selectionDone') : t('selectBtn')}
               </Button>
-              <ExportMenu
-                variant="list"
-                status="archived"
-                ids={selectionMode && selectedIds.size > 0 ? [...selectedIds] : undefined}
-              />
+              {total > 0 && (
+                <ExportMenu
+                  variant="list"
+                  status="archived"
+                  ids={selectionMode && selectedIds.size > 0 ? [...selectedIds] : undefined}
+                />
+              )}
             </div>
           </div>
 

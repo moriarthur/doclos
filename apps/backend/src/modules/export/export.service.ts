@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import ExcelJS from 'exceljs';
@@ -91,6 +91,11 @@ export class ExportService {
     if (query.company) qb.andWhere('invoice.supplier_name ILIKE :company', { company: `%${query.company}%` });
 
     const invoices = await qb.orderBy('invoice.invoice_date', 'DESC').getMany();
+    // U-9 (audit): an empty result would produce a title-only xlsx — reject.
+    // Selection exports with 0 matching ids land here too.
+    if (invoices.length === 0) {
+      throw new BadRequestException('No invoices to export');
+    }
     this.logger.log(`Exporting ${invoices.length} invoice(s) for user ${userId} (lang=${resolveExportLocale(lang)})`);
 
     const itemsByInvoice = new Map<string, InvoiceItem[]>();
@@ -246,6 +251,10 @@ export class ExportService {
     if (query.from_date) qb.andWhere("document.metadata->>'effective_date' >= :fromDate", { fromDate: query.from_date });
     if (query.to_date) qb.andWhere("document.metadata->>'effective_date' <= :toDate", { toDate: query.to_date });
     const docs = await qb.orderBy('document.created_at', 'DESC').getMany();
+    // U-9 (audit): same empty-result guard as the invoice list
+    if (docs.length === 0) {
+      throw new BadRequestException('No invoices to export');
+    }
     this.logger.log(`Exporting ${docs.length} contract(s) for user ${userId} (lang=${resolveExportLocale(lang)})`);
 
     const cols = [
@@ -304,6 +313,10 @@ export class ExportService {
     if (query.status) qb.andWhere('document.status = :status', { status: query.status });
     if (query.company) qb.andWhere('invoice.supplier_name ILIKE :company', { company: `%${query.company}%` });
     const invoices = await qb.orderBy('invoice.invoice_date', 'DESC').getMany();
+    // U-9 (audit): same empty-result guard as the invoice list
+    if (invoices.length === 0) {
+      throw new BadRequestException('No invoices to export');
+    }
     this.logger.log(`Exporting ${invoices.length} ${type}(s) for user ${userId} (lang=${resolveExportLocale(lang)})`);
 
     const itemsByInvoice = new Map<string, number>();
