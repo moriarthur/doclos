@@ -410,7 +410,20 @@ export class DocumentsService {
     return { buffer, mimeType: document.mime_type, filename: document.original_filename };
   }
 
-  async updateDocumentStatus(documentId: string, userId: string, status: string) {
+  // P2-2 (audit): explicit state machine — before this, any->any PATCHes were
+  // accepted (e.g. validated -> processing). Unarchiving lives in
+  // unarchiveDocument(), not in a magic 'unarchive' status string.
+  private static readonly ALLOWED_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
+    [DocumentStatus.UPLOADED]: [DocumentStatus.PROCESSING, DocumentStatus.ERROR, DocumentStatus.ARCHIVED],
+    [DocumentStatus.PROCESSING]: [DocumentStatus.PARSED, DocumentStatus.NEEDS_VALIDATION, DocumentStatus.ERROR, DocumentStatus.ARCHIVED],
+    [DocumentStatus.PARSED]: [DocumentStatus.NEEDS_VALIDATION, DocumentStatus.VALIDATED, DocumentStatus.ARCHIVED],
+    [DocumentStatus.NEEDS_VALIDATION]: [DocumentStatus.VALIDATED, DocumentStatus.PARSED, DocumentStatus.ERROR, DocumentStatus.ARCHIVED],
+    [DocumentStatus.VALIDATED]: [DocumentStatus.ARCHIVED],
+    [DocumentStatus.ERROR]: [DocumentStatus.NEEDS_VALIDATION, DocumentStatus.PARSED, DocumentStatus.ARCHIVED],
+    [DocumentStatus.ARCHIVED]: [], // only via POST /documents/:id/unarchive
+  };
+
+  async updateDocumentStatus(documentId: string, userId: string, status: DocumentStatus) {
     const document = await this.documentsRepository.findOne({
       where: { id: documentId, user_id: userId },
     });
@@ -420,37 +433,55 @@ export class DocumentsService {
     }
 
     const oldStatus = document.status;
+    const allowed = DocumentsService.ALLOWED_TRANSITIONS[oldStatus] ?? [];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(
+        `Cannot change status from '${oldStatus}' to '${status}'. Allowed: ${allowed.join(', ') || 'none (use unarchive)'}`,
+      );
+    }
 
-    // Handle special "unarchive" status value
-    if (status === 'unarchive') {
-      if (oldStatus !== DocumentStatus.ARCHIVED) {
-        throw new BadRequestException('Document is not archived');
-      }
-      // Restore previous status
-      document.status = document.previous_status || DocumentStatus.PARSED;
-      document.previous_status = null;
-    }
-    // Handle archiving: save current status before changing
-    else if (status === DocumentStatus.ARCHIVED && oldStatus !== DocumentStatus.ARCHIVED) {
+    // Archiving remembers the previous status so unarchive can restore it
+    if (status === DocumentStatus.ARCHIVED) {
       document.previous_status = oldStatus;
-      document.status = DocumentStatus.ARCHIVED;
     }
-    // Handle normal status change (but don't allow changing from archived directly)
-    else if (oldStatus === DocumentStatus.ARCHIVED) {
-      throw new BadRequestException('Cannot change status directly from archived. Use unarchive first.');
-    }
-    // Validate status for normal changes
-    else {
-      const validStatuses = Object.values(DocumentStatus);
-      if (!validStatuses.includes(status as DocumentStatus)) {
-        throw new BadRequestException(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
-      }
-      document.status = status as DocumentStatus;
-    }
+    document.status = status;
 
     await this.documentsRepository.save(document);
 
     // Write audit log
+    await this.auditLogsRepository.save({
+      entity_type: 'document',
+      entity_id: documentId,
+      user_id: userId,
+      action: 'status_update',
+      old_value: { status: oldStatus },
+      new_value: { status: document.status },
+    });
+
+    return { status: document.status };
+  }
+
+  async unarchiveDocument(documentId: string, userId: string) {
+    const document = await this.documentsRepository.findOne({
+      where: { id: documentId, user_id: userId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    if (document.status !== DocumentStatus.ARCHIVED) {
+      throw new BadRequestException('Document is not archived');
+    }
+
+    // Restore previous status (P2-2: dedicated endpoint instead of a magic
+    // 'unarchive' status value smuggled through PATCH)
+    const oldStatus = document.status;
+    document.status = document.previous_status || DocumentStatus.PARSED;
+    document.previous_status = null;
+
+    await this.documentsRepository.save(document);
+
     await this.auditLogsRepository.save({
       entity_type: 'document',
       entity_id: documentId,

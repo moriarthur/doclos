@@ -345,8 +345,9 @@ export const documentsApi = {
   },
 
   unarchive: async (id: string) => {
-    // Special call to unarchive - backend will restore previous status
-    const response = await apiClient.patch(`/documents/${id}`, { status: 'unarchive' });
+    // P2-2 (audit): dedicated endpoint — the old magic 'unarchive' PATCH body
+    // is rejected by the status DTO now
+    const response = await apiClient.post(`/documents/${id}/unarchive`);
     return response.data;
   },
 

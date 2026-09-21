@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User } from '../auth/entities/user.entity';
 import { ValidateDocumentDto } from './dto/validate-document.dto';
+import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
 import { DocumentType } from './entities/document.entity';
 import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
 
@@ -111,13 +112,18 @@ export class DocumentsController {
     return this.documentsService.reprocessDocument(id, user.id);
   }
 
+  @Post(':id/unarchive')
+  async unarchiveDocument(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.documentsService.unarchiveDocument(id, user.id);
+  }
+
   @Patch(':id')
   async updateDocumentStatus(
     @Param('id') id: string,
     @CurrentUser() user: User,
-    @Body('status') status: string,
+    @Body() dto: UpdateDocumentStatusDto,
   ) {
-    return this.documentsService.updateDocumentStatus(id, user.id, status);
+    return this.documentsService.updateDocumentStatus(id, user.id, dto.status);
   }
 
   @Delete(':id')
