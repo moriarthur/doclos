@@ -20,7 +20,7 @@ import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
 import { S3Service } from '../storage/services/s3.service';
 import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
-import { ValidateInvoiceFieldsDto } from './dto/validate-document.dto';
+import { ValidateInvoiceFieldsDto, ValidateInvoiceItemDto } from './dto/validate-document.dto';
 import { sanitizeMetadata } from '../ai/services/structured-extraction.service';
 
 // P0-4 (audit): magic bytes for every allowed upload type. The client-declared
@@ -328,7 +328,12 @@ export class DocumentsService {
     }
   }
 
-  async validateDocument(documentId: string, userId: string, fields: Record<string, string | number | null>) {
+  async validateDocument(
+    documentId: string,
+    userId: string,
+    fields: Record<string, string | number | null>,
+    items?: ValidateInvoiceItemDto[],
+  ) {
     // Typed view over the known invoice fields; the rest are per-type metadata
     // fields validated against METADATA_FIELDS_BY_TYPE further below (S5.2).
     const invoiceFields = fields as ValidateInvoiceFieldsDto;
@@ -398,6 +403,33 @@ export class DocumentsService {
       }
       document.invoice.validated = true;
       await this.invoicesRepository.save(document.invoice);
+    }
+
+    // U-4 (editable line items): replace-all semantics — when the request
+    // carries an `items` list it IS the full edited table. Absent key = items
+    // untouched (header-only validations keep working). Requires an invoice
+    // carrier (invoice / purchase_order / offer / delivery_note).
+    if (items) {
+      if (!document.invoice) {
+        throw new BadRequestException('Document has no line items to edit');
+      }
+      const oldItems = await this.invoiceItemsRepository.find({
+        where: { invoice_id: document.invoice.id },
+      });
+      oldValues.items = oldItems;
+      await this.invoiceItemsRepository.delete({ invoice_id: document.invoice.id });
+      for (const item of items) {
+        await this.invoiceItemsRepository.save(
+          this.invoiceItemsRepository.create({
+            invoice_id: document.invoice.id,
+            description: item.description?.trim() || null,
+            quantity: item.quantity ?? null,
+            unit: item.unit?.trim() || null,
+            unit_price: item.unit_price ?? null,
+            line_total: item.line_total ?? null,
+          }),
+        );
+      }
     }
 
     // Apply per-type metadata edits (S5.2). Only whitelisted fields for this

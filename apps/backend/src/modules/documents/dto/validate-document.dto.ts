@@ -1,11 +1,15 @@
 import {
+  IsArray,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
+  ValidateNested,
+  ArrayMaxSize,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 // Part 4: API Specification - Validate document DTO
 // Part 7: Security & GDPR - Audit log on validation
@@ -48,6 +52,35 @@ export class ValidateInvoiceFieldsDto {
   supplier_address?: string | null;
 }
 
+// U-4 (editable line items): one editable row of the items table. Full
+// whitelist — the global ValidationPipe runs with forbidNonWhitelisted, so
+// any other key in an item is rejected. Absent key = untouched semantics do
+// NOT apply here: the client sends the complete edited table and the service
+// replaces all rows.
+export class ValidateInvoiceItemDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string | null;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  quantity?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  unit?: string | null;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  unit_price?: number | null;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  line_total?: number | null;
+}
+
 export class ValidateDocumentDto {
   // Deliberately permissive: besides the invoice fields below, S5.2 clients
   // send per-type metadata fields (dynamic per document.type). The known
@@ -56,6 +89,16 @@ export class ValidateDocumentDto {
   // are whitelisted per type by METADATA_FIELDS_BY_TYPE and sanitized.
   @IsObject()
   fields: Record<string, string | number | null>;
+
+  // U-4: when present, the full edited line-items table replaces all stored
+  // rows (see DocumentsService.validateDocument). Only valid for documents
+  // with an invoice carrier (invoice / purchase_order / offer / delivery_note).
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => ValidateInvoiceItemDto)
+  items?: ValidateInvoiceItemDto[];
 }
 
 // Part 4: API Specification - Field with confidence

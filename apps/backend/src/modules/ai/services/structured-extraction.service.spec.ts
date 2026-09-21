@@ -10,6 +10,7 @@ const service = new StructuredExtractionService(aiStub);
 type RawItem = {
   description?: string | null;
   quantity?: number | string | null;
+  unit?: number | string | null;
   unit_price?: number | string | null;
   line_total?: number | string | null;
 };
@@ -113,6 +114,16 @@ describe('StructuredExtractionService.cleanItems', () => {
   it('returns an empty result for undefined / [] without throwing', () => {
     expect(service.cleanItems(undefined)).toEqual({ kept: [], dropped: [] });
     expect(service.cleanItems([])).toEqual({ kept: [], dropped: [] });
+  });
+
+  it('U-4: passes the unit through trimmed, stringifies bare numbers, nulls blanks', () => {
+    const { kept } = service.cleanItems([
+      { description: 'Kabel', quantity: 5, unit: '  Stk.  ', unit_price: 3, line_total: 15 },
+      { description: 'Arbeit', quantity: 2, unit: 4 as unknown as string, unit_price: 50, line_total: 100 }, // LLM sent a number
+      { description: 'Leiste', quantity: 1, unit: '   ', unit_price: 9, line_total: 9 },
+      { description: 'Monitor', quantity: 1, unit: null, unit_price: 199, line_total: 199 },
+    ] as RawItem[]);
+    expect(kept.map((i) => i.unit)).toEqual(['Stk.', '4', null, null]);
   });
 
   it('cleaning a realistic German invoice mix keeps only the real line items', () => {
