@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +39,12 @@ export default function ArchivePage() {
   const tDocType = useTranslations('DocType');
   const locale = useLocale();
   const [searchQuery, setSearchQuery] = useState('');
+  // U-6 (audit): search moved server-side — debounce so it doesn't fire per keystroke
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -51,9 +57,18 @@ export default function ArchivePage() {
     isFetchingNextPage,
     isLoading,
   } = useInfiniteQuery({
-    queryKey: ['documents', 'archived'],
+    queryKey: ['documents', 'archived', debouncedSearch],
     queryFn: ({ pageParam = 1 }) =>
-      documentsApi.list({ status: 'archived', page: pageParam, limit: 20 }),
+      // U-6 (audit): server-side FTS over archived docs instead of filtering
+      // already-loaded pages client-side
+      debouncedSearch
+        ? documentsApi.search({
+            q: debouncedSearch,
+            status: 'archived',
+            page: pageParam,
+            limit: 20,
+          })
+        : documentsApi.list({ status: 'archived', page: pageParam, limit: 20 }),
     initialPageParam: 1,
     getNextPageParam: (last) =>
       last.pagination.page * last.pagination.limit < last.pagination.total
@@ -95,14 +110,8 @@ export default function ArchivePage() {
 
   const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
 
-  const filteredDocuments = allDocuments.filter((doc) => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      doc.company_name?.toLowerCase().includes(q) ||
-      doc.invoice_number?.toLowerCase().includes(q)
-    );
-  });
+  // U-6 (audit): filtering happens server-side now (FTS + status=archived)
+  const filteredDocuments = allDocuments;
 
   // --- Selection mode (bulk restore / delete / export) ---
   const toggleSelect = (id: string) =>
