@@ -8,6 +8,10 @@ export class AddInvoiceItemUnit20260922000000 implements MigrationInterface {
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "invoice_items" ADD COLUMN IF NOT EXISTS "unit" text NULL`);
+    // Align description with the entity ('text'): pre-migration installs may
+    // hold it as varchar with a length cap, which would reject the longer
+    // descriptions the validation DTO now allows (MaxLength 500).
+    await queryRunner.query(`ALTER TABLE "invoice_items" ALTER COLUMN "description" TYPE text`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

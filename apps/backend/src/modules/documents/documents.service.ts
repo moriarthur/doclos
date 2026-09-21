@@ -417,19 +417,25 @@ export class DocumentsService {
         where: { invoice_id: document.invoice.id },
       });
       oldValues.items = oldItems;
-      await this.invoiceItemsRepository.delete({ invoice_id: document.invoice.id });
-      for (const item of items) {
-        await this.invoiceItemsRepository.save(
-          this.invoiceItemsRepository.create({
-            invoice_id: document.invoice.id,
-            description: item.description?.trim() || null,
-            quantity: item.quantity ?? null,
-            unit: item.unit?.trim() || null,
-            unit_price: item.unit_price ?? null,
-            line_total: item.line_total ?? null,
-          }),
-        );
-      }
+      const invoiceId = document.invoice.id;
+      // Transaction: replace-all must not leave the table wiped if an insert
+      // fails midway (e.g. numeric overflow) — delete and inserts succeed or
+      // fail together.
+      await this.dataSource.transaction(async (manager) => {
+        await manager.delete(InvoiceItem, { invoice_id: invoiceId });
+        for (const item of items) {
+          await manager.save(
+            manager.create(InvoiceItem, {
+              invoice_id: invoiceId,
+              description: item.description?.trim() || null,
+              quantity: item.quantity ?? null,
+              unit: item.unit?.trim() || null,
+              unit_price: item.unit_price ?? null,
+              line_total: item.line_total ?? null,
+            }),
+          );
+        }
+      });
     }
 
     // Apply per-type metadata edits (S5.2). Only whitelisted fields for this
@@ -483,7 +489,7 @@ export class DocumentsService {
       user_id: userId,
       action: 'validate',
       old_value: oldValues,
-      new_value: { ...fields },
+      new_value: { ...fields, ...(items ? { items } : {}) },
     });
 
     return { status: document.status };
