@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import { Source_Serif_4, Inter } from 'next/font/google';
 import './globals.css';
 import { QueryProvider } from '@/lib/react-query-provider';
+import { ThemeProvider } from '@/lib/theme-provider';
 import { ToastProvider } from '@/components/ui/Toast';
 import { NextIntlClientProvider } from 'next-intl';
-import { getLocale } from 'next-intl/server';
+import { getLocale, getMessages } from 'next-intl/server';
 
 const sourceSerif = Source_Serif_4({
   subsets: ['latin'],
@@ -31,26 +32,22 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const locale = await getLocale();
+  const messages = await getMessages();
   return (
     <html lang={locale} suppressHydrationWarning>
       <body
         className={`${sourceSerif.variable} ${inter.variable} font-sans antialiased`}
       >
-        {/* Apply the theme class before first paint (no flash of light theme);
-            see globals.css for the variable definitions. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');var d=t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList.toggle('dark',d);}catch(e){}})()`,
-          }}
-        />
-        <NextIntlClientProvider>
-          <QueryProvider>
-            <ToastProvider>
-              <div className="min-h-screen bg-background">
-                {children}
-              </div>
-            </ToastProvider>
-          </QueryProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <ThemeProvider>
+            <QueryProvider>
+              <ToastProvider>
+                <div className="min-h-screen bg-background">
+                  {children}
+                </div>
+              </ToastProvider>
+            </QueryProvider>
+          </ThemeProvider>
         </NextIntlClientProvider>
       </body>
     </html>

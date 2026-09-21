@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import * as Joi from 'joi';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { SearchModule } from './modules/search/search.module';
@@ -21,6 +23,10 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
 
 @Module({
   imports: [
+    // Rate limiting — guards every route; auth routes get a stricter limit
+    // via @Throttle() on AuthController. TTL is in milliseconds (throttler v5+).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+
     // Configuration - loads .env file
     ConfigModule.forRoot({
       isGlobal: true,
@@ -50,6 +56,14 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
         port: parseInt(process.env.REDIS_PORT || '6379'),
         password: redisPassword,
         tls: process.env.REDIS_URL?.startsWith('rediss://') ? {} : undefined,
+        // Required by Bull: the worker pulls jobs with a blocking command
+        // (BRPOPLPUSH). Without these, ioredis aborts that blocking request
+        // after its retry limit once Upstash drops an idle connection, and the
+        // worker permanently stops consuming the queue (jobs pile up in "wait"
+        // with active=0). maxRetriesPerRequest:null disables that limit;
+        // enableReadyCheck:false avoids ready-check stalls on the bclient.
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
       },
       defaultJobOptions: {
         removeOnComplete: 100,
@@ -68,6 +82,6 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
     ExportModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
