@@ -230,8 +230,11 @@ export interface FieldWithConfidence {
 export interface InvoiceItemDto {
   description: string | null;
   quantity: number | null;
+  // U-4: quantity unit (Stück, Stk., Std., ...) — null when not stated.
+  unit: string | null;
   unit_price: number | null;
-  total_price: number | null;
+  // Matches the backend entity column (was wrongly typed total_price before).
+  line_total: number | null;
 }
 
 /** Shared invoice-carrier shape (invoice / purchase_order / offer / delivery_note). */
@@ -405,7 +408,11 @@ export const documentsApi = {
     return response.data;
   },
 
-  validate: async (id: string, fields: Record<string, unknown>) => {
+  validate: async (
+    id: string,
+    fields: Record<string, unknown>,
+    items?: Array<Record<string, unknown>>,
+  ) => {
     // P2-1 (audit): wire contract — empty input means "clear this field"
     // (explicit null); amount_total travels as a number
     const payload: Record<string, unknown> = {};
@@ -415,7 +422,11 @@ export const documentsApi = {
       else if (key === 'amount_total') payload[key] = value === null ? null : Number(value);
       else payload[key] = value;
     }
-    const response = await apiClient.patch(`/documents/${id}/validate`, { fields: payload });
+    // U-4: when the items table was edited the full list replaces all stored
+    // rows (backend replace-all semantics); undefined = items untouched.
+    const body: Record<string, unknown> = { fields: payload };
+    if (items) body.items = items;
+    const response = await apiClient.patch(`/documents/${id}/validate`, body);
     return response.data;
   },
 
