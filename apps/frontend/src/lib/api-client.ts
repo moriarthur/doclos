@@ -321,7 +321,16 @@ export const documentsApi = {
   },
 
   validate: async (id: string, fields: Record<string, unknown>) => {
-    const response = await apiClient.patch(`/documents/${id}/validate`, { fields });
+    // P2-1 (audit): wire contract — empty input means "clear this field"
+    // (explicit null); amount_total travels as a number
+    const payload: Record<string, unknown> = {};
+    for (const [key, raw] of Object.entries(fields)) {
+      const value = typeof raw === 'string' ? raw.trim() : raw;
+      if (value === '') payload[key] = null;
+      else if (key === 'amount_total') payload[key] = value === null ? null : Number(value);
+      else payload[key] = value;
+    }
+    const response = await apiClient.patch(`/documents/${id}/validate`, { fields: payload });
     return response.data;
   },
 

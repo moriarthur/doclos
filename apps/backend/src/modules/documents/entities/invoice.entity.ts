@@ -14,29 +14,31 @@ export class Invoice extends BaseEntity {
   @JoinColumn({ name: 'document_id' })
   document: Document;
 
+  // Column types mirror the DB: nullable columns are `| null` (P2-1 lets
+  // validation clear fields, so the types must allow it)
   @Column({ nullable: true })
-  invoice_number: string;
+  invoice_number: string | null;
 
   @Column({ type: 'date', nullable: true })
-  invoice_date: Date;
+  invoice_date: Date | null;
 
   @Column({ type: 'date', nullable: true })
-  due_date: Date;
+  due_date: Date | null;
 
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
-  amount_total: number;
+  amount_total: number | null;
 
   @Column({ type: 'numeric', precision: 12, scale: 2, nullable: true })
-  vat_amount: number;
+  vat_amount: number | null;
 
   @Column({ default: 'EUR' })
   currency: string;
 
   @Column({ nullable: true })
-  supplier_name: string;
+  supplier_name: string | null;
 
   @Column({ nullable: true })
-  supplier_address: string;
+  supplier_address: string | null;
 
   @Column({ default: false })
   validated: boolean;
