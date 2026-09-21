@@ -59,17 +59,3 @@ export function formatAmount(
     hasCurrency: false,
   };
 }
-
-// Status badge CSS class mapping (visual only — labels come from i18n)
-export function getStatusBadgeClass(status: string): string {
-  const statusMap: Record<string, string> = {
-    uploaded: 'badge-uploaded',
-    processing: 'badge-processing',
-    parsed: 'badge-parsed',
-    needs_validation: 'badge-needs_validation',
-    validated: 'badge-validated',
-    archived: 'badge-secondary',
-    error: 'badge-error',
-  };
-  return statusMap[status] || 'badge-secondary';
-}

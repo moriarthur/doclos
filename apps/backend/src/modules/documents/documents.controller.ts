@@ -11,8 +11,6 @@ import {
   UploadedFile,
   UseInterceptors,
   UseGuards,
-  ParseIntPipe,
-  DefaultValuePipe,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { Response } from 'express';
@@ -23,6 +21,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { User } from '../auth/entities/user.entity';
 import { ValidateDocumentDto } from './dto/validate-document.dto';
 import { UpdateDocumentStatusDto } from './dto/update-document-status.dto';
+import { ListDocumentsQueryDto } from './dto/list-documents-query.dto';
 import { DocumentType } from './entities/document.entity';
 import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
 
@@ -59,24 +58,15 @@ export class DocumentsController {
   }
 
   @Get()
-  async listDocuments(
-    @CurrentUser() user: User,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-    @Query('status') status?: string,
-    @Query('exclude_status') exclude_status?: string,
-    @Query('company') company?: string,
-    @Query('from_date') from_date?: string,
-    @Query('to_date') to_date?: string,
-  ) {
+  async listDocuments(@CurrentUser() user: User, @Query() query: ListDocumentsQueryDto) {
     return this.documentsService.listDocuments(user.id, {
-      page,
-      limit,
-      status: status as any,
-      exclude_status: exclude_status as any,
-      company,
-      from_date: from_date ? new Date(from_date) : undefined,
-      to_date: to_date ? new Date(to_date) : undefined,
+      page: query.page,
+      limit: query.limit,
+      status: query.status,
+      exclude_status: query.exclude_status,
+      company: query.company,
+      from_date: query.from_date ? new Date(query.from_date) : undefined,
+      to_date: query.to_date ? new Date(query.to_date) : undefined,
     });
   }
 
