@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
+import * as Joi from 'joi';
 import { AuthModule } from './modules/auth/auth.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { SearchModule } from './modules/search/search.module';
@@ -24,6 +25,19 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '../../.env',
+      // P2-6 (audit): fail fast on missing critical configuration instead of
+      // dying later with cryptic connection/auth errors
+      validationSchema: Joi.object({
+        DATABASE_URL: Joi.string().required(),
+        REDIS_URL: Joi.string().required(),
+        JWT_SECRET: Joi.string().required(),
+        S3_ENDPOINT: Joi.string().required(),
+        S3_BUCKET: Joi.string().required(),
+        S3_ACCESS_KEY_ID: Joi.string().required(),
+        S3_SECRET_ACCESS_KEY: Joi.string().required(),
+        GLM_API_KEY: Joi.string().required(),
+      }),
+      validationOptions: { abortEarly: false },
     }),
 
     // Database - TypeORM with PostgreSQL

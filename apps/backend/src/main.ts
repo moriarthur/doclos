@@ -41,6 +41,9 @@ async function bootstrap() {
     }),
   );
 
+  // P2-6 (audit): graceful shutdown — lets Bull drain running jobs on SIGTERM
+  app.enableShutdownHooks();
+
   const port = configService.get<number>('APP_PORT') || 3001;
   await app.listen(port);
 
