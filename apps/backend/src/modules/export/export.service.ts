@@ -182,6 +182,7 @@ export class ExportService {
       { header: t.strings.invoiceNumber, key: 'invoice_number', width: 22 },
       { header: t.strings.description, key: 'description', width: 42 },
       { header: t.strings.quantity, key: 'quantity', width: 10 },
+      { header: t.strings.unit, key: 'unit', width: 10 },
       { header: t.strings.unitPrice, key: 'unit_price', width: 13 },
       { header: t.strings.lineTotal, key: 'line_total', width: 13 },
     ];
@@ -198,7 +199,7 @@ export class ExportService {
     itemsSheet.getRow(2).height = 20;
 
     const itemMoney = new Set(['unit_price', 'line_total']);
-    const itemRight = new Set(['quantity', 'unit_price', 'line_total']);
+    const itemRight = new Set(['quantity', 'unit', 'unit_price', 'line_total']);
     let itemIdx = 0;
     for (const inv of invoices) {
       for (const item of itemsByInvoice.get(inv.id) ?? []) {
@@ -206,6 +207,7 @@ export class ExportService {
           invoice_number: this.escapeCell(inv.invoice_number),
           description: this.escapeCell(item.description),
           quantity: item.quantity != null ? Number(item.quantity) : null,
+          unit: this.escapeCell(item.unit),
           unit_price: item.unit_price != null ? Number(item.unit_price) : null,
           line_total: item.line_total != null ? Number(item.line_total) : null,
         });
