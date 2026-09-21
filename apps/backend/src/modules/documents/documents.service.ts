@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
   UnsupportedMediaTypeException,
   Logger,
 } from '@nestjs/common';
@@ -146,13 +147,24 @@ export class DocumentsService {
     });
     await this.documentsRepository.save(document);
 
-    // Add to processing queue (worker will handle the rest)
-    this.documentsQueue.add('process-document', {
-      documentId: document.id,
-      userId,
-    }).catch((err) => {
-      this.logger.error(`Failed to queue document ${document.id}: ${err.message}`);
-    });
+    // Add to processing queue (worker will handle the rest). Awaited: a failed
+    // enqueue must fail the upload — a swallowed queue error left documents in
+    // `processing` forever (no Bull job → worker never picks up → eternal
+    // spinner in the UI; happened 2026-09-21 after Upstash deletion).
+    try {
+      await this.documentsQueue.add('process-document', {
+        documentId: document.id,
+        userId,
+      });
+    } catch (err) {
+      // Keep the DB honest: don't advertise a job that doesn't exist.
+      document.status = DocumentStatus.ERROR;
+      await this.documentsRepository.save(document);
+      this.logger.error(`Failed to queue document ${document.id}: ${(err as Error).message}`);
+      throw new ServiceUnavailableException(
+        'Processing queue unavailable — try again shortly',
+      );
+    }
 
     return {
       document_id: document.id,
