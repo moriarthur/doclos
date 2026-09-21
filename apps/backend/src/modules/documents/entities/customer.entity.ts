@@ -8,7 +8,7 @@ import { User } from '../../auth/entities/user.entity';
 export class Customer extends BaseEntity {
   // P0-2 (audit): customers are per-tenant; nullable only for legacy rows
   // left unattributed by scripts/backfill-customer-user-id.cjs
-  @Column({ name: 'user_id', nullable: true, type: 'varchar' })
+  @Column({ name: 'user_id', nullable: true, type: 'uuid' })
   user_id: string | null;
 
   @ManyToOne(() => User)
