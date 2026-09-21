@@ -16,7 +16,7 @@ export class Invoice extends BaseEntity {
 
   // Column types mirror the DB: nullable columns are `| null` (P2-1 lets
   // validation clear fields, so the types must allow it)
-  @Column({ nullable: true })
+  @Column({ nullable: true, type: 'varchar' })
   invoice_number: string | null;
 
   @Column({ type: 'date', nullable: true })
@@ -34,10 +34,10 @@ export class Invoice extends BaseEntity {
   @Column({ default: 'EUR' })
   currency: string;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, type: 'varchar' })
   supplier_name: string | null;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, type: 'varchar' })
   supplier_address: string | null;
 
   @Column({ default: false })
