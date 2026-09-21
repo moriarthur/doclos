@@ -188,7 +188,10 @@ export class DocumentsService {
 
   async getDocument(documentId: string, userId: string) {
     try {
-      this.logger.log(`[getDocument] Fetching document ${documentId} for user ${userId}`);
+      // P2-8 (audit): per-request traces demoted to debug — the former .log
+      // calls dumped user IDs and ownership-miss details on every read (Bug-B
+      // debugging leftover)
+      this.logger.debug(`[getDocument] Fetching document ${documentId}`);
 
       // Use query builder for more control
       const document = await this.documentsRepository
@@ -199,21 +202,7 @@ export class DocumentsService {
         .andWhere('document.user_id = :userId', { userId })
         .getOne();
 
-      this.logger.log(`[getDocument] Document found: ${!!document}`);
-      if (document) {
-        this.logger.log(`[getDocument] Document.invoiceId: ${document.invoiceId}`);
-        this.logger.log(`[getDocument] Document.invoice: ${!!document.invoice}`);
-        this.logger.log(`[getDocument] Document.customer: ${!!document.customer}`);
-      } else {
-        this.logger.warn(`[getDocument] Document NOT FOUND - checking if document exists at all`);
-        const docWithoutUser = await this.documentsRepository.findOne({
-          where: { id: documentId },
-        });
-        this.logger.log(`[getDocument] Document exists (ignoring user): ${!!docWithoutUser}`);
-        if (docWithoutUser) {
-          this.logger.log(`[getDocument] Document user_id: ${docWithoutUser.user_id}`);
-          this.logger.log(`[getDocument] Requested user_id: ${userId}`);
-        }
+      if (!document) {
         throw new NotFoundException('Document not found');
       }
 
