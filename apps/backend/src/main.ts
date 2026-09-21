@@ -5,6 +5,7 @@ dns.setDefaultResultOrder('ipv4first');
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 // Part 4: API Specification - CORS, Validation, Global Prefix
@@ -15,6 +16,9 @@ async function bootstrap() {
 
   // Global prefix
   app.setGlobalPrefix('api/v1');
+
+  // P2-7 (audit): baseline security headers for the API
+  app.use(helmet());
 
   // CORS — production allows only the configured frontend origin; dev also
   // allows localhost variants.
