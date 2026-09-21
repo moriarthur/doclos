@@ -11,7 +11,11 @@ P1-6 ✅ P1-7 ✅ P1-8 ✅
 Review blockers closed pre-merge: webp in frontend ACCEPTED_TYPES (`4c0b503`),
 P1-1/P1-2 regression tests (`fa34010`).
 
-**Branch `fix/audit-polish` — COMPLETE, auditor APPROVE (`a3d12da` cleanup applied); merge into main awaits user OK:**
+**Branch `fix/audit-polish` — auditor APPROVE; MERGED into local main (`d15614a`).**
+Then reconciled with the July origin/main wave (S4/S5/hardening, 43 commits — local
+clone had been stale): merge commit `c588c08` + porting fixes `c623deb` + diagnostics
+migration. Pending: auditor re-audit of the July attack surface (per-type export
+ownership, metadata sanitization, formula escaping, ?lang=) → then push (user OK'd).
 - U-1 ✅ `f06e95b` (hand-rolled ToastProvider) — U-2 ✅ `dcbce3c` — U-3 ✅ `117a6fb`
   (backend `exclude_status` + client filter removed) — U-6 ✅ `60e74aa` (debounced
   server search over status=archived)
