@@ -203,7 +203,8 @@ export interface Document {
   status: string;
   company_name?: string;
   invoice_number?: string;
-  amount?: number;
+  // P2-10 (audit): pg numeric(12,2) arrives as a string over the wire
+  amount?: number | string;
   currency?: string;
   invoice_date?: string;
   created_at: string;

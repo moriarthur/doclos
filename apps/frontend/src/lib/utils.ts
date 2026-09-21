@@ -30,19 +30,24 @@ export function formatCurrency(amount: number, currency: string = 'EUR', locale?
 
 // Format amount — returns number formatted and currency info
 export function formatAmount(
-  amount: number,
+  amount: number | string,
   currency?: string | null,
   locale?: string,
 ): {
   formatted: string;
   hasCurrency: boolean;
 } {
+  // P2-10 (audit): pg returns numeric(12,2) as a string — parse defensively
+  const value = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (!isFinite(value)) {
+    return { formatted: '—', hasCurrency: false };
+  }
   if (currency) {
     return {
       formatted: new Intl.NumberFormat(toBcp47(locale), {
         style: 'currency',
         currency,
-      }).format(amount),
+      }).format(value),
       hasCurrency: true,
     };
   }
@@ -50,7 +55,7 @@ export function formatAmount(
     formatted: new Intl.NumberFormat(toBcp47(locale), {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount),
+    }).format(value),
     hasCurrency: false,
   };
 }
