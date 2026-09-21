@@ -2,6 +2,38 @@
 
 Full-project audit: backend, frontend, infra. Read-only review; nothing here was changed in the repo.
 
+## Status — living checklist (updated 2026-09-21 by main agent)
+
+**Wave `fix/audit-security` — ALL DONE, merged to main `1c44c94` after auditor review:**
+P0-1 ✅ P0-2 ✅ (+FK migration `fb7315c` on polish branch) P0-3 ✅ (live-tested) P0-4 ✅
+P1-1 ✅ P1-2 ✅ P1-3 ✅ P1-4 ✅ (landed inside P0-4 commit, marker `7d0ad33`) P1-5 ✅
+P1-6 ✅ P1-7 ✅ P1-8 ✅
+Review blockers closed pre-merge: webp in frontend ACCEPTED_TYPES (`4c0b503`),
+P1-1/P1-2 regression tests (`fa34010`).
+
+**Branch `fix/audit-polish` — COMPLETE, auditor APPROVE (`a3d12da` cleanup applied); merge into main awaits user OK:**
+- U-1 ✅ `f06e95b` (hand-rolled ToastProvider) — U-2 ✅ `dcbce3c` — U-3 ✅ `117a6fb`
+  (backend `exclude_status` + client filter removed) — U-6 ✅ `60e74aa` (debounced
+  server search over status=archived)
+- P2-1 ✅ `5467326` (+`cdef380` explicit varchar after union-type metadata crash)
+- P2-2 ✅ `e7fe063` (transition map, POST /:id/unarchive, PATCH DTO)
+- P2-3 ✅ `10f48f6` (reprocess 409, cancelByDocument no-op, attempts oddity removed)
+- P2-4 ✅ `3495502` (extraction persistence in one transaction)
+- P2-5 ✅ `5687616` — P2-6 ✅ `57b3727` (Joi env schema, shutdown hooks, new URL)
+- P2-7 ✅ `4a97974` (helmet) — P2-8 ✅ `5463319` — P2-9 ✅ `153a542`
+- P2-10 ✅ `270ef2f` — P2-11 ✅ `029f288` — P2-12 ✅ `14ad5af`
+- P2-13 ◐ partial: 3 spec files / 18 tests (German dates+amounts, jobs ownership,
+  customer scoping). More coverage optional.
+- FK migration customers.user_id ✅ `fb7315c` (column -> uuid + constraint)
+- Not done (out of waves, still open): **U-4** (line items editable / unit column),
+  **U-5** (real upload progress — limits already aligned in P0-4), **U-7** (auto-login
+  after register; email case-sensitivity itself was fixed by P0-3 normalization).
+
+Verification state: tsc green (both apps), 18/18 jest green, backend boots with env
+validation + helmet, both migrations applied to dev DB. NOT pushed to origin.
+
+---
+
 **Execution order for the worker:** fix P0 → P1 → P2 → UX. Do NOT start roadmap features (S2 dark mode etc.) until P0 and P1 are done.
 
 **Working rules:**

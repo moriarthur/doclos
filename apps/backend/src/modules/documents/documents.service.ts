@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   UnsupportedMediaTypeException,
   Logger,
@@ -18,6 +19,7 @@ import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
 import { S3Service } from '../storage/services/s3.service';
 import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
+import { ValidateInvoiceFieldsDto } from './dto/validate-document.dto';
 
 // P0-4 (audit): magic bytes for every allowed upload type. The client-declared
 // Content-Type is not trusted — the first bytes of the buffer must match.
@@ -125,7 +127,7 @@ export class DocumentsService {
 
   async listDocuments(
     userId: string,
-    query: { page?: number; limit?: number; status?: DocumentStatus; company?: string; from_date?: Date; to_date?: Date },
+    query: { page?: number; limit?: number; status?: DocumentStatus; exclude_status?: DocumentStatus; company?: string; from_date?: Date; to_date?: Date },
   ) {
     const page = query.page || 1;
     const limit = Math.min(query.limit || 20, 100);
@@ -139,6 +141,11 @@ export class DocumentsService {
 
     if (query.status) {
       qb.andWhere('document.status = :status', { status: query.status });
+    }
+    // U-3 (audit): let clients exclude a status server-side (dashboard hides
+    // archived by default) instead of filtering fetched pages client-side
+    if (query.exclude_status) {
+      qb.andWhere('document.status != :excludeStatus', { excludeStatus: query.exclude_status });
     }
 
     if (query.company) {
@@ -181,7 +188,10 @@ export class DocumentsService {
 
   async getDocument(documentId: string, userId: string) {
     try {
-      this.logger.log(`[getDocument] Fetching document ${documentId} for user ${userId}`);
+      // P2-8 (audit): per-request traces demoted to debug — the former .log
+      // calls dumped user IDs and ownership-miss details on every read (Bug-B
+      // debugging leftover)
+      this.logger.debug(`[getDocument] Fetching document ${documentId}`);
 
       // Use query builder for more control
       const document = await this.documentsRepository
@@ -192,21 +202,7 @@ export class DocumentsService {
         .andWhere('document.user_id = :userId', { userId })
         .getOne();
 
-      this.logger.log(`[getDocument] Document found: ${!!document}`);
-      if (document) {
-        this.logger.log(`[getDocument] Document.invoiceId: ${document.invoiceId}`);
-        this.logger.log(`[getDocument] Document.invoice: ${!!document.invoice}`);
-        this.logger.log(`[getDocument] Document.customer: ${!!document.customer}`);
-      } else {
-        this.logger.warn(`[getDocument] Document NOT FOUND - checking if document exists at all`);
-        const docWithoutUser = await this.documentsRepository.findOne({
-          where: { id: documentId },
-        });
-        this.logger.log(`[getDocument] Document exists (ignoring user): ${!!docWithoutUser}`);
-        if (docWithoutUser) {
-          this.logger.log(`[getDocument] Document user_id: ${docWithoutUser.user_id}`);
-          this.logger.log(`[getDocument] Requested user_id: ${userId}`);
-        }
+      if (!document) {
         throw new NotFoundException('Document not found');
       }
 
@@ -282,7 +278,7 @@ export class DocumentsService {
     }
   }
 
-  async validateDocument(documentId: string, userId: string, fields: Record<string, unknown>) {
+  async validateDocument(documentId: string, userId: string, fields: ValidateInvoiceFieldsDto) {
     const document = await this.documentsRepository.findOne({
       where: { id: documentId, user_id: userId },
       relations: ['invoice'],
@@ -302,36 +298,50 @@ export class DocumentsService {
 
     // Update invoice with new values
     if (document.invoice) {
-      if (fields.invoice_number) document.invoice.invoice_number = String(fields.invoice_number);
-      if (fields.amount_total) {
-        const num = Number(fields.amount_total);
-        if (isNaN(num) || num === 0) {
+      // P2-1 (audit): key present = apply (string sets, explicit null clears),
+      // key absent = untouched. Dates already validated to YYYY-MM-DD by the DTO.
+      const has = (key: keyof ValidateInvoiceFieldsDto) =>
+        Object.prototype.hasOwnProperty.call(fields, key);
+      const text = (value: string | null | undefined) =>
+        value === null ? null : String(value).trim() || null;
+
+      if (has('invoice_number')) {
+        document.invoice.invoice_number = text(fields.invoice_number);
+      }
+      if (has('amount_total')) {
+        const amount = fields.amount_total;
+        if (amount === undefined) {
+          throw new BadRequestException('amount_total must be a number or null');
+        }
+        if (amount === null) {
+          document.invoice.amount_total = null;
+        } else if (amount === 0) {
           throw new BadRequestException('Betrag muss eine Zahl ungleich 0 sein');
+        } else {
+          document.invoice.amount_total = amount;
         }
-        document.invoice.amount_total = num;
       }
-      if (fields.invoice_date) {
-        const dateStr = String(fields.invoice_date);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-          throw new BadRequestException('Ungültiges Datumsformat (JJJJ-MM-TT)');
-        }
-        document.invoice.invoice_date = new Date(dateStr);
+      if (has('invoice_date')) {
+        document.invoice.invoice_date =
+          fields.invoice_date === null || fields.invoice_date === undefined
+            ? null
+            : new Date(fields.invoice_date);
       }
-      if (fields.due_date) {
-        const dateStr = String(fields.due_date);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-          throw new BadRequestException('Ungültiges Datumsformat (JJJJ-MM-TT)');
-        }
-        document.invoice.due_date = new Date(dateStr);
+      if (has('due_date')) {
+        document.invoice.due_date =
+          fields.due_date === null || fields.due_date === undefined
+            ? null
+            : new Date(fields.due_date);
       }
-      if (fields.currency) {
-        document.invoice.currency = String(fields.currency);
+      if (has('currency')) {
+        // currency column is NOT NULL with DB default 'EUR' — clearing resets to it
+        document.invoice.currency = text(fields.currency)?.toUpperCase() ?? 'EUR';
       }
-      if (fields.supplier_name) {
-        document.invoice.supplier_name = String(fields.supplier_name);
+      if (has('supplier_name')) {
+        document.invoice.supplier_name = text(fields.supplier_name);
       }
-      if (fields.supplier_address) {
-        document.invoice.supplier_address = String(fields.supplier_address);
+      if (has('supplier_address')) {
+        document.invoice.supplier_address = text(fields.supplier_address);
       }
       document.invoice.validated = true;
       await this.invoicesRepository.save(document.invoice);
@@ -349,7 +359,7 @@ export class DocumentsService {
       user_id: userId,
       action: 'validate',
       old_value: oldValues,
-      new_value: fields,
+      new_value: { ...fields },
     });
 
     return { status: document.status };
@@ -362,6 +372,12 @@ export class DocumentsService {
 
     if (!document) {
       throw new NotFoundException('Document not found');
+    }
+
+    // P2-3 (audit): a second reprocess while a job is already running would
+    // queue a duplicate job racing the first one
+    if (document.status === DocumentStatus.PROCESSING) {
+      throw new ConflictException('Document is already being processed');
     }
 
     // Reset status
@@ -390,7 +406,20 @@ export class DocumentsService {
     return { buffer, mimeType: document.mime_type, filename: document.original_filename };
   }
 
-  async updateDocumentStatus(documentId: string, userId: string, status: string) {
+  // P2-2 (audit): explicit state machine — before this, any->any PATCHes were
+  // accepted (e.g. validated -> processing). Unarchiving lives in
+  // unarchiveDocument(), not in a magic 'unarchive' status string.
+  private static readonly ALLOWED_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
+    [DocumentStatus.UPLOADED]: [DocumentStatus.PROCESSING, DocumentStatus.ERROR, DocumentStatus.ARCHIVED],
+    [DocumentStatus.PROCESSING]: [DocumentStatus.PARSED, DocumentStatus.NEEDS_VALIDATION, DocumentStatus.ERROR, DocumentStatus.ARCHIVED],
+    [DocumentStatus.PARSED]: [DocumentStatus.NEEDS_VALIDATION, DocumentStatus.VALIDATED, DocumentStatus.ARCHIVED],
+    [DocumentStatus.NEEDS_VALIDATION]: [DocumentStatus.VALIDATED, DocumentStatus.PARSED, DocumentStatus.ERROR, DocumentStatus.ARCHIVED],
+    [DocumentStatus.VALIDATED]: [DocumentStatus.ARCHIVED],
+    [DocumentStatus.ERROR]: [DocumentStatus.NEEDS_VALIDATION, DocumentStatus.PARSED, DocumentStatus.ARCHIVED],
+    [DocumentStatus.ARCHIVED]: [], // only via POST /documents/:id/unarchive
+  };
+
+  async updateDocumentStatus(documentId: string, userId: string, status: DocumentStatus) {
     const document = await this.documentsRepository.findOne({
       where: { id: documentId, user_id: userId },
     });
@@ -400,37 +429,55 @@ export class DocumentsService {
     }
 
     const oldStatus = document.status;
+    const allowed = DocumentsService.ALLOWED_TRANSITIONS[oldStatus] ?? [];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(
+        `Cannot change status from '${oldStatus}' to '${status}'. Allowed: ${allowed.join(', ') || 'none (use unarchive)'}`,
+      );
+    }
 
-    // Handle special "unarchive" status value
-    if (status === 'unarchive') {
-      if (oldStatus !== DocumentStatus.ARCHIVED) {
-        throw new BadRequestException('Document is not archived');
-      }
-      // Restore previous status
-      document.status = document.previous_status || DocumentStatus.PARSED;
-      document.previous_status = null;
-    }
-    // Handle archiving: save current status before changing
-    else if (status === DocumentStatus.ARCHIVED && oldStatus !== DocumentStatus.ARCHIVED) {
+    // Archiving remembers the previous status so unarchive can restore it
+    if (status === DocumentStatus.ARCHIVED) {
       document.previous_status = oldStatus;
-      document.status = DocumentStatus.ARCHIVED;
     }
-    // Handle normal status change (but don't allow changing from archived directly)
-    else if (oldStatus === DocumentStatus.ARCHIVED) {
-      throw new BadRequestException('Cannot change status directly from archived. Use unarchive first.');
-    }
-    // Validate status for normal changes
-    else {
-      const validStatuses = Object.values(DocumentStatus);
-      if (!validStatuses.includes(status as DocumentStatus)) {
-        throw new BadRequestException(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
-      }
-      document.status = status as DocumentStatus;
-    }
+    document.status = status;
 
     await this.documentsRepository.save(document);
 
     // Write audit log
+    await this.auditLogsRepository.save({
+      entity_type: 'document',
+      entity_id: documentId,
+      user_id: userId,
+      action: 'status_update',
+      old_value: { status: oldStatus },
+      new_value: { status: document.status },
+    });
+
+    return { status: document.status };
+  }
+
+  async unarchiveDocument(documentId: string, userId: string) {
+    const document = await this.documentsRepository.findOne({
+      where: { id: documentId, user_id: userId },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    if (document.status !== DocumentStatus.ARCHIVED) {
+      throw new BadRequestException('Document is not archived');
+    }
+
+    // Restore previous status (P2-2: dedicated endpoint instead of a magic
+    // 'unarchive' status value smuggled through PATCH)
+    const oldStatus = document.status;
+    document.status = document.previous_status || DocumentStatus.PARSED;
+    document.previous_status = null;
+
+    await this.documentsRepository.save(document);
+
     await this.auditLogsRepository.save({
       entity_type: 'document',
       entity_id: documentId,

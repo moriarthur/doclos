@@ -36,11 +36,20 @@ for (const envPath of possibleEnvPaths) {
 
 // Parse DATABASE_URL to get individual components
 const databaseUrl = process.env.DATABASE_URL || '';
-const urlMatch = databaseUrl.match(/postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:]+):(\d+)\/(.+)/);
 let host, port, username, password, database;
 
-if (urlMatch) {
-  [, username, password, host, port, database] = urlMatch;
+try {
+  // P2-6 (audit): new URL() instead of a regex — the regex broke on
+  // URL-encoded or special-character passwords
+  const parsed = new URL(databaseUrl);
+  username = decodeURIComponent(parsed.username);
+  password = decodeURIComponent(parsed.password);
+  host = parsed.hostname;
+  port = parsed.port;
+  database = parsed.pathname.replace(/^\//, '');
+} catch {
+  // Leave undefined — env-var fallbacks below apply, ConfigModule
+  // validation reports the missing DATABASE_URL at boot
 }
 
 export const dataSourceOptions: DataSourceOptions = {

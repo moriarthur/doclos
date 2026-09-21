@@ -208,7 +208,8 @@ pnpm run build
 
 - **TypeScript strict mode** with definite assignment assertions (`property!`)
 - **ESLint + Prettier** for formatting
-- **Zod** for request validation
+- **class-validator** for request validation (global ValidationPipe: whitelist + forbidNonWhitelisted + transform)
+- **TypeORM**: a nullable column typed as a union (`string | null`) MUST declare an explicit `@Column({ type: ... })` — the reflected `design:type` of a union is `Object`, which crashes boot with `DataTypeNotSupportedError`
 - **Modular architecture** - Each module handles its domain
 - **Comments** reference documentation source (e.g., `// Part 4: API Spec`)
 
