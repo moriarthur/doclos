@@ -42,6 +42,7 @@ const statusOptions = [
   { value: 'parsed', key: 'parsed' },
   { value: 'needs_validation', key: 'needs_validation' },
   { value: 'validated', key: 'validated' },
+  { value: 'error', key: 'error' },
 ] as const;
 
 export default function DashboardPage() {
@@ -437,7 +438,7 @@ export default function DashboardPage() {
 
                         {/* Actions (hidden in selection mode) */}
                         <div className={`flex items-center gap-1 ml-4 ${selectionMode ? 'hidden' : ''}`}>
-                          <span className={`h-2 w-2 rounded-full shrink-0 mr-1 ${
+                          <span className={`h-2 w-2 rounded-full shrink-0 mr-1.5 ${
                             doc.status === 'uploaded' ? 'bg-blue-500' :
                             doc.status === 'processing' ? 'bg-yellow-500' :
                             doc.status === 'parsed' ? 'bg-green-500' :
@@ -447,6 +448,10 @@ export default function DashboardPage() {
                             doc.status === 'archived' ? 'bg-gray-400' :
                             'bg-gray-400'
                           }`} role="img" aria-label={tStatus(doc.status)} title={tStatus(doc.status)} />
+                          {/* U-2 (audit): the color dot alone was ambiguous — show the label */}
+                          <span className="text-xs text-muted-foreground mr-1 whitespace-nowrap">
+                            {tStatus(doc.status)}
+                          </span>
                           <Button
                             size="sm"
                             variant="ghost"
