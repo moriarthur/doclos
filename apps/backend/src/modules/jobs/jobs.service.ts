@@ -138,14 +138,16 @@ export class JobsService {
       order: { created_at: 'DESC' },
     });
 
-    // Cancel active job if one exists
-    if (job && (job.status === JobStatus.PROCESSING || job.status === JobStatus.PENDING)) {
-      job.status = JobStatus.FAILED;
-      job.last_error = 'Cancelled by user';
-      await this.jobsRepository.save(job);
+    // P2-3 (audit): without an active job this used to flip ANY document to
+    // error — now it is a no-op
+    if (!job || (job.status !== JobStatus.PROCESSING && job.status !== JobStatus.PENDING)) {
+      return { message: 'No active job for this document' };
     }
 
-    // Always reset document to error
+    job.status = JobStatus.FAILED;
+    job.last_error = 'Cancelled by user';
+    await this.jobsRepository.save(job);
+
     await this.documentsRepository.update(
       { id: documentId },
       { status: DocumentStatus.ERROR },

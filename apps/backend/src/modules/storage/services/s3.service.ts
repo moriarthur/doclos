@@ -4,6 +4,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -146,7 +147,9 @@ export class S3Service {
    */
   async fileExists(key: string): Promise<boolean> {
     try {
-      const command = new GetObjectCommand({
+      // P2-5 (audit): HeadObject instead of GetObject — no point streaming the
+      // whole object just to learn whether it exists
+      const command = new HeadObjectCommand({
         Bucket: this.bucketName,
         Key: key,
       });
@@ -154,8 +157,10 @@ export class S3Service {
       await this.client.send(command);
       return true;
     } catch (error) {
-      if (error instanceof Error && 'name' in error && error.name === 'NoSuchKey') {
-        return false;
+      if (error instanceof Error && 'name' in error) {
+        if (error.name === 'NoSuchKey' || error.name === 'NotFound') {
+          return false;
+        }
       }
       if (error && typeof error === 'object' && '$metadata' in error) {
         const metadata = (error as { $metadata: { httpStatusCode?: number } }).$metadata;

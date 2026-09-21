@@ -203,7 +203,8 @@ export interface Document {
   status: string;
   company_name?: string;
   invoice_number?: string;
-  amount?: number;
+  // P2-10 (audit): pg numeric(12,2) arrives as a string over the wire
+  amount?: number | string;
   currency?: string;
   invoice_date?: string;
   created_at: string;
@@ -267,6 +268,7 @@ export const documentsApi = {
     page?: number;
     limit?: number;
     status?: string;
+    exclude_status?: string;
     company?: string;
     from_date?: string;
     to_date?: string;
@@ -320,7 +322,16 @@ export const documentsApi = {
   },
 
   validate: async (id: string, fields: Record<string, unknown>) => {
-    const response = await apiClient.patch(`/documents/${id}/validate`, { fields });
+    // P2-1 (audit): wire contract — empty input means "clear this field"
+    // (explicit null); amount_total travels as a number
+    const payload: Record<string, unknown> = {};
+    for (const [key, raw] of Object.entries(fields)) {
+      const value = typeof raw === 'string' ? raw.trim() : raw;
+      if (value === '') payload[key] = null;
+      else if (key === 'amount_total') payload[key] = value === null ? null : Number(value);
+      else payload[key] = value;
+    }
+    const response = await apiClient.patch(`/documents/${id}/validate`, { fields: payload });
     return response.data;
   },
 
@@ -335,8 +346,9 @@ export const documentsApi = {
   },
 
   unarchive: async (id: string) => {
-    // Special call to unarchive - backend will restore previous status
-    const response = await apiClient.patch(`/documents/${id}`, { status: 'unarchive' });
+    // P2-2 (audit): dedicated endpoint — the old magic 'unarchive' PATCH body
+    // is rejected by the status DTO now
+    const response = await apiClient.post(`/documents/${id}/unarchive`);
     return response.data;
   },
 

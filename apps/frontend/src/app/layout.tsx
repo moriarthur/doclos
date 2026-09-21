@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Source_Serif_4, Inter } from 'next/font/google';
 import './globals.css';
 import { QueryProvider } from '@/lib/react-query-provider';
+import { ToastProvider } from '@/components/ui/Toast';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 
@@ -44,9 +45,11 @@ export default async function RootLayout({
         />
         <NextIntlClientProvider>
           <QueryProvider>
-            <div className="min-h-screen bg-background">
-              {children}
-            </div>
+            <ToastProvider>
+              <div className="min-h-screen bg-background">
+                {children}
+              </div>
+            </ToastProvider>
           </QueryProvider>
         </NextIntlClientProvider>
       </body>
