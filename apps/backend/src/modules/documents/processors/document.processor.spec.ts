@@ -34,15 +34,18 @@ const makeProcessor = () => {
         supplier_address: 'Bahnhofstr. 1',
         items: [],
       },
-      confidence: { overall: 0.95, fields: {} },
+      confidence: { overall: 0.95, fields: {}, issues: [] },
       cost: 0,
     })),
     // identity passthrough — the real one is exercised by its own spec
     normalizeExtraction: (e: object) => e,
+    // S5.1 correctness guard: no issues from the stubbed service
+    validateByType: jest.fn(() => [] as Array<unknown>),
   };
 
   const processor = new DocumentProcessor(
     {} as any, // documentsRepository
+    {} as any, // customersRepository (per-type paths; this spec exercises the manager path)
     {} as any, // invoicesRepository
     {} as any, // invoiceItemsRepository
     {} as any, // fieldExtractionsRepository
@@ -70,10 +73,11 @@ describe('DocumentProcessor customer scoping (P0-2)', () => {
       status: 'processing',
     } as unknown as Document;
 
-    await (processor as unknown as { extractInvoiceData: (d: Document, t: string) => Promise<void> }).extractInvoiceData(
-      document,
-      'Rechnung Müller GmbH',
-    );
+    await (
+      processor as unknown as {
+        extractCommercialDocument: (d: Document, t: string, type: string) => Promise<void>;
+      }
+    ).extractCommercialDocument(document, 'Rechnung Müller GmbH', 'invoice');
 
     expect(manager.findOne).toHaveBeenCalledWith(
       expect.anything(), // Customer entity
@@ -103,10 +107,11 @@ describe('DocumentProcessor customer scoping (P0-2)', () => {
       status: 'processing',
     } as unknown as Document;
 
-    await (processor as unknown as { extractInvoiceData: (d: Document, t: string) => Promise<void> }).extractInvoiceData(
-      document,
-      'Rechnung Müller GmbH',
-    );
+    await (
+      processor as unknown as {
+        extractCommercialDocument: (d: Document, t: string, type: string) => Promise<void>;
+      }
+    ).extractCommercialDocument(document, 'Rechnung Müller GmbH', 'invoice');
 
     expect(document.customer_id).toBe('existing-customer');
     expect(manager.create).not.toHaveBeenCalledWith(
