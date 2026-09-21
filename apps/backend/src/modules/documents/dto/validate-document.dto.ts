@@ -1,12 +1,11 @@
 import {
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
-  ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
 // Part 4: API Specification - Validate document DTO
 // Part 7: Security & GDPR - Audit log on validation
@@ -50,9 +49,13 @@ export class ValidateInvoiceFieldsDto {
 }
 
 export class ValidateDocumentDto {
-  @ValidateNested()
-  @Type(() => ValidateInvoiceFieldsDto)
-  fields: ValidateInvoiceFieldsDto;
+  // Deliberately permissive: besides the invoice fields below, S5.2 clients
+  // send per-type metadata fields (dynamic per document.type). The known
+  // invoice fields are re-validated in the service (dates, amounts, lengths,
+  // explicit-null clearing) against ValidateInvoiceFieldsDto; metadata keys
+  // are whitelisted per type by METADATA_FIELDS_BY_TYPE and sanitized.
+  @IsObject()
+  fields: Record<string, string | number | null>;
 }
 
 // Part 4: API Specification - Field with confidence

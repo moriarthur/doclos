@@ -316,7 +316,10 @@ export class DocumentsService {
     }
   }
 
-  async validateDocument(documentId: string, userId: string, fields: ValidateInvoiceFieldsDto) {
+  async validateDocument(documentId: string, userId: string, fields: Record<string, string | number | null>) {
+    // Typed view over the known invoice fields; the rest are per-type metadata
+    // fields validated against METADATA_FIELDS_BY_TYPE further below (S5.2).
+    const invoiceFields = fields as ValidateInvoiceFieldsDto;
     const document = await this.documentsRepository.findOne({
       where: { id: documentId, user_id: userId },
       relations: ['invoice'],
@@ -339,15 +342,15 @@ export class DocumentsService {
       // P2-1 (audit): key present = apply (string sets, explicit null clears),
       // key absent = untouched. Dates already validated to YYYY-MM-DD by the DTO.
       const has = (key: keyof ValidateInvoiceFieldsDto) =>
-        Object.prototype.hasOwnProperty.call(fields, key);
-      const text = (value: string | null | undefined) =>
+        Object.prototype.hasOwnProperty.call(invoiceFields, key);
+      const text = (value: string | number | null | undefined) =>
         value === null ? null : String(value).trim() || null;
 
       if (has('invoice_number')) {
-        document.invoice.invoice_number = text(fields.invoice_number);
+        document.invoice.invoice_number = text(invoiceFields.invoice_number);
       }
       if (has('amount_total')) {
-        const amount = fields.amount_total;
+        const amount = invoiceFields.amount_total;
         if (amount === undefined) {
           throw new BadRequestException('amount_total must be a number or null');
         }
@@ -361,25 +364,25 @@ export class DocumentsService {
       }
       if (has('invoice_date')) {
         document.invoice.invoice_date =
-          fields.invoice_date === null || fields.invoice_date === undefined
+          invoiceFields.invoice_date === null || invoiceFields.invoice_date === undefined
             ? null
-            : new Date(fields.invoice_date);
+            : new Date(invoiceFields.invoice_date);
       }
       if (has('due_date')) {
         document.invoice.due_date =
-          fields.due_date === null || fields.due_date === undefined
+          invoiceFields.due_date === null || invoiceFields.due_date === undefined
             ? null
-            : new Date(fields.due_date);
+            : new Date(invoiceFields.due_date);
       }
       if (has('currency')) {
         // currency column is NOT NULL with DB default 'EUR' — clearing resets to it
-        document.invoice.currency = text(fields.currency)?.toUpperCase() ?? 'EUR';
+        document.invoice.currency = text(invoiceFields.currency)?.toUpperCase() ?? 'EUR';
       }
       if (has('supplier_name')) {
-        document.invoice.supplier_name = text(fields.supplier_name);
+        document.invoice.supplier_name = text(invoiceFields.supplier_name);
       }
       if (has('supplier_address')) {
-        document.invoice.supplier_address = text(fields.supplier_address);
+        document.invoice.supplier_address = text(invoiceFields.supplier_address);
       }
       document.invoice.validated = true;
       await this.invoicesRepository.save(document.invoice);

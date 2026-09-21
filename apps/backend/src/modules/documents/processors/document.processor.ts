@@ -30,6 +30,8 @@ export class DocumentProcessor {
   constructor(
     @InjectRepository(Document)
     private documentsRepository: Repository<Document>,
+    @InjectRepository(Customer)
+    private customersRepository: Repository<Customer>,
     @InjectRepository(Invoice)
     private invoicesRepository: Repository<Invoice>,
     @InjectRepository(InvoiceItem)
@@ -461,9 +463,6 @@ export class DocumentProcessor {
       throw error;
     }
   }
-      throw error;
-    }
-  }
 
   /**
    * Map a normalized per-type extraction onto the shared commercial carrier:
@@ -641,11 +640,14 @@ export class DocumentProcessor {
       }
 
       // Find or create customer from the seller (the counterparty we track).
+      // P0-2 (audit): scoped to the owning user — no cross-tenant reuse.
       const sellerName = this.asString(n['seller_name']);
       if (sellerName) {
-        let customer = await this.customersRepository.findOne({ where: { name: sellerName } });
+        let customer = await this.customersRepository.findOne({
+          where: { user_id: document.user_id, name: sellerName },
+        });
         if (!customer) {
-          customer = this.customersRepository.create({ name: sellerName });
+          customer = this.customersRepository.create({ user_id: document.user_id, name: sellerName });
           await this.customersRepository.save(customer);
         }
         document.customer_id = customer.id;
