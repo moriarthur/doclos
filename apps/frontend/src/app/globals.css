@@ -79,23 +79,6 @@
     box-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.08);
   }
 
-  /* Elegant badge styles */
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    letter-spacing: 0.025em;
-  }
-
-  .badge-uploaded { background-color: rgb(234 244 242); color: rgb(20 184 166); }
-  .badge-processing { background-color: rgb(254 252 232); color: rgb(161 98 7); }
-  .badge-parsed { background-color: rgb(240 253 244); color: rgb(34 197 94); }
-  .badge-needs_validation { background-color: rgb(255 237 213); color: rgb(154 52 18); }
-  .badge-validated { background-color: rgb(236 253 245); color: rgb(5 122 54); }
-  .badge-error { background-color: rgb(254 226 226); color: rgb(220 38 38); }
 
   /* Subtle gradient background */
   .gradient-bg {

@@ -439,7 +439,6 @@ export default function DashboardPage() {
                         {/* Actions (hidden in selection mode) */}
                         <div className={`flex items-center gap-1 ml-4 ${selectionMode ? 'hidden' : ''}`}>
                           <span className={`h-2 w-2 rounded-full shrink-0 mr-1.5 ${
-                            doc.status === 'uploaded' ? 'bg-blue-500' :
                             doc.status === 'processing' ? 'bg-yellow-500' :
                             doc.status === 'parsed' ? 'bg-green-500' :
                             doc.status === 'needs_validation' ? 'bg-orange-500' :
