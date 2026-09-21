@@ -11,7 +11,7 @@ P1-6 ✅ P1-7 ✅ P1-8 ✅
 Review blockers closed pre-merge: webp in frontend ACCEPTED_TYPES (`4c0b503`),
 P1-1/P1-2 regression tests (`fa34010`).
 
-**Branch `fix/audit-polish` — open, awaiting user merge OK:**
+**Branch `fix/audit-polish` — COMPLETE, auditor APPROVE (`a3d12da` cleanup applied); merge into main awaits user OK:**
 - U-1 ✅ `f06e95b` (hand-rolled ToastProvider) — U-2 ✅ `dcbce3c` — U-3 ✅ `117a6fb`
   (backend `exclude_status` + client filter removed) — U-6 ✅ `60e74aa` (debounced
   server search over status=archived)
