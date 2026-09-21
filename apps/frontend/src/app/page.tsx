@@ -84,6 +84,8 @@ export default function DashboardPage() {
           })
         : documentsApi.list({
             status: statusFilter || undefined,
+            // U-3 (audit): hide archived server-side (search may surface them)
+            exclude_status: statusFilter ? undefined : 'archived',
             page: pageParam,
             limit: 20,
           }),
@@ -96,13 +98,9 @@ export default function DashboardPage() {
 
   const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
 
-  const filteredDocuments = allDocuments.filter((doc) => {
-    // Exclude archived documents from the default (non-search) view. Server-side
-    // search already scopes by relevance and may legitimately surface archived
-    // matches, so we don't hide them while searching.
-    if (!debouncedSearch && !statusFilter && doc.status === 'archived') return false;
-    return true;
-  });
+  // U-3 (audit): archived exclusion moved server-side (exclude_status) —
+  // client-side filtering could show <20 rows while pagination says otherwise
+  const filteredDocuments = allDocuments;
 
   const archiveMutation = useMutation({
     mutationFn: (id: string) => documentsApi.updateStatus(id, 'archived'),
