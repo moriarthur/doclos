@@ -218,7 +218,6 @@ export class DocumentProcessor {
       // Update job status
       jobRecord.status = JobStatus.FAILED;
       jobRecord.last_error = errorMessage;
-      jobRecord.attempts = 1; // Reset to 1 on error
       await this.jobsRepository.save(jobRecord);
 
       // Update document status
