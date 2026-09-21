@@ -10,17 +10,22 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Anthropic-inspired warm, earthy palette. Values live in
-        // globals.css (:root / .dark) so every token flips with the theme.
+        // Anthropic-inspired warm, earthy palette.
+        // Values live as CSS variables in globals.css (:root + .dark) so all
+        // utilities switch automatically with the `dark` class (next-themes).
+        // RGB triplets + <alpha-value> keep opacity modifiers (bg-card/50, etc.).
         background: 'rgb(var(--background) / <alpha-value>)',
         foreground: 'rgb(var(--foreground) / <alpha-value>)',
         card: 'rgb(var(--card) / <alpha-value>)',
+        muted: {
+          DEFAULT: 'rgb(var(--muted) / <alpha-value>)',
+          foreground: 'rgb(var(--muted-foreground) / <alpha-value>)',
+        },
         primary: 'rgb(var(--primary) / <alpha-value>)',
         brand: 'rgb(var(--brand) / <alpha-value>)',
         accent: 'rgb(var(--accent) / <alpha-value>)',
-        muted: 'rgb(var(--muted) / <alpha-value>)',
-        'muted-foreground': 'rgb(var(--muted-foreground) / <alpha-value>)',
         border: 'rgb(var(--border) / <alpha-value>)',
+        ring: 'rgb(var(--ring) / <alpha-value>)',
       },
       fontFamily: {
         // Elegant serif for headings, clean sans for body - Anthropic style

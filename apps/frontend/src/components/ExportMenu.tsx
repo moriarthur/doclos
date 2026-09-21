@@ -62,7 +62,28 @@ export function ExportMenu({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  // 'left'  → anchor to the button's left edge, menu extends right (text L→R);
+  // 'right' → anchor to the button's right edge, menu extends left.
+  // Chosen per-open by available viewport space so the menu never opens
+  // off-screen or slides under the sidebar on narrow/wrapped layouts.
+  const [align, setAlign] = useState<'left' | 'right'>('right');
   const ref = useRef<HTMLDivElement>(null);
+
+  // w-48 = 12rem = 192px. Prefers extending right (left-aligned) so on mobile
+  // and when the button sits near the sidebar the text reads left-to-right.
+  const computeAlign = () => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const spaceRight = window.innerWidth - r.left;
+    const spaceLeft = r.right;
+    setAlign(spaceRight >= 192 || spaceRight >= spaceLeft ? 'left' : 'right');
+  };
+
+  const toggle = () => {
+    if (!open) computeAlign();
+    setOpen((o) => !o);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -70,11 +91,14 @@ export function ExportMenu({
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const onResize = () => computeAlign();
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
     return () => {
       document.removeEventListener('mousedown', onDoc);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
     };
   }, [open]);
 
@@ -109,7 +133,7 @@ export function ExportMenu({
         variant="secondary"
         size="sm"
         className="gap-1.5"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         disabled={busy || disabled}
         title={disabled ? t('noInvoiceData') : t('button')}
       >
@@ -119,7 +143,7 @@ export function ExportMenu({
       </Button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-48 rounded-lg border border-border bg-background shadow-lg z-20 overflow-hidden">
+        <div className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} mt-2 w-48 rounded-lg border border-border bg-background shadow-lg z-20 overflow-hidden`}>
           {FORMATS.map((f) => (
             <button
               key={f.id}
@@ -147,7 +171,7 @@ export function ExportMenu({
       )}
 
       {errMsg && (
-        <p className="absolute right-0 top-full mt-2 text-xs text-red-600 dark:text-red-400 whitespace-nowrap">
+        <p className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} top-full mt-2 text-xs text-red-600 dark:text-red-400 whitespace-nowrap`}>
           {errMsg}
         </p>
       )}

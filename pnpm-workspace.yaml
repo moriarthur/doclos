@@ -2,3 +2,23 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# NOTE (pnpm 10+): these settings are read from pnpm-workspace.yaml, NOT from
+# the "pnpm" field in package.json (that field is ignored since pnpm 10).
+# https://pnpm.io/settings
+overrides:
+  multer: ^2.1.0  # security override: force multer 2.x (older versions had CVEs)
+
+# pnpm 10+ blocks dependency install/build scripts unless explicitly approved.
+# We approve the native/scripted deps Doclos relies on (restores pre-pnpm-10
+# behavior). bcrypt MUST build (native addon for auth password hashing).
+allowBuilds:
+  '@nestjs/core': true     # postinstall notice only; harmless
+  '@parcel/watcher': true  # native file watcher (dev/turbo watch)
+  '@swc/core': true        # native SWC compiler (NestJS build)
+  bcrypt: true             # CRITICAL: native node-gyp addon, auth hashing
+  canvas: true             # native cairo bindings (pdf-to-img fallback path)
+  msgpackr-extract: true   # native (turbo messaging)
+  sharp: true              # native libvips (also ships prebuilt @img/sharp-*)
+  tesseract.js: true       # downloads worker/core (OCR)
+  unrs-resolver: true      # native resolver (eslint-plugin-import)

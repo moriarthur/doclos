@@ -7,12 +7,16 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import helmet from 'helmet';
 
 // Part 4: API Specification - CORS, Validation, Global Prefix
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+
+  // Security headers (HSTS, X-Frame-Options, no-sniff, etc.)
+  app.use(helmet());
 
   // Global prefix
   app.setGlobalPrefix('api/v1');

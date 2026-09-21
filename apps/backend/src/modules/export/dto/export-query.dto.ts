@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
 import { DocumentStatus } from '../../documents/entities/document.entity';
 
 // Part 6: Excel Export System — filters for the export endpoint
@@ -22,4 +22,12 @@ export class ExportQueryDto {
   @IsOptional()
   @IsString()
   ids?: string; // comma-separated document IDs — export only the selected documents
+
+  @IsOptional()
+  @IsIn(['de', 'en'])
+  lang?: string; // UI locale for localized export headers/labels ('de' fallback)
+
+  @IsOptional()
+  @IsIn(['invoice', 'contract', 'offer', 'delivery_note', 'purchase_order'])
+  type?: string; // document-type bucket to export (default 'invoice' in the service)
 }

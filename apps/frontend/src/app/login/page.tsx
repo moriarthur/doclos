@@ -27,6 +27,13 @@ function LoginForm() {
   const [apiError, setApiError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent native form submission (and credential leakage into the URL) before
+  // client hydration attaches the React onSubmit handler.
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const {
     register,
@@ -149,6 +156,7 @@ function LoginForm() {
               <Button
                 type="submit"
                 className="w-full py-3"
+                disabled={!mounted}
                 isLoading={isSubmitting || loginMutation.isPending}
               >
                 {isSubmitting || loginMutation.isPending ? t('submitting') : t('submit')}

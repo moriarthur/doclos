@@ -43,6 +43,118 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/AlertDialog';
 
+/**
+ * Normalize extraction diagnostics into localized, grouped bullet lists.
+ *
+ * Issues arrive bilingual + severity-tagged from the backend
+ * (`{ severity: 'missing' | 'review', message: { de, en } }`); we render the
+ * side matching the user's selected UI locale, falling back to the other
+ * language if the preferred one is absent. Legacy documents (processed before
+ * this change) still carry plain English strings — treat those as soft
+ * 'review' hints so old data renders sensibly instead of breaking.
+ */
+function splitValidationIssues(
+  raw: unknown,
+  locale: string,
+): { missing: string[]; review: string[] } {
+  const missing: string[] = [];
+  const review: string[] = [];
+  if (!Array.isArray(raw)) return { missing, review };
+
+  for (const item of raw) {
+    let text: string | null = null;
+    let severity: 'missing' | 'review' = 'review';
+
+    if (typeof item === 'string') {
+      text = item.trim();
+    } else if (item && typeof item === 'object') {
+      const obj = item as { severity?: unknown; message?: unknown };
+      severity = obj.severity === 'missing' ? 'missing' : 'review';
+      const msg = obj.message as { de?: string; en?: string } | undefined;
+      if (msg && typeof msg === 'object') {
+        const preferred = locale === 'en' ? msg.en : msg.de;
+        const fallback = locale === 'en' ? msg.de : msg.en;
+        text = (preferred ?? fallback ?? '').toString().trim() || null;
+      }
+    }
+
+    if (text) (severity === 'missing' ? missing : review).push(text);
+  }
+
+  return { missing, review };
+}
+
+// --- S5.2 per-type UI -------------------------------------------------------
+// The invoice-carrier fields (number / date / amount / supplier / items) are
+// shared across commercial types but labelled per type. Delivery notes render
+// the items table without price columns (items usually carry only a quantity).
+// `METADATA_FIELDS` mirrors the backend per-type whitelist so the UI edits the
+// same keys the service accepts.
+
+type CarrierLabel = 'number' | 'date' | 'detailsTitle';
+
+/** i18n key (under DocumentDetail) for a carrier field, by document type. */
+const CARRIER_LABEL_KEY: Record<CarrierLabel, Record<string, string>> = {
+  number: {
+    invoice: 'invoiceNumber',
+    purchase_order: 'orderNumber',
+    offer: 'offerNumber',
+    delivery_note: 'deliveryNoteNumber',
+  },
+  date: {
+    invoice: 'invoiceDate',
+    purchase_order: 'orderDate',
+    offer: 'offerDate',
+    delivery_note: 'deliveryDate',
+  },
+  detailsTitle: {
+    invoice: 'invoiceDetails',
+    purchase_order: 'orderDetails',
+    offer: 'offerDetails',
+    delivery_note: 'deliveryNoteDetails',
+  },
+};
+
+type MetaKind = 'string' | 'number' | 'date';
+interface MetaFieldConfig {
+  key: string;
+  /** i18n key under DocumentDetail. */
+  label: string;
+  kind: MetaKind;
+}
+
+const METADATA_FIELDS: Record<string, MetaFieldConfig[]> = {
+  purchase_order: [
+    { key: 'customer_name', label: 'customer', kind: 'string' },
+    { key: 'expected_delivery_date', label: 'expectedDelivery', kind: 'date' },
+    { key: 'delivery_terms', label: 'deliveryTerms', kind: 'string' },
+    { key: 'payment_terms', label: 'paymentTerms', kind: 'string' },
+  ],
+  offer: [
+    { key: 'customer_name', label: 'customer', kind: 'string' },
+    { key: 'validity_date', label: 'validityDate', kind: 'date' },
+    { key: 'validity_terms', label: 'validityTerms', kind: 'string' },
+  ],
+  delivery_note: [
+    { key: 'recipient_name', label: 'recipient', kind: 'string' },
+    { key: 'recipient_address', label: 'recipientAddress', kind: 'string' },
+    { key: 'order_reference', label: 'orderReference', kind: 'string' },
+  ],
+  contract: [
+    { key: 'seller_name', label: 'seller', kind: 'string' },
+    { key: 'buyer_name', label: 'buyer', kind: 'string' },
+    { key: 'contract_value', label: 'contractValue', kind: 'number' },
+    { key: 'currency', label: 'currency', kind: 'string' },
+    { key: 'effective_date', label: 'effectiveDate', kind: 'date' },
+    { key: 'end_date', label: 'endDate', kind: 'date' },
+    { key: 'subject', label: 'contractSubject', kind: 'string' },
+    { key: 'term_description', label: 'contractTerm', kind: 'string' },
+  ],
+};
+
+/** Whether the items table should show price columns (false for delivery notes). */
+const showItemPrices = (type: string) => type !== 'delivery_note';
+
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -112,6 +224,9 @@ export default function DocumentDetailPage() {
     onSuccess: () => {
       // Refetch to get latest status immediately
       refetch();
+      // Invalidate the documents list so the dashboard reflects the new
+      // processing status (and its blink/poll) without waiting for a refetch.
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
     },
     onError: (err) => {
       showError(authApi.getErrorMessage(err));
@@ -202,7 +317,7 @@ export default function DocumentDetailPage() {
     return (
       <div className="flex">
         <Navigation />
-        <main className="flex-1 md:ml-64 min-h-screen p-10">
+        <main className="flex-1 md:ml-64 min-h-screen min-w-0 overflow-x-hidden p-10">
           <Card>
             <CardContent className="p-16 text-center">
               <FileText className="h-16 w-16 mx-auto mb-6 text-muted-foreground" />
@@ -231,11 +346,16 @@ export default function DocumentDetailPage() {
   // empty sections full of dashes.
   const isParsed = ['parsed', 'needs_validation', 'validated', 'archived'].includes(document.status);
   const showInvoiceSections = isParsed && !!invoiceData;
-  const showTypeCard = isParsed && !invoiceData && !!document.type && document.type !== 'invoice';
+  const metadataFields = METADATA_FIELDS[document.type] || [];
+  const showMetadataCard = isParsed && metadataFields.length > 0;
+  const showUnknownCard = isParsed && document.type === 'unknown';
+
+  // Validation diagnostics, grouped and rendered in the user's selected locale.
+  const validationIssues = splitValidationIssues(document?.extraction_issues, locale);
 
   // Validation
   const getFieldError = (field: string): string | null => {
-    if (editingSection !== 'invoice' && editingSection !== 'supplier') return null;
+    if (editingSection !== 'invoice' && editingSection !== 'supplier' && editingSection !== 'metadata') return null;
     const value = editedFields[field];
     if (value === undefined) return null; // unchanged field
 
@@ -271,6 +391,17 @@ export default function DocumentDetailPage() {
         break;
       }
     }
+    // Metadata field validation (S5.2): dates must be ISO, numbers finite.
+    // Empty is allowed — metadata fields are nullable.
+    const metaConfig = (METADATA_FIELDS[document.type] || []).find((f) => f.key === field);
+    if (metaConfig && value.trim() !== '') {
+      if (metaConfig.kind === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return t('errDateFormat');
+      }
+      if (metaConfig.kind === 'number' && isNaN(Number(value))) {
+        return t('errAmountInvalid');
+      }
+    }
     return null;
   };
 
@@ -283,13 +414,13 @@ export default function DocumentDetailPage() {
       <Navigation />
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 min-h-screen min-w-0">
+      <main className="flex-1 md:ml-64 min-h-screen min-w-0 overflow-x-clip">
         {/* Mobile header spacer */}
         <div className="h-16 md:hidden" />
 
         <div className="p-6 md:p-10">
           {/* Header */}
-          <div className="flex flex-col gap-4 mb-8 md:flex-row md:items-center animate-fade-in">
+          <div className="flex flex-col gap-4 mb-8 lg:flex-row lg:items-center animate-fade-in">
             <div className="flex items-center gap-4 min-w-0 flex-1">
               <Link href="/" className="shrink-0">
                 <Button variant="ghost" size="sm">
@@ -302,8 +433,8 @@ export default function DocumentDetailPage() {
                 <p className="text-sm text-muted-foreground uppercase tracking-wide mb-2">
                   {t('eyebrow')}
                 </p>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h1 className="font-serif text-3xl font-bold text-brand">
+                <div className="flex items-center gap-3 flex-wrap min-w-0">
+                  <h1 className="font-serif text-3xl font-bold text-brand truncate min-w-0">
                     {invoiceData
                       ? getFieldValue('supplier_name', invoiceData?.supplier_name) || tCommon('docPlaceholder')
                       : tDocType(document.type) || document.original_filename || tCommon('docPlaceholder')}
@@ -315,7 +446,7 @@ export default function DocumentDetailPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1 md:ml-auto">
+            <div className="flex items-center gap-1 lg:ml-auto shrink-0">
               <ExportMenu
                 variant="detail"
                 documentId={docId}
@@ -396,6 +527,63 @@ export default function DocumentDetailPage() {
               </Card>
             )}
 
+          {/* Validation diagnostics: AI confidence + reasons for needs_validation */}
+          {document.status === 'needs_validation' &&
+            (document.extraction_issues?.length || document.extraction_confidence != null) && (
+              <Card className="border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-900/10 animate-slide-up mb-6">
+                <CardContent className="p-5">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-amber-900 dark:text-amber-100 mb-1">
+                        {t('validationTitle')}
+                      </p>
+                      {document.extraction_confidence != null && (
+                        <p className="text-sm text-amber-800 dark:text-amber-200 mb-2">
+                          {t('confidenceLabel')}:{' '}
+                          <span className="font-semibold">
+                            {Math.round(document.extraction_confidence * 100)}%
+                          </span>
+                          <span className="text-amber-700/80 dark:text-amber-300/80">
+                            {' '}— {t('confidenceHint')}
+                          </span>
+                        </p>
+                      )}
+                      {(validationIssues.missing.length > 0 ||
+                        validationIssues.review.length > 0) && (
+                        <div className="space-y-3">
+                          {validationIssues.missing.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300 mb-1">
+                                {t('issuesMissingTitle')}
+                              </p>
+                              <ul className="text-sm text-amber-800 dark:text-amber-200 space-y-1 list-disc pl-5">
+                                {validationIssues.missing.map((issue, i) => (
+                                  <li key={`m-${i}`}>{issue}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {validationIssues.review.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300 mb-1">
+                                {t('issuesReviewTitle')}
+                              </p>
+                              <ul className="text-sm text-amber-800 dark:text-amber-200 space-y-1 list-disc pl-5">
+                                {validationIssues.review.map((issue, i) => (
+                                  <li key={`r-${i}`}>{issue}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* PDF Viewer */}
@@ -430,8 +618,8 @@ export default function DocumentDetailPage() {
 
             {/* Extracted Data */}
             <div className="space-y-6 min-w-0" style={{ animationDelay: '100ms' }}>
-              {/* Non-invoice classification card */}
-              {showTypeCard && (
+              {/* Unknown document — no structured extraction available */}
+              {showUnknownCard && (
                 <Card className="animate-slide-up" style={{ animationDelay: '100ms' }}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
@@ -458,7 +646,7 @@ export default function DocumentDetailPage() {
                     <div className="flex items-center justify-between">
                       <CardTitle className="flex items-center gap-2 text-lg">
                         <Settings className="h-5 w-5 text-primary" />
-                        {t('invoiceDetails')}
+                        {t(CARRIER_LABEL_KEY.detailsTitle[document.type] || 'invoiceDetails')}
                       </CardTitle>
                       {['needs_validation', 'parsed', 'validated'].includes(document.status) &&
                         (editingSection === 'invoice' ? (
@@ -500,14 +688,14 @@ export default function DocumentDetailPage() {
                       <div className="py-3 border-b border-border gap-3">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground shrink-0">
-                            {t('invoiceNumber')}
+                            {t(CARRIER_LABEL_KEY.number[document.type] || 'invoiceNumber')}
                           </span>
                           {editingSection === 'invoice' ? (
                             <Input
                               value={getFieldValue('invoice_number', invoiceData?.invoice_number)}
                               onChange={(e) => handleFieldChange('invoice_number', e.target.value)}
                               className={`max-w-[200px] h-8 text-sm ${getFieldError('invoice_number') ? 'border-red-400 focus:ring-red-200' : ''}`}
-                              placeholder={t('invoiceNumber')}
+                              placeholder={t(CARRIER_LABEL_KEY.number[document.type] || 'invoiceNumber')}
                             />
                           ) : (
                             <span className="font-medium text-foreground truncate">
@@ -527,7 +715,7 @@ export default function DocumentDetailPage() {
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
                             <Calendar className="h-4 w-4" />
-                            {t('invoiceDate')}
+                            {t(CARRIER_LABEL_KEY.date[document.type] || 'invoiceDate')}
                           </span>
                           {editingSection === 'invoice' ? (
                             <Input
@@ -555,7 +743,8 @@ export default function DocumentDetailPage() {
                         )}
                       </div>
 
-                      {/* Due Date */}
+                      {/* Due Date (invoice only — PO/offer/DN carry no due date) */}
+                      {document.type === 'invoice' && (
                       <div className="py-3 border-b border-border gap-3">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground flex items-center gap-2 shrink-0">
@@ -584,6 +773,7 @@ export default function DocumentDetailPage() {
                           </p>
                         )}
                       </div>
+                      )}
 
                       {/* Amount */}
                       <div className="py-3 gap-3">
@@ -669,7 +859,10 @@ export default function DocumentDetailPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
                       <Package className="h-5 w-5 text-primary" />
-                      {t('items', { count: invoiceData.items.length })}
+                      {t(
+                        document.type === 'delivery_note' ? 'deliveredItems' : 'items',
+                        { count: invoiceData.items.length },
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -686,12 +879,16 @@ export default function DocumentDetailPage() {
                             <th className="text-right py-2 px-3 font-medium text-muted-foreground">
                               {t('colUnit')}
                             </th>
-                            <th className="text-right py-2 px-3 font-medium text-muted-foreground">
-                              {t('colUnitPrice')}
-                            </th>
-                            <th className="text-right py-2 px-3 font-medium text-muted-foreground">
-                              {t('colTotal')}
-                            </th>
+                            {showItemPrices(document.type) && (
+                              <>
+                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                                  {t('colUnitPrice')}
+                                </th>
+                                <th className="text-right py-2 px-3 font-medium text-muted-foreground">
+                                  {t('colTotal')}
+                                </th>
+                              </>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -706,48 +903,54 @@ export default function DocumentDetailPage() {
                               <td className="py-3 px-3 text-right text-muted-foreground">
                                 {item.unit || t('unitDefault')}
                               </td>
-                              <td className="py-3 px-3 text-right text-foreground">
-                                {item.unit_price
-                                  ? formatAmount(
-                                      item.unit_price,
-                                      editedFields.currency || invoiceData.currency,
-                                      locale
-                                    ).formatted
-                                  : '-'}
+                              {showItemPrices(document.type) && (
+                                <>
+                                  <td className="py-3 px-3 text-right text-foreground">
+                                    {item.unit_price
+                                      ? formatAmount(
+                                          item.unit_price,
+                                          editedFields.currency || invoiceData.currency,
+                                          locale,
+                                        ).formatted
+                                      : '-'}
+                                  </td>
+                                  <td className="py-3 px-3 text-right font-medium text-foreground">
+                                    {item.total_price
+                                      ? formatAmount(
+                                          item.total_price,
+                                          editedFields.currency || invoiceData.currency,
+                                          locale,
+                                        ).formatted
+                                      : '-'}
+                                  </td>
+                                </>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                        {showItemPrices(document.type) && (
+                          <tfoot>
+                            <tr className="border-t-2 border-border">
+                              <td
+                                colSpan={4}
+                                className="py-3 px-3 text-right font-medium text-foreground"
+                              >
+                                {t('grandTotal')}
                               </td>
-                              <td className="py-3 px-3 text-right font-medium text-foreground">
-                                {item.total_price
+                              <td className="py-3 px-3 text-right font-serif font-semibold text-lg text-foreground">
+                                {getFieldValue('amount_total', invoiceData?.amount_total)
                                   ? formatAmount(
-                                      item.total_price,
+                                      Number(
+                                        getFieldValue('amount_total', invoiceData?.amount_total),
+                                      ),
                                       editedFields.currency || invoiceData.currency,
-                                      locale
+                                      locale,
                                     ).formatted
                                   : '-'}
                               </td>
                             </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t-2 border-border">
-                            <td
-                              colSpan={4}
-                              className="py-3 px-3 text-right font-medium text-foreground"
-                            >
-                              {t('grandTotal')}
-                            </td>
-                            <td className="py-3 px-3 text-right font-serif font-semibold text-lg text-foreground">
-                              {getFieldValue('amount_total', invoiceData?.amount_total)
-                                ? formatAmount(
-                                    Number(
-                                      getFieldValue('amount_total', invoiceData?.amount_total)
-                                    ),
-                                    editedFields.currency || invoiceData.currency,
-                                    locale
-                                  ).formatted
-                                : '-'}
-                            </td>
-                          </tr>
-                        </tfoot>
+                          </tfoot>
+                        )}
                       </table>
                     </div>
                   </CardContent>
@@ -852,6 +1055,112 @@ export default function DocumentDetailPage() {
                     </CardContent>
                   </Card>
                 )}
+
+              {/* Per-type metadata (S5.2). For contract this is the primary
+                  detail card (no invoice carrier); for PO/offer/delivery_note
+                  it renders the type-specific extras next to the carrier
+                  sections. Editable scalar fields, validated by kind. */}
+              {showMetadataCard && (
+                <Card className="animate-slide-up" style={{ animationDelay: '175ms' }}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <FileText className="h-5 w-5 text-primary" />
+                        {document.type === 'contract' ? t('contractDetails') : t('furtherDetails')}
+                      </CardTitle>
+                      {['needs_validation', 'parsed', 'validated'].includes(document.status) &&
+                        (editingSection === 'metadata' ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={cancelEditing}
+                              disabled={validateMutation.isPending}
+                              title={tCommon('cancel')}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={saveSection}
+                              disabled={validateMutation.isPending || hasErrors()}
+                              title={tCommon('save')}
+                            >
+                              <Save className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEditing('metadata')}
+                            title={tCommon('edit')}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        ))}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {metadataFields.map((f) => {
+                        const raw = (document.metadata as Record<string, unknown> | null)?.[f.key];
+                        const value = getFieldValue(f.key, raw as string | number | null);
+                        const error = getFieldError(f.key);
+                        return (
+                          <div
+                            key={f.key}
+                            className="py-3 border-b border-border gap-3 last:border-b-0"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-sm text-muted-foreground shrink-0">
+                                {t(f.label)}
+                              </span>
+                              {editingSection === 'metadata' ? (
+                                f.kind === 'date' ? (
+                                  <Input
+                                    type="text"
+                                    value={value}
+                                    onChange={(e) => handleFieldChange(f.key, e.target.value)}
+                                    className={`max-w-[200px] h-8 text-sm ${error ? 'border-red-400 focus:ring-red-200' : ''}`}
+                                    placeholder={t('datePlaceholder')}
+                                  />
+                                ) : f.kind === 'number' ? (
+                                  <Input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={value}
+                                    onChange={(e) => handleFieldChange(f.key, e.target.value)}
+                                    className={`max-w-[160px] h-8 text-sm ${error ? 'border-red-400 focus:ring-red-200' : ''}`}
+                                    placeholder="0.00"
+                                  />
+                                ) : (
+                                  <Input
+                                    value={value}
+                                    onChange={(e) => handleFieldChange(f.key, e.target.value)}
+                                    className={`max-w-[260px] h-8 text-sm ${error ? 'border-red-400 focus:ring-red-200' : ''}`}
+                                    placeholder={t(f.label)}
+                                  />
+                                )
+                              ) : (
+                                <span className="font-medium text-foreground truncate text-right">
+                                  {f.kind === 'date' && value
+                                    ? formatDate(value, locale)
+                                    : value || '-'}
+                                </span>
+                              )}
+                            </div>
+                            {error && (
+                              <p className="text-xs text-red-500 mt-1 text-right">{error}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Processing Timeline */}
               <Card className="animate-slide-up" style={{ animationDelay: '200ms' }}>
