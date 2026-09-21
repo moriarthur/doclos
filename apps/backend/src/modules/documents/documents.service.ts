@@ -18,6 +18,7 @@ import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
 import { S3Service } from '../storage/services/s3.service';
 import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
+import { ValidateInvoiceFieldsDto } from './dto/validate-document.dto';
 
 // P0-4 (audit): magic bytes for every allowed upload type. The client-declared
 // Content-Type is not trusted — the first bytes of the buffer must match.
@@ -287,7 +288,7 @@ export class DocumentsService {
     }
   }
 
-  async validateDocument(documentId: string, userId: string, fields: Record<string, unknown>) {
+  async validateDocument(documentId: string, userId: string, fields: ValidateInvoiceFieldsDto) {
     const document = await this.documentsRepository.findOne({
       where: { id: documentId, user_id: userId },
       relations: ['invoice'],
@@ -307,36 +308,50 @@ export class DocumentsService {
 
     // Update invoice with new values
     if (document.invoice) {
-      if (fields.invoice_number) document.invoice.invoice_number = String(fields.invoice_number);
-      if (fields.amount_total) {
-        const num = Number(fields.amount_total);
-        if (isNaN(num) || num === 0) {
+      // P2-1 (audit): key present = apply (string sets, explicit null clears),
+      // key absent = untouched. Dates already validated to YYYY-MM-DD by the DTO.
+      const has = (key: keyof ValidateInvoiceFieldsDto) =>
+        Object.prototype.hasOwnProperty.call(fields, key);
+      const text = (value: string | null | undefined) =>
+        value === null ? null : String(value).trim() || null;
+
+      if (has('invoice_number')) {
+        document.invoice.invoice_number = text(fields.invoice_number);
+      }
+      if (has('amount_total')) {
+        const amount = fields.amount_total;
+        if (amount === undefined) {
+          throw new BadRequestException('amount_total must be a number or null');
+        }
+        if (amount === null) {
+          document.invoice.amount_total = null;
+        } else if (amount === 0) {
           throw new BadRequestException('Betrag muss eine Zahl ungleich 0 sein');
+        } else {
+          document.invoice.amount_total = amount;
         }
-        document.invoice.amount_total = num;
       }
-      if (fields.invoice_date) {
-        const dateStr = String(fields.invoice_date);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-          throw new BadRequestException('Ungültiges Datumsformat (JJJJ-MM-TT)');
-        }
-        document.invoice.invoice_date = new Date(dateStr);
+      if (has('invoice_date')) {
+        document.invoice.invoice_date =
+          fields.invoice_date === null || fields.invoice_date === undefined
+            ? null
+            : new Date(fields.invoice_date);
       }
-      if (fields.due_date) {
-        const dateStr = String(fields.due_date);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-          throw new BadRequestException('Ungültiges Datumsformat (JJJJ-MM-TT)');
-        }
-        document.invoice.due_date = new Date(dateStr);
+      if (has('due_date')) {
+        document.invoice.due_date =
+          fields.due_date === null || fields.due_date === undefined
+            ? null
+            : new Date(fields.due_date);
       }
-      if (fields.currency) {
-        document.invoice.currency = String(fields.currency);
+      if (has('currency')) {
+        // currency column is NOT NULL with DB default 'EUR' — clearing resets to it
+        document.invoice.currency = text(fields.currency)?.toUpperCase() ?? 'EUR';
       }
-      if (fields.supplier_name) {
-        document.invoice.supplier_name = String(fields.supplier_name);
+      if (has('supplier_name')) {
+        document.invoice.supplier_name = text(fields.supplier_name);
       }
-      if (fields.supplier_address) {
-        document.invoice.supplier_address = String(fields.supplier_address);
+      if (has('supplier_address')) {
+        document.invoice.supplier_address = text(fields.supplier_address);
       }
       document.invoice.validated = true;
       await this.invoicesRepository.save(document.invoice);
@@ -354,7 +369,7 @@ export class DocumentsService {
       user_id: userId,
       action: 'validate',
       old_value: oldValues,
-      new_value: fields,
+      new_value: { ...fields },
     });
 
     return { status: document.status };
