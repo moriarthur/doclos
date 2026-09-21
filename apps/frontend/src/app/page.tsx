@@ -108,6 +108,9 @@ export default function DashboardPage() {
   });
 
   const allDocuments = data?.pages.flatMap((page) => page.data) ?? [];
+  // U-9 (audit): export makes no sense with no rows — hide the menu entirely
+  // (first-page total; unknown while loading -> hidden)
+  const total = data?.pages[0]?.pagination.total ?? 0;
 
   // U-3 (audit): archived exclusion moved server-side (exclude_status) —
   // client-side filtering could show <20 rows while pagination says otherwise
@@ -225,11 +228,13 @@ export default function DashboardPage() {
                 <ListChecks className="h-4 w-4" />
                 {selectionMode ? t('selectionDone') : t('selectBtn')}
               </Button>
-              <ExportMenu
-                variant="list"
-                status={statusFilter}
-                ids={selectionMode && selectedIds.size > 0 ? [...selectedIds] : undefined}
-              />
+              {total > 0 && (
+                <ExportMenu
+                  variant="list"
+                  status={statusFilter}
+                  ids={selectionMode && selectedIds.size > 0 ? [...selectedIds] : undefined}
+                />
+              )}
               <Link href="/upload">
                 <Button className="gap-2 shadow-sm">
                   <Plus className="h-4 w-4" />
