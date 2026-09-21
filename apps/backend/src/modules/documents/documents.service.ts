@@ -125,7 +125,7 @@ export class DocumentsService {
 
   async listDocuments(
     userId: string,
-    query: { page?: number; limit?: number; status?: DocumentStatus; company?: string; from_date?: Date; to_date?: Date },
+    query: { page?: number; limit?: number; status?: DocumentStatus; exclude_status?: DocumentStatus; company?: string; from_date?: Date; to_date?: Date },
   ) {
     const page = query.page || 1;
     const limit = Math.min(query.limit || 20, 100);
@@ -139,6 +139,11 @@ export class DocumentsService {
 
     if (query.status) {
       qb.andWhere('document.status = :status', { status: query.status });
+    }
+    // U-3 (audit): let clients exclude a status server-side (dashboard hides
+    // archived by default) instead of filtering fetched pages client-side
+    if (query.exclude_status) {
+      qb.andWhere('document.status != :excludeStatus', { excludeStatus: query.exclude_status });
     }
 
     if (query.company) {

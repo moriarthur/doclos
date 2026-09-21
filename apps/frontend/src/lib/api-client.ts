@@ -267,6 +267,7 @@ export const documentsApi = {
     page?: number;
     limit?: number;
     status?: string;
+    exclude_status?: string;
     company?: string;
     from_date?: string;
     to_date?: string;
