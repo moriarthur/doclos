@@ -71,14 +71,19 @@ export class AiService {
   /**
    * Single HTTP attempt against one model. Never throws for transient failures —
    * returns a discriminated result so the caller can decide to retry / fail over.
-   * @returns ok with text+usage, or { ok:false, retryable, message }
+   * @returns ok with text+usage, or { ok:false, retryable, reason, message }
    */
   private async callOnce(
     model: string,
     messages: ChatMessage[],
   ): Promise<
     | { ok: true; text: string; usage: { inputTokens: number; outputTokens: number } }
-    | { ok: false; retryable: boolean; message: string }
+    | {
+        ok: false;
+        retryable: boolean;
+        reason: 'rate-limit' | 'server' | 'timeout';
+        message: string;
+      }
   > {
     const controller = new AbortController();
     const timeout = 120000;
@@ -107,11 +112,13 @@ export class AiService {
         // another model. Client errors (4xx) are not retryable — a fallback model
         // won't fix a bad request / auth / unknown-model error.
         const errorText = await response.text();
-        const retryable = response.status === 429 || response.status >= 500;
+        const rateLimited = response.status === 429;
+        const retryable = rateLimited || response.status >= 500;
         this.logger.error(`GLM API error (${model}): ${response.status} - ${errorText}`);
         return {
           ok: false,
           retryable,
+          reason: rateLimited ? 'rate-limit' : 'server',
           message: `GLM API request failed: ${response.status}`,
         };
       }
@@ -119,7 +126,12 @@ export class AiService {
       const data = (await response.json()) as ChatCompletionResponse;
 
       if (!data.choices || data.choices.length === 0) {
-        return { ok: false, retryable: false, message: 'No response from GLM API' };
+        return {
+          ok: false,
+          retryable: false,
+          reason: 'server',
+          message: 'No response from GLM API',
+        };
       }
 
       return {
@@ -140,11 +152,17 @@ export class AiService {
         (error.name === 'AbortError' || error.message.toLowerCase().includes('timed out'));
       if (isTimeout) {
         this.logger.error(`GLM API request timed out after 120s (${model})`);
-        return { ok: false, retryable: true, message: 'AI request timed out - please try again' };
+        return {
+          ok: false,
+          retryable: true,
+          reason: 'timeout',
+          message: 'AI request timed out - please try again',
+        };
       }
       return {
         ok: false,
         retryable: false,
+        reason: 'server',
         message: error instanceof Error ? error.message : String(error),
       };
     }
@@ -152,8 +170,11 @@ export class AiService {
 
   /**
    * Send a request, iterating models on transient (429 / 5xx / timeout) failures.
-   * Each model gets a small retry budget with backoff; when it is exhausted the
-   * next fallback model is tried. Non-retryable client errors throw immediately.
+   * 429 ("model busy" on Z.ai) fails over to the next model immediately — the
+   * overload won't clear within seconds, so same-model retries just burn the
+   * budget (observed live 2026-09-22: two 429s back-to-back, fallback fine).
+   * 5xx / timeouts get one same-model retry with jittered backoff before the
+   * failover. Non-retryable client errors throw immediately.
    */
   private async fetchWithRetry(
     messages: ChatMessage[],
@@ -184,11 +205,23 @@ export class AiService {
           throw new Error(result.message);
         }
 
-        // Retryable: backoff and retry the same model, then fail over to the next.
+        // Rate limit: don't retry the same model — move to the next one now.
+        if (result.reason === 'rate-limit') {
+          if (this.models.length > 1) {
+            this.logger.warn(
+              `GLM ${model} rate-limited (429) — failing over to next model immediately`,
+            );
+            break;
+          }
+          continue;
+        }
+
+        // 5xx / timeout: retry the same model with jittered backoff, then fail over.
         if (attempt < attemptsPerModel) {
-          const delay = Math.pow(2, attempt) * 3000;
+          const base = Math.pow(2, attempt) * 3000;
+          const delay = Math.round(base * (0.7 + Math.random() * 0.6));
           this.logger.warn(
-            `GLM ${model} transient failure, retry ${attempt}/${attemptsPerModel} in ${delay}ms`,
+            `GLM ${model} transient failure (${result.reason}), retry ${attempt}/${attemptsPerModel} in ${delay}ms`,
           );
           await new Promise((r) => setTimeout(r, delay));
         } else if (this.models.length > 1) {
