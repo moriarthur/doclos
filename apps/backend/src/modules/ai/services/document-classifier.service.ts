@@ -48,8 +48,12 @@ export class DocumentClassifierService {
         prompt,
         DOCUMENT_CLASSIFICATION_SYSTEM,
         // Classification is a small JSON call — short budget (H-2), so a hung
-        // request fails over in seconds instead of blocking the pipeline.
-        { timeoutMs: this.aiService.classifyTimeoutMs },
+        // request fails over in seconds instead of blocking the pipeline;
+        // thinking off by default (H-3) — no chain-of-thought for a type label.
+        {
+          timeoutMs: this.aiService.classifyTimeoutMs,
+          thinking: this.aiService.classifyThinking,
+        },
       );
 
       const cost = this.aiService.estimateCost(usage.inputTokens, usage.outputTokens);

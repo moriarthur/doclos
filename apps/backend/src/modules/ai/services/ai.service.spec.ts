@@ -171,7 +171,7 @@ describe('AiService — per-call timeout (H-2)', () => {
 describe('AiService — model & token configuration (H-3)', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('defaults to the non-reasoning glm-4-flash and an 8192 token cap', async () => {
+  it('defaults to glm-4.5-flash (glm-4-flash was removed from bigmodel.cn) and an 8192 token cap', async () => {
     // empty env overrides → constructor falls back to the code defaults
     const service = makeService({ GLM_MODEL: '', GLM_FALLBACK_MODELS: '' });
     let seen: { model: string; max_tokens: number } | undefined;
@@ -183,8 +183,38 @@ describe('AiService — model & token configuration (H-3)', () => {
 
     await service.sendMessage('hello');
 
-    expect(seen?.model).toBe('glm-4-flash');
+    expect(seen?.model).toBe('glm-4.5-flash');
     expect(seen?.max_tokens).toBe(8192);
+  });
+
+  it('sends thinking.type=disabled for classification by default (H-3)', async () => {
+    const service = makeService();
+    let body: { thinking?: { type: string } } | undefined;
+    const impl = async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body ?? '{}'));
+      return jsonResponse();
+    };
+    jest.spyOn(global, 'fetch').mockImplementation(impl as typeof fetch);
+
+    await service.sendMessage('classify this', undefined, { thinking: service.classifyThinking });
+
+    expect(service.classifyThinking).toBe('disabled');
+    expect(body?.thinking).toEqual({ type: 'disabled' });
+  });
+
+  it('omits the thinking parameter entirely when resolved to null', async () => {
+    const service = makeService({ GLM_THINKING_EXTRACT: 'auto' });
+    let body: { thinking?: { type: string } } | undefined;
+    const impl = async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body ?? '{}'));
+      return jsonResponse();
+    };
+    jest.spyOn(global, 'fetch').mockImplementation(impl as typeof fetch);
+
+    await service.sendMessage('extract', undefined, { thinking: service.extractThinking });
+
+    expect(service.extractThinking).toBeNull();
+    expect(body?.thinking).toBeUndefined();
   });
 
   it('sends the configured GLM_MAX_TOKENS in the request body', async () => {

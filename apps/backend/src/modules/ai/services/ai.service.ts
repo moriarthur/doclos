@@ -45,14 +45,22 @@ export class AiService {
   // hanging classify call block the pipeline for two minutes.
   readonly classifyTimeoutMs: number;
   readonly extractTimeoutMs: number;
+  // H-3 (audit wave 3): GLM-4.5+ are hybrid-reasoning models — by default they
+  // burn seconds and tokens on chain-of-thought even for tiny JSON answers
+  // (measured live: thinking off answered in ~1s vs minutes with thinking).
+  // Resolved per call type: 'enabled' | 'disabled' sends thinking.type;
+  // null omits the parameter (model default "auto").
+  readonly classifyThinking: 'enabled' | 'disabled' | null;
+  readonly extractThinking: 'enabled' | 'disabled' | null;
 
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get('GLM_API_KEY') || '';
     this.baseUrl = this.configService.get('GLM_BASE_URL') || 'https://open.bigmodel.cn/api/paas/v4';
-    // H-3 (audit wave 3): default is the non-reasoning glm-4-flash — glm-4.7-flash
-    // thinks compulsorily, which made classification/extraction several times
-    // slower for no accuracy gain on these structured JSON tasks.
-    this.model = this.configService.get('GLM_MODEL') || 'glm-4-flash';
+    // H-3 (audit wave 3): default glm-4.5-flash with thinking disabled — fast on
+    // structured JSON tasks. glm-4-flash was REMOVED from open.bigmodel.cn
+    // (error 1211 "model does not exist", 2026-09-22); glm-4.7-flash thinks
+    // compulsorily and rate-limits at peak — demoted to fallback.
+    this.model = this.configService.get('GLM_MODEL') || 'glm-4.5-flash';
     // H-3: reasoning models spend this budget on thinking tokens too, which is why
     // it was 16384; for the JSON schemas in use 8192 is ample and bounds the
     // worst-case generation time. Override via GLM_MAX_TOKENS.
@@ -63,7 +71,7 @@ export class AiService {
     // Fallback models tried when the primary is overloaded (429 / 5xx / timeout)
     // on Z.ai. glm-4.7-flash intermittently rate-limits in peak hours; glm-4.5-flash
     // is a free flash-family alternative. Override via GLM_FALLBACK_MODELS (csv).
-    const fallbacks = (this.configService.get('GLM_FALLBACK_MODELS') || 'glm-4.5-flash')
+    const fallbacks = (this.configService.get('GLM_FALLBACK_MODELS') || 'glm-4.7-flash')
       .split(',')
       .map((s: string) => s.trim())
       .filter(Boolean);
@@ -78,6 +86,16 @@ export class AiService {
       30_000,
     );
     this.extractTimeoutMs = parseIntOr(this.configService.get('GLM_TIMEOUT_EXTRACT_MS'), 120_000);
+
+    const resolveThinking = (raw: string | undefined): 'enabled' | 'disabled' | null =>
+      raw === 'enabled' || raw === 'disabled' ? raw : null;
+    // Classification defaults to disabled: a keyword-ambiguity check doesn't
+    // need chain-of-thought. Extraction defaults to the model's own choice
+    // (null) — set GLM_THINKING_EXTRACT=disabled for speed after verifying
+    // extraction quality holds on your document mix.
+    this.classifyThinking =
+      resolveThinking(this.configService.get('GLM_THINKING_CLASSIFY')) ?? 'disabled';
+    this.extractThinking = resolveThinking(this.configService.get('GLM_THINKING_EXTRACT'));
 
     if (!this.apiKey) {
       this.logger.warn('GLM_API_KEY not set - AI features will be disabled');
@@ -99,6 +117,7 @@ export class AiService {
     model: string,
     messages: ChatMessage[],
     timeoutMs: number,
+    thinking?: 'enabled' | 'disabled' | null,
   ): Promise<
     | { ok: true; text: string; usage: { inputTokens: number; outputTokens: number } }
     | {
@@ -123,6 +142,8 @@ export class AiService {
           messages,
           max_tokens: this.maxTokens,
           temperature: 0.3,
+          // GLM-4.5+ hybrid reasoning toggle — omit entirely for model default.
+          ...(thinking ? { thinking: { type: thinking } } : {}),
         }),
         signal: controller.signal,
       });
@@ -201,13 +222,14 @@ export class AiService {
   private async fetchWithRetry(
     messages: ChatMessage[],
     timeoutMs: number,
+    thinking?: 'enabled' | 'disabled' | null,
   ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
     const attemptsPerModel = 2;
     let lastMessage = 'GLM API request failed after retries';
 
     for (const model of this.models) {
       for (let attempt = 1; attempt <= attemptsPerModel; attempt++) {
-        const result = await this.callOnce(model, messages, timeoutMs);
+        const result = await this.callOnce(model, messages, timeoutMs, thinking);
 
         if (result.ok) {
           if (model !== this.model) {
@@ -261,7 +283,7 @@ export class AiService {
   async sendMessage(
     prompt: string,
     systemPrompt?: string,
-    opts?: { timeoutMs?: number },
+    opts?: { timeoutMs?: number; thinking?: 'enabled' | 'disabled' | null },
   ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
     if (!this.apiKey) {
       throw new Error('GLM_API_KEY not configured');
@@ -280,7 +302,11 @@ export class AiService {
 
       // Extraction-sized budget by default; classification passes the shorter
       // classifyTimeoutMs so a hung small call can't block the pipeline.
-      return await this.fetchWithRetry(messages, opts?.timeoutMs ?? this.extractTimeoutMs);
+      return await this.fetchWithRetry(
+        messages,
+        opts?.timeoutMs ?? this.extractTimeoutMs,
+        opts?.thinking !== undefined ? opts.thinking : this.extractThinking,
+      );
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(`GLM API error: ${error.message}`);
@@ -298,7 +324,7 @@ export class AiService {
   async sendJsonMessage<T>(
     prompt: string,
     systemPrompt?: string,
-    opts?: { timeoutMs?: number },
+    opts?: { timeoutMs?: number; thinking?: 'enabled' | 'disabled' | null },
   ): Promise<{ data: T; usage: { inputTokens: number; outputTokens: number } }> {
     // Add JSON instruction to prompt
     const jsonPrompt = `${prompt}
