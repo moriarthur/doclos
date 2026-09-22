@@ -39,6 +39,12 @@ export class AiService {
   // Primary + fallback models, tried in order when the primary is unavailable.
   private readonly models: string[];
   private readonly maxTokens: number;
+  // H-2 (audit wave 3): per-call-type HTTP budgets. Classification is a tiny
+  // JSON call (seconds), extraction legitimately runs long (reasoning models,
+  // thousands of output tokens) — a single 120s ceiling for both made a
+  // hanging classify call block the pipeline for two minutes.
+  readonly classifyTimeoutMs: number;
+  readonly extractTimeoutMs: number;
 
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get('GLM_API_KEY') || '';
@@ -56,6 +62,16 @@ export class AiService {
       .map((s: string) => s.trim())
       .filter(Boolean);
     this.models = Array.from(new Set([this.model, ...fallbacks]));
+
+    const parseIntOr = (raw: string | undefined, fallback: number): number => {
+      const parsed = parseInt(raw || '', 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+    this.classifyTimeoutMs = parseIntOr(
+      this.configService.get('GLM_TIMEOUT_CLASSIFY_MS'),
+      30_000,
+    );
+    this.extractTimeoutMs = parseIntOr(this.configService.get('GLM_TIMEOUT_EXTRACT_MS'), 120_000);
 
     if (!this.apiKey) {
       this.logger.warn('GLM_API_KEY not set - AI features will be disabled');
@@ -76,6 +92,7 @@ export class AiService {
   private async callOnce(
     model: string,
     messages: ChatMessage[],
+    timeoutMs: number,
   ): Promise<
     | { ok: true; text: string; usage: { inputTokens: number; outputTokens: number } }
     | {
@@ -86,8 +103,7 @@ export class AiService {
       }
   > {
     const controller = new AbortController();
-    const timeout = 120000;
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -151,7 +167,7 @@ export class AiService {
         error instanceof Error &&
         (error.name === 'AbortError' || error.message.toLowerCase().includes('timed out'));
       if (isTimeout) {
-        this.logger.error(`GLM API request timed out after 120s (${model})`);
+        this.logger.error(`GLM API request timed out after ${timeoutMs}ms (${model})`);
         return {
           ok: false,
           retryable: true,
@@ -178,13 +194,14 @@ export class AiService {
    */
   private async fetchWithRetry(
     messages: ChatMessage[],
+    timeoutMs: number,
   ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
     const attemptsPerModel = 2;
     let lastMessage = 'GLM API request failed after retries';
 
     for (const model of this.models) {
       for (let attempt = 1; attempt <= attemptsPerModel; attempt++) {
-        const result = await this.callOnce(model, messages);
+        const result = await this.callOnce(model, messages, timeoutMs);
 
         if (result.ok) {
           if (model !== this.model) {
@@ -238,6 +255,7 @@ export class AiService {
   async sendMessage(
     prompt: string,
     systemPrompt?: string,
+    opts?: { timeoutMs?: number },
   ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
     if (!this.apiKey) {
       throw new Error('GLM_API_KEY not configured');
@@ -254,7 +272,9 @@ export class AiService {
 
       messages.push({ role: 'user', content: prompt });
 
-      return await this.fetchWithRetry(messages);
+      // Extraction-sized budget by default; classification passes the shorter
+      // classifyTimeoutMs so a hung small call can't block the pipeline.
+      return await this.fetchWithRetry(messages, opts?.timeoutMs ?? this.extractTimeoutMs);
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(`GLM API error: ${error.message}`);
@@ -272,13 +292,14 @@ export class AiService {
   async sendJsonMessage<T>(
     prompt: string,
     systemPrompt?: string,
+    opts?: { timeoutMs?: number },
   ): Promise<{ data: T; usage: { inputTokens: number; outputTokens: number } }> {
     // Add JSON instruction to prompt
     const jsonPrompt = `${prompt}
 
 Return your response as a valid JSON object. Do not include any text outside the JSON.`;
 
-    const response = await this.sendMessage(jsonPrompt, systemPrompt);
+    const response = await this.sendMessage(jsonPrompt, systemPrompt, opts);
 
     try {
       // Extract JSON from response (handle potential markdown code blocks)

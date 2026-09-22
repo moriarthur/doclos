@@ -36,6 +36,9 @@ export class DocumentClassifierService {
       const { data, usage } = await this.aiService.sendJsonMessage<ClassificationResult>(
         prompt,
         DOCUMENT_CLASSIFICATION_SYSTEM,
+        // Classification is a small JSON call — short budget (H-2), so a hung
+        // request fails over in seconds instead of blocking the pipeline.
+        { timeoutMs: this.aiService.classifyTimeoutMs },
       );
 
       const cost = this.aiService.estimateCost(usage.inputTokens, usage.outputTokens);
