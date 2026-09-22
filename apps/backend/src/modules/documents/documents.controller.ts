@@ -94,7 +94,7 @@ export class DocumentsController {
     @CurrentUser() user: User,
     @Body() dto: ValidateDocumentDto,
   ) {
-    return this.documentsService.validateDocument(id, user.id, dto.fields);
+    return this.documentsService.validateDocument(id, user.id, dto.fields, dto.items);
   }
 
   @Post(':id/reprocess')

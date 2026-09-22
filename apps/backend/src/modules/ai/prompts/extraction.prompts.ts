@@ -22,6 +22,7 @@ Optional fields:
   - quantity: Quantity as a number
   - unit_price: Unit price as a number
   - line_total: Line total as a number
+  - unit: Quantity unit if the document states one (e.g. "Stück", "Stk.", "Std.", "m", "kg"); null if absent
 
   Rules for items (CRITICAL — over-extraction is the failure mode):
   - A line item MUST carry at least a quantity OR a unit_price OR a line_total. If a row has no
@@ -100,6 +101,7 @@ Optional fields:
   - quantity: Quantity as a number
   - unit_price: Unit price as a number
   - line_total: Line total as a number
+  - unit: Quantity unit if the document states one (e.g. "Stück", "Stk.", "Std.", "m", "kg"); null if absent
 
   Rules for items (CRITICAL — over-extraction is the failure mode):
   - A line item MUST carry at least a quantity OR a unit_price OR a line_total. If a row has no
@@ -152,6 +154,7 @@ Optional fields:
   - quantity: Quantity as a number
   - unit_price: Unit price as a number
   - line_total: Line total as a number
+  - unit: Quantity unit if the document states one (e.g. "Stück", "Stk.", "Std.", "m", "kg"); null if absent
 
   Rules for items (CRITICAL — over-extraction is the failure mode):
   - A line item MUST carry at least a quantity OR a unit_price OR a line_total. If a row has no
@@ -204,7 +207,8 @@ Optional fields:
   - description: Item description
   - quantity: Quantity as a number
   - unit_price: Unit price as a number — usually null on delivery notes; do NOT invent one.
-  - line_total: Line total as a number — usually null on delivery notes; do NOT invent one.
+  - line_total: Line total as a number
+  - unit: Quantity unit if the document states one (e.g. "Stück", "Stk.", "Std.", "m", "kg"); null if absent — usually null on delivery notes; do NOT invent one.
 
   Rules for items (CRITICAL — over-extraction is the failure mode):
   - A line item MUST carry a quantity (a price is NOT required on a delivery note). If a row has
