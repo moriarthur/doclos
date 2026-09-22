@@ -19,18 +19,29 @@ export class DocumentClassifierService {
   constructor(private aiService: AiService) {}
 
   /**
-   * Classify a document based on its text content
+   * Classify a document based on its text content.
+   * H-4 (audit wave 3): keyword rules answer first — most commercial documents
+   * hit a keyword, so the per-document LLM classification round-trip (latency +
+   * rate-limit exposure) is skipped entirely. The LLM only adjudicates text the
+   * rules find ambiguous; the rule-based result doubles as the final fallback
+   * when the AI service is unavailable or the LLM call fails.
    * @param text - OCR-extracted text from the document
    * @returns Classification result with type and confidence
    */
   async classifyDocument(text: string): Promise<ClassificationResult> {
+    const ruled = this.ruleBasedClassification(text);
+    if (ruled.type !== DocumentType.UNKNOWN) {
+      this.logger.log(`Document classified as ${ruled.type} by keywords (LLM call skipped)`);
+      return ruled;
+    }
+
     if (!this.aiService.isAvailable()) {
       this.logger.warn('AI service not available - using rule-based classification');
-      return this.ruleBasedClassification(text);
+      return ruled;
     }
 
     try {
-      this.logger.log('Classifying document with LLM');
+      this.logger.log('Document type ambiguous from keywords — classifying with LLM');
 
       const prompt = DOCUMENT_CLASSIFICATION_PROMPT(text);
       const { data, usage } = await this.aiService.sendJsonMessage<ClassificationResult>(
@@ -50,7 +61,7 @@ export class DocumentClassifierService {
     } catch (error) {
       this.logger.error(`LLM classification failed: ${error instanceof Error ? error.message : String(error)}`);
       this.logger.warn('Falling back to rule-based classification');
-      return this.ruleBasedClassification(text);
+      return ruled;
     }
   }
 
