@@ -6,6 +6,7 @@ import {
   IsString,
   Matches,
   Max,
+  Min,
   MaxLength,
   ValidateNested,
   ArrayMaxSize,
@@ -64,10 +65,11 @@ export class ValidateInvoiceItemDto {
   @MaxLength(500)
   description?: string | null;
 
-  // @Max bounds keep values inside the numeric(10,2) column — an unbounded
-  // 1e12 would reject at the DB AFTER the replace-all delete.
+  // @Min/@Max bounds keep values inside the numeric(10,2) column — unbounded
+  // magnitudes (±1e12) would reject at the DB AFTER the replace-all delete.
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-99999999)
   @Max(99999999)
   quantity?: number | null;
 
@@ -78,11 +80,13 @@ export class ValidateInvoiceItemDto {
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-99999999)
   @Max(99999999)
   unit_price?: number | null;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-99999999)
   @Max(99999999)
   line_total?: number | null;
 }
