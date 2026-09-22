@@ -199,13 +199,13 @@ export class DocumentProcessor {
         case DocumentType.PURCHASE_ORDER:
         case DocumentType.OFFER:
         case DocumentType.DELIVERY_NOTE: {
-          // Rate limit buffer: wait before the GLM extraction call.
-          await new Promise((r) => setTimeout(r, 3000));
+          // H-5 (audit wave 3): the old fixed 3s "rate limit buffer" is gone —
+          // rate limiting is AiService's job (429 → immediate model failover),
+          // a per-document sleep just added latency to every upload.
           await this.extractCommercialDocument(document, ocrResult.text, classification.type);
           break;
         }
         case DocumentType.CONTRACT: {
-          await new Promise((r) => setTimeout(r, 3000));
           await this.extractContractDocument(document, ocrResult.text);
           break;
         }
