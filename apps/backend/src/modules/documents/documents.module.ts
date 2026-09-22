@@ -13,6 +13,7 @@ import { FieldExtraction } from './entities/field-extraction.entity';
 import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
 import { DocumentProcessor } from './processors/document.processor';
+import { DocumentsRecoveryService } from './documents-recovery.service';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { DocumentProcessor } from './processors/document.processor';
     AiModule,
   ],
   controllers: [DocumentsController],
-  providers: [DocumentsService, DocumentProcessor],
+  providers: [DocumentsService, DocumentProcessor, DocumentsRecoveryService],
   exports: [DocumentsService],
 })
 export class DocumentsModule {}

@@ -33,6 +33,7 @@ export interface InvoiceExtraction {
   items?: Array<{
     description: string;
     quantity: number;
+    unit?: string | null;
     unit_price: number;
     line_total: number;
   }>;
@@ -49,6 +50,8 @@ export interface InvoiceExtraction {
 export interface CommercialItem {
   description: string;
   quantity: number;
+  /** Present after cleanItems normalization; the raw LLM may omit it. */
+  unit?: string | null;
   unit_price: number;
   line_total: number;
 }
@@ -196,6 +199,7 @@ export function sanitizeMetadata(
 interface RawItem {
   description?: string | null;
   quantity?: number | string | null;
+  unit?: number | string | null;
   unit_price?: number | string | null;
   line_total?: number | string | null;
 }
@@ -204,6 +208,7 @@ interface RawItem {
 interface CleanedItem {
   description: string;
   quantity: number;
+  unit: string | null;
   unit_price: number;
   line_total: number;
 }
@@ -622,6 +627,14 @@ export class StructuredExtractionService {
       const unit_price = parseGermanNumber(raw?.unit_price);
       const line_total = parseGermanNumber(raw?.line_total);
 
+      // U-4: quantity unit — trimmed free text, capped at 50 chars. The LLM
+      // sometimes sends a bare number ("unit": 5): stringify before trimming.
+      const rawUnit = raw?.unit;
+      const unit =
+        rawUnit === null || rawUnit === undefined || `${rawUnit}`.trim() === ''
+          ? null
+          : `${rawUnit}`.trim().slice(0, 50);
+
       // 1. No-data rule: a real line item must carry money (price) — or, for
       //    delivery notes where prices are usually absent, at least a quantity.
       //    Quantity-only with no price is normally a header or hallucination, so
@@ -659,6 +672,7 @@ export class StructuredExtractionService {
       kept.push({
         description,
         quantity: quantity ?? 0,
+        unit,
         unit_price: unit_price ?? 0,
         line_total: line_total ?? 0,
       });

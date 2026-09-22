@@ -25,6 +25,7 @@ export interface ExportStrings {
   status: string;
   description: string;
   quantity: string;
+  unit: string;
   unitPrice: string;
   lineTotal: string;
   sheetInvoices: string;
@@ -99,6 +100,7 @@ const TRANSLATIONS: Record<ExportLocale, ExportI18n> = {
       status: 'Status',
       description: 'Beschreibung',
       quantity: 'Menge',
+      unit: 'Einheit',
       unitPrice: 'Einzelpreis',
       lineTotal: 'Zeilensumme',
       sheetInvoices: 'Rechnungen',
@@ -171,6 +173,7 @@ const TRANSLATIONS: Record<ExportLocale, ExportI18n> = {
       status: 'Status',
       description: 'Description',
       quantity: 'Quantity',
+      unit: 'Unit',
       unitPrice: 'Unit Price',
       lineTotal: 'Line Total',
       sheetInvoices: 'Invoices',

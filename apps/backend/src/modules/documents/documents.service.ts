@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
   UnsupportedMediaTypeException,
   Logger,
 } from '@nestjs/common';
@@ -19,7 +20,7 @@ import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
 import { S3Service } from '../storage/services/s3.service';
 import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
-import { ValidateInvoiceFieldsDto } from './dto/validate-document.dto';
+import { ValidateInvoiceFieldsDto, ValidateInvoiceItemDto } from './dto/validate-document.dto';
 import { sanitizeMetadata } from '../ai/services/structured-extraction.service';
 
 // P0-4 (audit): magic bytes for every allowed upload type. The client-declared
@@ -146,13 +147,24 @@ export class DocumentsService {
     });
     await this.documentsRepository.save(document);
 
-    // Add to processing queue (worker will handle the rest)
-    this.documentsQueue.add('process-document', {
-      documentId: document.id,
-      userId,
-    }).catch((err) => {
-      this.logger.error(`Failed to queue document ${document.id}: ${err.message}`);
-    });
+    // Add to processing queue (worker will handle the rest). Awaited: a failed
+    // enqueue must fail the upload — a swallowed queue error left documents in
+    // `processing` forever (no Bull job → worker never picks up → eternal
+    // spinner in the UI; happened 2026-09-21 after Upstash deletion).
+    try {
+      await this.documentsQueue.add('process-document', {
+        documentId: document.id,
+        userId,
+      });
+    } catch (err) {
+      // Keep the DB honest: don't advertise a job that doesn't exist.
+      document.status = DocumentStatus.ERROR;
+      await this.documentsRepository.save(document);
+      this.logger.error(`Failed to queue document ${document.id}: ${(err as Error).message}`);
+      throw new ServiceUnavailableException(
+        'Processing queue unavailable — try again shortly',
+      );
+    }
 
     return {
       document_id: document.id,
@@ -316,7 +328,12 @@ export class DocumentsService {
     }
   }
 
-  async validateDocument(documentId: string, userId: string, fields: Record<string, string | number | null>) {
+  async validateDocument(
+    documentId: string,
+    userId: string,
+    fields: Record<string, string | number | null>,
+    items?: ValidateInvoiceItemDto[],
+  ) {
     // Typed view over the known invoice fields; the rest are per-type metadata
     // fields validated against METADATA_FIELDS_BY_TYPE further below (S5.2).
     const invoiceFields = fields as ValidateInvoiceFieldsDto;
@@ -388,6 +405,39 @@ export class DocumentsService {
       await this.invoicesRepository.save(document.invoice);
     }
 
+    // U-4 (editable line items): replace-all semantics — when the request
+    // carries an `items` list it IS the full edited table. Absent key = items
+    // untouched (header-only validations keep working). Requires an invoice
+    // carrier (invoice / purchase_order / offer / delivery_note).
+    if (items) {
+      if (!document.invoice) {
+        throw new BadRequestException('Document has no line items to edit');
+      }
+      const oldItems = await this.invoiceItemsRepository.find({
+        where: { invoice_id: document.invoice.id },
+      });
+      oldValues.items = oldItems;
+      const invoiceId = document.invoice.id;
+      // Transaction: replace-all must not leave the table wiped if an insert
+      // fails midway (e.g. numeric overflow) — delete and inserts succeed or
+      // fail together.
+      await this.dataSource.transaction(async (manager) => {
+        await manager.delete(InvoiceItem, { invoice_id: invoiceId });
+        for (const item of items) {
+          await manager.save(
+            manager.create(InvoiceItem, {
+              invoice_id: invoiceId,
+              description: item.description?.trim() || null,
+              quantity: item.quantity ?? null,
+              unit: item.unit?.trim() || null,
+              unit_price: item.unit_price ?? null,
+              line_total: item.line_total ?? null,
+            }),
+          );
+        }
+      });
+    }
+
     // Apply per-type metadata edits (S5.2). Only whitelisted fields for this
     // document's type are accepted; dates/numbers are type-validated. Sanitized
     // before merge — user input is untrusted at the persist boundary too
@@ -439,7 +489,7 @@ export class DocumentsService {
       user_id: userId,
       action: 'validate',
       old_value: oldValues,
-      new_value: { ...fields },
+      new_value: { ...fields, ...(items ? { items } : {}) },
     });
 
     return { status: document.status };

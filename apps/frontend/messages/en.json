@@ -192,6 +192,8 @@
     "endDate": "End date",
     "currency": "Currency",
     "colDescription": "Description",
+    "addItem": "Add item",
+    "deleteItem": "Delete item",
     "colQuantity": "Qty",
     "colUnit": "Unit",
     "colUnitPrice": "Unit price",

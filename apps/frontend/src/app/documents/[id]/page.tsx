@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
-import { documentsApi, jobsApi, authApi } from '@/lib/api-client';
+import { documentsApi, jobsApi, authApi, InvoiceItemDto } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { ExportMenu } from '@/components/ExportMenu';
 import { DocumentViewer } from '@/components/DocumentViewer';
@@ -29,6 +29,7 @@ import {
   Archive,
   ArchiveRestore,
   Trash2,
+  Plus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -155,6 +156,15 @@ const METADATA_FIELDS: Record<string, MetaFieldConfig[]> = {
 /** Whether the items table should show price columns (false for delivery notes). */
 const showItemPrices = (type: string) => type !== 'delivery_note';
 
+/** U-4: one row of the items editor (all inputs are strings until save). */
+interface EditedItem {
+  description: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+  line_total: string;
+}
+
 export default function DocumentDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -168,6 +178,9 @@ export default function DocumentDetailPage() {
   const locale = useLocale();
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editedFields, setEditedFields] = useState<Record<string, string>>({});
+  // U-4: editable line items — input values stay strings ('' = empty) and are
+  // converted to the API's number|null shape on save.
+  const [editedItems, setEditedItems] = useState<EditedItem[] | null>(null);
   const [deleteDialog, setDeleteDialog] = useState(false);
 
   const {
@@ -206,9 +219,13 @@ export default function DocumentDetailPage() {
   };
 
   const validateMutation = useMutation({
-    mutationFn: (fields: Record<string, string>) => documentsApi.validate(docId, fields),
+    mutationFn: (payload: {
+      fields: Record<string, string>;
+      items?: Array<Record<string, unknown>>;
+    }) => documentsApi.validate(docId, payload.fields, payload.items),
     onSuccess: () => {
       setEditedFields({});
+      setEditedItems(null);
       setEditingSection(null);
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       refetch();
@@ -285,18 +302,51 @@ export default function DocumentDetailPage() {
   };
 
   const startEditing = (section: string) => {
+    if (section === 'items') {
+      // Seed the editor with the stored rows (numeric columns arrive as
+      // strings from the numeric(10,2) serialization — String() is a no-op).
+      setEditedItems(
+        (document?.invoice?.items ?? []).map((item: InvoiceItemDto) => ({
+          description: String(item.description ?? ''),
+          quantity: String(item.quantity ?? ''),
+          unit: String(item.unit ?? ''),
+          unit_price: String(item.unit_price ?? ''),
+          line_total: String(item.line_total ?? ''),
+        })),
+      );
+    }
     setEditingSection(section);
   };
 
   const cancelEditing = () => {
     setEditingSection(null);
     setEditedFields({});
+    setEditedItems(null);
   };
 
   const saveSection = () => {
-    if (hasErrors()) return;
+    if (hasErrors() || hasItemErrors()) return;
+    if (editingSection === 'items') {
+      if (!editedItems) {
+        setEditingSection(null);
+        return;
+      }
+      // U-4: replace-all — the trimmed table IS the payload. Empty numeric
+      // inputs become explicit nulls (cleared), strings go trimmed.
+      validateMutation.mutate({
+        fields: {},
+        items: editedItems.map((it) => ({
+          description: it.description.trim() || null,
+          quantity: it.quantity.trim() === '' ? null : itemNumber(it.quantity),
+          unit: it.unit.trim() || null,
+          unit_price: it.unit_price.trim() === '' ? null : itemNumber(it.unit_price),
+          line_total: it.line_total.trim() === '' ? null : itemNumber(it.line_total),
+        })),
+      });
+      return;
+    }
     if (Object.keys(editedFields).length > 0) {
-      validateMutation.mutate(editedFields);
+      validateMutation.mutate({ fields: editedFields });
     } else {
       setEditingSection(null);
     }
@@ -408,6 +458,32 @@ export default function DocumentDetailPage() {
   const hasErrors = (): boolean => {
     return Object.keys(editedFields).some((field) => getFieldError(field) !== null);
   };
+
+  // U-4: numeric item inputs must parse before the table can be saved.
+  // German decimal commas are accepted ("2,5" → 2.5).
+  const itemNumber = (raw: string) => Number(raw.trim().replace(',', '.'));
+  const hasItemErrors = () =>
+    (editedItems ?? []).some((it) =>
+      (['quantity', 'unit_price', 'line_total'] as const).some((key) => {
+        const v = it[key].trim();
+        return v !== '' && Number.isNaN(itemNumber(v));
+      }),
+    );
+
+  const updateItem = (index: number, patch: Partial<EditedItem>) => {
+    setEditedItems((prev) =>
+      prev ? prev.map((it, i) => (i === index ? { ...it, ...patch } : it)) : prev,
+    );
+  };
+
+  const addItem = () =>
+    setEditedItems((prev) => [
+      ...(prev ?? []),
+      { description: '', quantity: '', unit: '', unit_price: '', line_total: '' },
+    ]);
+
+  const deleteItem = (index: number) =>
+    setEditedItems((prev) => (prev ? prev.filter((_, i) => i !== index) : prev));
 
   return (
     <div className="flex">
@@ -826,7 +902,7 @@ export default function DocumentDetailPage() {
                                           currency: e.target.value,
                                         };
                                         setEditedFields(newFields);
-                                        validateMutation.mutate(newFields);
+                                        validateMutation.mutate({ fields: newFields });
                                       }
                                     }}
                                   >
@@ -853,17 +929,60 @@ export default function DocumentDetailPage() {
                 </Card>
               )}
 
-              {/* Line Items */}
-              {showInvoiceSections && invoiceData?.items && invoiceData.items.length > 0 && (
+              {/* Line Items (U-4: editable) */}
+              {showInvoiceSections &&
+                invoiceData &&
+                (invoiceData.items.length > 0 || editingSection === 'items') && (
                 <Card className="animate-slide-up" style={{ animationDelay: '125ms' }}>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <Package className="h-5 w-5 text-primary" />
-                      {t(
-                        document.type === 'delivery_note' ? 'deliveredItems' : 'items',
-                        { count: invoiceData.items.length },
-                      )}
-                    </CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Package className="h-5 w-5 text-primary" />
+                        {t(
+                          document.type === 'delivery_note' ? 'deliveredItems' : 'items',
+                          {
+                            count:
+                              editingSection === 'items'
+                                ? editedItems?.length ?? 0
+                                : invoiceData.items.length,
+                          },
+                        )}
+                      </CardTitle>
+                      {['needs_validation', 'parsed', 'validated'].includes(document.status) &&
+                        (editingSection === 'items' ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={cancelEditing}
+                              disabled={validateMutation.isPending}
+                              title={tCommon('cancel')}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={saveSection}
+                              disabled={
+                                validateMutation.isPending || hasErrors() || hasItemErrors()
+                              }
+                              title={tCommon('save')}
+                            >
+                              <Save className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEditing('items')}
+                            title={tCommon('edit')}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        ))}
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-x-auto min-w-0">
@@ -889,10 +1008,80 @@ export default function DocumentDetailPage() {
                                 </th>
                               </>
                             )}
+                            {editingSection === 'items' && <th className="w-10" aria-hidden />}
                           </tr>
                         </thead>
+                        {editingSection === 'items' && editedItems ? (
+                          <tbody>
+                            {editedItems.map((item, index) => (
+                              <tr key={index} className="border-b border-border/50">
+                                <td className="py-2 px-3">
+                                  <Input
+                                    value={item.description}
+                                    className="text-sm"
+                                    onChange={(e) =>
+                                      updateItem(index, { description: e.target.value })
+                                    }
+                                  />
+                                </td>
+                                <td className="py-2 px-3">
+                                  <Input
+                                    value={item.quantity}
+                                    inputMode="decimal"
+                                    className="text-sm text-right w-20"
+                                    onChange={(e) =>
+                                      updateItem(index, { quantity: e.target.value })
+                                    }
+                                  />
+                                </td>
+                                <td className="py-2 px-3">
+                                  <Input
+                                    value={item.unit}
+                                    className="text-sm text-right w-24"
+                                    onChange={(e) => updateItem(index, { unit: e.target.value })}
+                                  />
+                                </td>
+                                {showItemPrices(document.type) && (
+                                  <>
+                                    <td className="py-2 px-3">
+                                      <Input
+                                        value={item.unit_price}
+                                        inputMode="decimal"
+                                        className="text-sm text-right w-24"
+                                        onChange={(e) =>
+                                          updateItem(index, { unit_price: e.target.value })
+                                        }
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <Input
+                                        value={item.line_total}
+                                        inputMode="decimal"
+                                        className="text-sm text-right w-24"
+                                        onChange={(e) =>
+                                          updateItem(index, { line_total: e.target.value })
+                                        }
+                                      />
+                                    </td>
+                                  </>
+                                )}
+                                <td className="py-2 px-3 text-right">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deleteItem(index)}
+                                    title={t('deleteItem')}
+                                    className="text-muted-foreground hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        ) : (
                         <tbody>
-                          {invoiceData.items.map((item: any, index: number) => (
+                          {invoiceData.items.map((item: InvoiceItemDto, index: number) => (
                             <tr key={index} className="border-b border-border/50 hover:bg-muted/30">
                               <td className="py-3 px-3 text-foreground">
                                 {item.description || '-'}
@@ -915,9 +1104,9 @@ export default function DocumentDetailPage() {
                                       : '-'}
                                   </td>
                                   <td className="py-3 px-3 text-right font-medium text-foreground">
-                                    {item.total_price
+                                    {item.line_total
                                       ? formatAmount(
-                                          item.total_price,
+                                          item.line_total,
                                           editedFields.currency || invoiceData.currency,
                                           locale,
                                         ).formatted
@@ -928,7 +1117,8 @@ export default function DocumentDetailPage() {
                             </tr>
                           ))}
                         </tbody>
-                        {showItemPrices(document.type) && (
+                        )}
+                        {editingSection !== 'items' && showItemPrices(document.type) && (
                           <tfoot>
                             <tr className="border-t-2 border-border">
                               <td
@@ -953,6 +1143,11 @@ export default function DocumentDetailPage() {
                         )}
                       </table>
                     </div>
+                    {editingSection === 'items' && (
+                      <Button variant="secondary" size="sm" className="mt-3" onClick={addItem}>
+                        <Plus className="h-4 w-4 mr-1" /> {t('addItem')}
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               )}

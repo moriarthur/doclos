@@ -192,6 +192,8 @@
     "endDate": "Vertragsende",
     "currency": "Währung",
     "colDescription": "Beschreibung",
+    "addItem": "Position hinzufügen",
+    "deleteItem": "Position löschen",
     "colQuantity": "Menge",
     "colUnit": "Einheit",
     "colUnitPrice": "Einzelpreis",

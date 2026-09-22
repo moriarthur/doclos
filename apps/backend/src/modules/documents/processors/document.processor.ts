@@ -424,6 +424,7 @@ export class DocumentProcessor {
             invoice_id: invoice.id,
             description: item.description,
             quantity: item.quantity,
+            unit: item.unit,
             unit_price: item.unit_price,
             line_total: item.line_total,
           });
@@ -483,7 +484,7 @@ export class DocumentProcessor {
     currency: string | null;
     supplierName: string | null;
     supplierAddress: string | null;
-    items: Array<{ description: string; quantity: number; unit_price: number; line_total: number }>;
+    items: Array<{ description: string; quantity: number; unit: string | null; unit_price: number; line_total: number }>;
     metadata: Record<string, unknown> | null;
     fieldRows: Array<{ field_name: string; value: string; confidenceField: string }>;
   } {
@@ -491,6 +492,7 @@ export class DocumentProcessor {
       ? (n['items'] as Array<{
           description: string;
           quantity: number;
+          unit: string | null;
           unit_price: number;
           line_total: number;
         }>)
