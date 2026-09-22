@@ -77,11 +77,26 @@ export const dataSourceOptions: DataSourceOptions = {
   synchronize: false,
   // Log only failed queries — normal per-query logging was flooding the logs.
   logging: ['error'],
-  // Supabase Pooler requires SSL. Certificate verification is ON by default
-  // (secure against MITM). Set DB_SSL_REJECT_UNAUTHORIZED=false only behind a
-  // TLS-intercepting corporate proxy / AV that re-signs the cert.
+  // Supabase Pooler requires SSL. H-8 (audit wave 3): certificate verification
+  // is ON — the pooler chain is issued by the private "Supabase Root 2021 CA",
+  // which Node's built-in store doesn't trust, so it's pinned via DB_CA_CERT_PATH
+  // (apps/backend/certs/supabase-prod-ca-2021.crt, sha256-fingerprint-checked
+  // against the live pooler connection). Relative paths resolve from
+  // apps/backend (works for both src and dist layouts); DB_CA_CERT_PATH takes
+  // precedence. DB_SSL_REJECT_UNAUTHORIZED=false remains the escape hatch ONLY
+  // for a TLS-intercepting corporate proxy / AV that re-signs certs.
   ssl: host?.includes('pooler.supabase.com')
-    ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
+    ? process.env.DB_CA_CERT_PATH
+      ? {
+          ca: fs.readFileSync(
+            path.isAbsolute(process.env.DB_CA_CERT_PATH)
+              ? process.env.DB_CA_CERT_PATH
+              : path.resolve(__dirname, '../..', process.env.DB_CA_CERT_PATH),
+            'utf8',
+          ),
+          rejectUnauthorized: true,
+        }
+      : { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
     : false,
 };
 
