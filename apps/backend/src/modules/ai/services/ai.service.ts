@@ -49,10 +49,16 @@ export class AiService {
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get('GLM_API_KEY') || '';
     this.baseUrl = this.configService.get('GLM_BASE_URL') || 'https://open.bigmodel.cn/api/paas/v4';
+    // H-3 (audit wave 3): default is the non-reasoning glm-4-flash — glm-4.7-flash
+    // thinks compulsorily, which made classification/extraction several times
+    // slower for no accuracy gain on these structured JSON tasks.
     this.model = this.configService.get('GLM_MODEL') || 'glm-4-flash';
-    // glm-4.7-flash is a reasoning model: thinking tokens consume this budget too
-    // 16384 gives enough room for reasoning + JSON extraction output
-    this.maxTokens = 16384;
+    // H-3: reasoning models spend this budget on thinking tokens too, which is why
+    // it was 16384; for the JSON schemas in use 8192 is ample and bounds the
+    // worst-case generation time. Override via GLM_MAX_TOKENS.
+    const parsedMaxTokens = parseInt(this.configService.get('GLM_MAX_TOKENS') || '', 10);
+    this.maxTokens =
+      Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0 ? parsedMaxTokens : 8192;
 
     // Fallback models tried when the primary is overloaded (429 / 5xx / timeout)
     // on Z.ai. glm-4.7-flash intermittently rate-limits in peak hours; glm-4.5-flash
