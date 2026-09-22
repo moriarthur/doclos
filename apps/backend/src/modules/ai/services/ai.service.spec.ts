@@ -123,3 +123,47 @@ describe('AiService — retry / failover (H-1)', () => {
     restore();
   });
 });
+
+describe('AiService — per-call timeout (H-2)', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('aborts a hung attempt after opts.timeoutMs and fails over to the fallback model', async () => {
+    jest.useFakeTimers();
+    const service = makeService();
+    const signals: AbortSignal[] = [];
+    const impl = async (_url: string | URL | Request, init?: RequestInit) => {
+      signals.push(init!.signal!);
+      const model = (JSON.parse(String(init?.body ?? '{}')) as { model: string }).model;
+      if (model === 'model-a') {
+        // hang until the AbortController fires
+        return new Promise<Response>((_resolve, reject) => {
+          init!.signal!.addEventListener('abort', () => {
+            const err = new Error('This operation was aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        }) as unknown as Response;
+      }
+      return jsonResponse();
+    };
+    jest.spyOn(global, 'fetch').mockImplementation(impl as typeof fetch);
+
+    const pending = service.sendMessage('hello', undefined, { timeoutMs: 30 });
+    await jest.advanceTimersByTimeAsync(100); // model-a attempt 1 aborts (30ms)
+    await jest.advanceTimersByTimeAsync(10_000); // backoff; model-a attempt 2 aborts; failover
+    await jest.advanceTimersByTimeAsync(100); // model-b answers instantly
+
+    await expect(pending).resolves.toHaveProperty('text', 'ok');
+    // both hung model-a attempts were actually aborted by the per-call budget
+    expect(signals.filter((s) => s.aborted)).toHaveLength(2);
+  });
+
+  it('exposes distinct default budgets for classification vs extraction', () => {
+    const service = makeService();
+    expect(service.classifyTimeoutMs).toBe(30_000);
+    expect(service.extractTimeoutMs).toBe(120_000);
+  });
+});
