@@ -45,13 +45,16 @@ doclos/
 │   │   │   │   ├── jobs/          # Job status, audit logs ✅
 │   │   │   │   ├── storage/       # S3/R2 storage service ✅
 │   │   │   │   ├── ocr/           # Tesseract OCR ✅
-│       │   │   └── ai/            # GLM LLM integration ✅
-│       │   ├── database/
-│       │   │   ├── base.entity.ts ✅
-│       │   │   └── data-source.ts ✅
-│       │   ├── main.ts ✅
-│       │   └── app.module.ts ✅
-│       └── package.json ✅
+│   │   │   │   ├── ai/            # GLM LLM integration ✅
+│   │   │   │   ├── search/        # Full-text search ✅
+│   │   │   │   └── export/        # Excel export (DE/EN) ✅
+│   │   │   ├── database/
+│   │   │   │   ├── base.entity.ts ✅
+│   │   │   │   ├── migrations/ ✅
+│   │   │   │   └── data-source.ts ✅
+│   │   │   ├── main.ts ✅
+│   │   │   └── app.module.ts ✅
+│   │   └── package.json ✅
 ├── packages/
 │   └── shared/                # Shared types (empty - TODO)
 ├── docker/
@@ -235,6 +238,13 @@ When working on Doclos:
 3. Break complex tasks into subtasks
 4. Track progress using task system
 5. Reference documentation in `documentations/` folder (Parts 1-9)
+6. **Audit-first discipline** (since 2026-09-22): `AUDIT.md` is the living checklist.
+   Non-trivial changes go on a branch; **one finding = one commit** referencing its ID
+   (`P0-1`, `H-3`, `U-4`, …); `pnpm exec tsc --noEmit` green after each commit; backend
+   must still boot. **codex is the auditor** — before merging, the user runs a codex
+   review over the branch diff and all blockers are closed pre-merge; then merge
+   `--no-ff` and push. New findings discovered along the way get appended to
+   `AUDIT.md` with the next free ID instead of being fixed drive-by.
 
 ---
 
