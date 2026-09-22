@@ -167,3 +167,51 @@ describe('AiService — per-call timeout (H-2)', () => {
     expect(service.extractTimeoutMs).toBe(120_000);
   });
 });
+
+describe('AiService — model & token configuration (H-3)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('defaults to the non-reasoning glm-4-flash and an 8192 token cap', async () => {
+    // empty env overrides → constructor falls back to the code defaults
+    const service = makeService({ GLM_MODEL: '', GLM_FALLBACK_MODELS: '' });
+    let seen: { model: string; max_tokens: number } | undefined;
+    const impl = async (_url: string | URL | Request, init?: RequestInit) => {
+      seen = JSON.parse(String(init?.body ?? '{}')) as { model: string; max_tokens: number };
+      return jsonResponse();
+    };
+    jest.spyOn(global, 'fetch').mockImplementation(impl as typeof fetch);
+
+    await service.sendMessage('hello');
+
+    expect(seen?.model).toBe('glm-4-flash');
+    expect(seen?.max_tokens).toBe(8192);
+  });
+
+  it('sends the configured GLM_MAX_TOKENS in the request body', async () => {
+    const service = makeService({ GLM_MAX_TOKENS: '4096' });
+    let seenMaxTokens: number | undefined;
+    const impl = async (_url: string | URL | Request, init?: RequestInit) => {
+      seenMaxTokens = (JSON.parse(String(init?.body ?? '{}')) as { max_tokens: number }).max_tokens;
+      return jsonResponse();
+    };
+    jest.spyOn(global, 'fetch').mockImplementation(impl as typeof fetch);
+
+    await service.sendMessage('hello');
+
+    expect(seenMaxTokens).toBe(4096);
+  });
+
+  it('falls back to 8192 when GLM_MAX_TOKENS is not a positive number', async () => {
+    const service = makeService({ GLM_MAX_TOKENS: 'bogus' });
+    let seenMaxTokens: number | undefined;
+    const impl = async (_url: string | URL | Request, init?: RequestInit) => {
+      seenMaxTokens = (JSON.parse(String(init?.body ?? '{}')) as { max_tokens: number }).max_tokens;
+      return jsonResponse();
+    };
+    jest.spyOn(global, 'fetch').mockImplementation(impl as typeof fetch);
+
+    await service.sendMessage('hello');
+
+    expect(seenMaxTokens).toBe(8192);
+  });
+});
