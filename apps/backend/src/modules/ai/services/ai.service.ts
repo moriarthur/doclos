@@ -258,6 +258,17 @@ export class AiService {
             );
             break;
           }
+          // I-1 (audit wave 3): single-model config has nowhere to fail over to —
+          // apply the same jittered backoff as the 5xx path instead of hammering
+          // the endpoint with two instant 429s.
+          if (attempt < attemptsPerModel) {
+            const base = Math.pow(2, attempt) * 3000;
+            const delay = Math.round(base * (0.7 + Math.random() * 0.6));
+            this.logger.warn(
+              `GLM ${model} rate-limited (429), retry ${attempt}/${attemptsPerModel} in ${delay}ms`,
+            );
+            await new Promise((r) => setTimeout(r, delay));
+          }
           continue;
         }
 
