@@ -130,11 +130,18 @@ export class DocumentProcessor {
       }
 
       // 1. Download file from S3
+      // H-7 (audit wave 3): per-stage wall-clock timings — one summary line per
+      // document shows where processing time actually goes. Durations only;
+      // no document content is ever logged.
+      const pipelineStartedAt = Date.now();
+      let stageStartedAt = pipelineStartedAt;
+      const timings = { download: 0, ocr: 0, classify: 0, extract: 0 };
       this.logger.log(`Downloading file from S3: ${document.s3_key}`);
       jobRecord.progress = { stage: 'downloading', message: 'Downloading file...' };
       await this.jobsRepository.save(jobRecord);
       job.progress(10);
       const fileBuffer = await this.s3Service.downloadFile(document.s3_key);
+      timings.download = Date.now() - stageStartedAt;
 
       if (await isCancelled()) {
         this.logger.log(`Job cancelled after download: ${documentId}`);
@@ -146,11 +153,13 @@ export class DocumentProcessor {
       jobRecord.progress = { stage: 'ocr', message: 'Starting OCR...', current: 0, total: 0 };
       await this.jobsRepository.save(jobRecord);
       job.progress(25);
+      stageStartedAt = Date.now();
       const ocrResult = await this.ocrService.processDocument(
         fileBuffer,
         document.mime_type,
         jobRecord,
       );
+      timings.ocr = Date.now() - stageStartedAt;
 
       if (await isCancelled()) {
         this.logger.log(`Job cancelled after OCR: ${documentId}`);
@@ -172,9 +181,11 @@ export class DocumentProcessor {
       jobRecord.progress = { stage: 'classifying', message: 'Classifying document type...' };
       await this.jobsRepository.save(jobRecord);
       job.progress(50);
+      stageStartedAt = Date.now();
       const classification = await this.documentClassifierService.classifyDocument(
         ocrResult.text,
       );
+      timings.classify = Date.now() - stageStartedAt;
 
       if (await isCancelled()) {
         this.logger.log(`Job cancelled after classification: ${documentId}`);
@@ -194,18 +205,19 @@ export class DocumentProcessor {
       // customer path; contracts are non-tabular (parties/dates only, no items);
       // unknown documents stay parsed-only.
       job.progress(65);
+      stageStartedAt = Date.now();
       switch (classification.type) {
         case DocumentType.INVOICE:
         case DocumentType.PURCHASE_ORDER:
         case DocumentType.OFFER:
         case DocumentType.DELIVERY_NOTE: {
-          // Rate limit buffer: wait before the GLM extraction call.
-          await new Promise((r) => setTimeout(r, 3000));
+          // H-5 (audit wave 3): the old fixed 3s "rate limit buffer" is gone —
+          // rate limiting is AiService's job (429 → immediate model failover),
+          // a per-document sleep just added latency to every upload.
           await this.extractCommercialDocument(document, ocrResult.text, classification.type);
           break;
         }
         case DocumentType.CONTRACT: {
-          await new Promise((r) => setTimeout(r, 3000));
           await this.extractContractDocument(document, ocrResult.text);
           break;
         }
@@ -222,11 +234,15 @@ export class DocumentProcessor {
       }
 
       // Update job status
+      timings.extract = Date.now() - stageStartedAt;
       jobRecord.status = JobStatus.COMPLETED;
       job.progress(100);
       await this.jobsRepository.save(jobRecord);
 
       this.logger.log(`Document processed: ${documentId}`);
+      this.logger.log(
+        `Timing — download: ${timings.download}ms, ocr: ${timings.ocr}ms, classify: ${timings.classify}ms, extract+persist: ${timings.extract}ms, total: ${Date.now() - pipelineStartedAt}ms`,
+      );
     } catch (error) {
       // Don't overwrite cancellation status
       if (await isCancelled()) {

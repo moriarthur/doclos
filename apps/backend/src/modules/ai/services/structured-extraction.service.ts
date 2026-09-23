@@ -321,6 +321,9 @@ export class StructuredExtractionService {
       const { data: extraction, usage } = await this.aiService.sendJsonMessage<InvoiceExtraction>(
         extractionPrompt,
         INVOICE_EXTRACTION_SYSTEM,
+        // Extraction legitimately runs long (reasoning output) — full budget (H-2);
+        // thinking per GLM_THINKING_EXTRACT (H-3).
+        { timeoutMs: this.aiService.extractTimeoutMs, thinking: this.aiService.extractThinking },
       );
 
       // Step 2: Assess confidence for each field
@@ -358,6 +361,7 @@ export class StructuredExtractionService {
     const { data: extraction, usage } = await this.aiService.sendJsonMessage<T>(
       userPrompt,
       systemPrompt,
+      { timeoutMs: this.aiService.extractTimeoutMs, thinking: this.aiService.extractThinking },
     );
     const confidence = await this.assessConfidence(extraction, text);
     const cost = this.aiService.estimateCost(usage.inputTokens, usage.outputTokens);
@@ -435,7 +439,10 @@ export class StructuredExtractionService {
         // The prompt requests {de, en} objects, but defend against the model
         // returning plain strings or a single language (see toLocalizedIssues).
         issues: Array<{ de: string; en: string } | string>;
-      }>(prompt);
+      }>(prompt, undefined, {
+        timeoutMs: this.aiService.extractTimeoutMs,
+        thinking: this.aiService.extractThinking,
+      });
 
       return {
         overall: data.overall_confidence,

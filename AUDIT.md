@@ -2,7 +2,18 @@
 
 Full-project audit: backend, frontend, infra. Read-only review; nothing here was changed in the repo.
 
-## Status — living checklist (updated 2026-09-21 by main agent)
+## Status — living checklist (updated 2026-09-22 by main agent)
+
+**Wave `fix/hardening-glm-tls` — latency + TLS hardening (2026-09-22, branch off main `33fe4ef`):**
+H-1 ✅ H-2 ✅ H-3 ✅ (rev 2 — glm-4-flash removed from bigmodel.cn, see finding)
+H-4 ✅ H-5 ✅ H-6 ✅ H-7 ✅ H-8 ✅ I-1 ✅. Live-verified: pipeline total 17.7s (was ~3 min),
+classify 1ms keyword-only, confidence 90% → auto-accept; TLS strict via pinned CA.
+**Auditor verdict 2026-09-23: PASS, merge approved, no blockers.** Independently
+verified by the auditor: 87/87 jest, tsc green both apps, `git diff --check` clean,
+H-8 CA fingerprint re-checked live against the pooler chain (exact match).
+For this wave the user substituted codex with a GLM auditor session (doclos-6d);
+same standing process otherwise. Finding I-1 fixed pre-merge (`b0793e0`).
+Merged --no-ff to main and pushed (2026-09-23).
 
 **Wave `fix/audit-security` — ALL DONE, merged to main `1c44c94` after auditor review:**
 P0-1 ✅ P0-2 ✅ (+FK migration `fb7315c` on polish branch) P0-3 ✅ (live-tested) P0-4 ✅
@@ -45,8 +56,95 @@ validation + helmet, both migrations applied to dev DB. NOT pushed to origin.
 - One finding = one commit, reference the finding ID (`P0-1`, `P1-3`, …) in the commit message.
 - After each finding: `cd apps/backend && npx tsc --noEmit` and same for `apps/frontend` must pass. Backend must still boot (`pnpm start:dev`) before committing.
 - Do not rename public API response fields unless the finding says so — the frontend depends on them.
+- **Auditor (2026-09-22, standing):** the user runs **codex** as an independent auditor. Before any merge, codex reviews the branch diff; blockers are closed pre-merge (auditor PASS required, same as waves 1–2). New findings discovered during any work are appended here with the next free ID (`H-x`, then `I-x`, …) instead of being fixed drive-by.
 
 ---
+
+## Wave 3 — Hardening / latency (2026-09-22, branch `fix/hardening-glm-tls`)
+
+Trigger: "обработка длится очень долго" + codex brief (`AUDIT` file in repo root).
+Live baseline measured 2026-09-22 14:22–14:25: classification + extraction ~3 min for a
+text-PDF, with glm-4.7-flash 429s burning retry budget and reasoning tokens.
+
+### H-1. 429 burns the retry budget on the overloaded model (slow failover)
+`ai.service.ts` `callOnce` returned only `retryable: boolean` — a 429 ("model busy")
+got the same same-model retry as a 5xx. Z.ai "busy" doesn't clear in seconds; both
+attempts were wasted before the failover (observed live: two 429s back-to-back).
+**Fix:** `callOnce` returns `reason: 'rate-limit' | 'server' | 'timeout'`; 429 →
+immediate failover, 5xx/timeout → one same-model retry with jittered backoff.
+**Accept:** unit tests (429 → 1 call per model; 5xx → retry-then-failover; 4xx throws).
+✅ `48f2bf1`
+
+### H-2. One 120s timeout for every call: classification waits like extraction
+Classification is a tiny JSON call; extraction legitimately runs long.
+**Fix:** `sendMessage/sendJsonMessage` accept `opts.timeoutMs`; env
+`GLM_TIMEOUT_CLASSIFY_MS` (30s) / `GLM_TIMEOUT_EXTRACT_MS` (120s).
+✅ `9791247`
+
+### H-3. Wrong model class + forced reasoning (rev 2)
+Original brief: switch to glm-4-flash. **Live probe: glm-4-flash was REMOVED from
+open.bigmodel.cn (error 1211)** — the hard 400 surfaced it instantly (no retries, per
+H-1). glm-4.5/4.7 are hybrid-reasoning and burn chain-of-thought even on trivial JSON
+(measured: `thinking:{"type":"disabled"}` answers in ~1s vs minutes with thinking).
+**Fix:** primary `glm-4.5-flash` + `thinking.type=disabled` (env
+`GLM_THINKING_CLASSIFY`, default disabled; `GLM_THINKING_EXTRACT`, default auto/omit);
+`glm-4.7-flash` demoted to failover. `GLM_MAX_TOKENS` (8192, was hard 16384 sized for
+reasoning output). Extraction quality gate: reprocessed invoice → confidence 90%
+auto-accept, fields confidence 1.00 (was 73% needs_validation with thinking).
+✅ `cab3464` + rev 2 `1d5a814`
+Caveat (2026-09-23, auditor request): `GLM_THINKING_EXTRACT=disabled` in .env is
+an EXPERIMENT — confidence 90% verified on clean text PDFs only, not yet on
+scanned/messy documents. Revert is env-only (unset the var → model default auto).
+
+### H-4. LLM classification call per document is unnecessary
+Keyword rules already existed as the fallback (`ruleBasedClassification`).
+**Fix:** invert the order — rules answer first (LLM call skipped), LLM only
+adjudicates UNKNOWN keyword results; rule-based result remains the final fallback.
+ClassificationResult format unchanged. **Accept:** classifier unit tests; live log
+"classified as invoice by keywords (LLM call skipped)". ✅ `e92611b`
+
+### H-5. Fixed 3s "rate limit buffer" before every extraction (codex brief #3)
+`document.processor.ts` slept 3s before each extraction call — taxed 100% of
+documents to guard 0%. **Fix:** removed; rate limiting is AiService's job (H-1).
+✅ `9063719`
+
+### H-6. Tesseract worker booted and terminated per page
+`createWorker` (wasm + deu+eng traineddata) per recognize dominates scanned-PDF OCR.
+**Fix:** one long-lived worker (lazy boot, promise-chain mutex — workers are not
+concurrency-safe), `onModuleDestroy` termination, recycle after a wedged recognize.
+✅ `acb1f97`
+
+### H-7. No per-stage timing diagnostics (codex brief #6)
+**Fix:** one summary line per document: download / ocr / classify / extract+persist /
+total (durations only, no content). Live: `download: 397ms, ocr: 100ms, classify: 1ms,
+extract+persist: 16688ms, total: 17691ms`. ✅ `c825429`
+
+### H-8. DB TLS verification disabled (`DB_SSL_REJECT_UNAUTHORIZED=false`)
+Pooler chain is issued by the private "Supabase Root 2021 CA" (verified via
+`openssl s_client`), which Node's store doesn't trust. **Fix:** CA pinned and
+committed (`apps/backend/certs/supabase-prod-ca-2021.crt`, sha256-checked against the
+live connection, valid until 2031) via `DB_CA_CERT_PATH` → `ssl.ca` +
+`rejectUnauthorized: true`; the false-flag remains as documented proxy escape hatch.
+Verified live: pg connects to the pooler with strict verification.
+(Note: implemented as TypeORM `ssl.ca`, not NODE_EXTRA_CA_CERTS — the env var must be
+set before node boots, so dotenv-loaded values don't apply; `ssl.ca` covers both the
+app and the TypeORM CLI via the shared dataSourceOptions.) ✅ `f42dab2`
+
+### I-1. No backoff on 429 when only one model is configured (audit 2026-09-23)
+Auditor finding (GLM auditor session, non-blocking): in `fetchWithRetry` the
+rate-limit branch `continue`d straight to attempt 2 when `models.length === 1`,
+skipping the backoff block — two instant 429 calls, then throw. Unreachable with
+the current .env (fallback configured). **Fix:** single-model 429 retries apply
+the same jittered backoff as the 5xx path; guard test asserts the >= 4.2s gap.
+✅ `b0793e0`
+
+### Codex brief reconciliation
+- #1 (model) → H-3 rev 2 (glm-4-flash doesn't exist — replaced with glm-4.5-flash +
+  thinking off). #2 (rule-based classify) → H-4. #3 (delays) → H-5. #4 (one extraction
+  request) → verified: one main extraction call + separate confidence-assessment call
+  (kept — it is the confidence/diagnostics safeguard the brief says not to remove).
+  #5 (worker) → H-6. #6 (timings) → H-7. #7 (.env.example) → H-2/H-3.
+  #8 don'ts respected; #9 tests: 70 AI/OCR unit tests + suites green.
 
 ## P0 — Security (fix first)
 
