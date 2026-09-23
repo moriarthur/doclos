@@ -4,11 +4,16 @@ Full-project audit: backend, frontend, infra. Read-only review; nothing here was
 
 ## Status — living checklist (updated 2026-09-22 by main agent)
 
-**Wave `fix/hardening-glm-tls` — latency + TLS hardening (2026-09-22, this branch):**
+**Wave `fix/hardening-glm-tls` — latency + TLS hardening (2026-09-22, branch off main `33fe4ef`):**
 H-1 ✅ H-2 ✅ H-3 ✅ (rev 2 — glm-4-flash removed from bigmodel.cn, see finding)
-H-4 ✅ H-5 ✅ H-6 ✅ H-7 ✅ H-8 ✅. Live-verified: pipeline total 17.7s (was ~3 min),
+H-4 ✅ H-5 ✅ H-6 ✅ H-7 ✅ H-8 ✅ I-1 ✅. Live-verified: pipeline total 17.7s (was ~3 min),
 classify 1ms keyword-only, confidence 90% → auto-accept; TLS strict via pinned CA.
-Pending: codex auditor review of the branch diff → merge --no-ff → push.
+**Auditor verdict 2026-09-23: PASS, merge approved, no blockers.** Independently
+verified by the auditor: 87/87 jest, tsc green both apps, `git diff --check` clean,
+H-8 CA fingerprint re-checked live against the pooler chain (exact match).
+For this wave the user substituted codex with a GLM auditor session (doclos-6d);
+same standing process otherwise. Finding I-1 fixed pre-merge (`b0793e0`).
+Merged --no-ff to main and pushed (2026-09-23).
 
 **Wave `fix/audit-security` — ALL DONE, merged to main `1c44c94` after auditor review:**
 P0-1 ✅ P0-2 ✅ (+FK migration `fb7315c` on polish branch) P0-3 ✅ (live-tested) P0-4 ✅
@@ -87,6 +92,9 @@ H-1). glm-4.5/4.7 are hybrid-reasoning and burn chain-of-thought even on trivial
 reasoning output). Extraction quality gate: reprocessed invoice → confidence 90%
 auto-accept, fields confidence 1.00 (was 73% needs_validation with thinking).
 ✅ `cab3464` + rev 2 `1d5a814`
+Caveat (2026-09-23, auditor request): `GLM_THINKING_EXTRACT=disabled` in .env is
+an EXPERIMENT — confidence 90% verified on clean text PDFs only, not yet on
+scanned/messy documents. Revert is env-only (unset the var → model default auto).
 
 ### H-4. LLM classification call per document is unnecessary
 Keyword rules already existed as the fallback (`ruleBasedClassification`).
@@ -121,6 +129,14 @@ Verified live: pg connects to the pooler with strict verification.
 (Note: implemented as TypeORM `ssl.ca`, not NODE_EXTRA_CA_CERTS — the env var must be
 set before node boots, so dotenv-loaded values don't apply; `ssl.ca` covers both the
 app and the TypeORM CLI via the shared dataSourceOptions.) ✅ `f42dab2`
+
+### I-1. No backoff on 429 when only one model is configured (audit 2026-09-23)
+Auditor finding (GLM auditor session, non-blocking): in `fetchWithRetry` the
+rate-limit branch `continue`d straight to attempt 2 when `models.length === 1`,
+skipping the backoff block — two instant 429 calls, then throw. Unreachable with
+the current .env (fallback configured). **Fix:** single-model 429 retries apply
+the same jittered backoff as the 5xx path; guard test asserts the >= 4.2s gap.
+✅ `b0793e0`
 
 ### Codex brief reconciliation
 - #1 (model) → H-3 rev 2 (glm-4-flash doesn't exist — replaced with glm-4.5-flash +
