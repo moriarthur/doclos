@@ -59,8 +59,14 @@ export default function UploadPage() {
   const [currentUploadIndex, setCurrentUploadIndex] = useState<number | null>(null);
 
   const uploadMutation = useMutation({
-    mutationFn: ({ file }: { file: File; index: number }) =>
-      documentsApi.upload(file),
+    mutationFn: ({
+      file,
+      onProgress,
+    }: {
+      file: File;
+      index: number;
+      onProgress: (percent: number) => void;
+    }) => documentsApi.upload(file, undefined, onProgress),
     onSuccess: (data, variables) => {
       setUploadProgress((prev) => ({ ...prev, [variables.index]: 100 }));
       setUploadedDocIds((prev) => [...prev, data.document_id]);
@@ -191,20 +197,14 @@ export default function UploadPage() {
       return prev;
     });
 
-    // Simulate progress
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-      progress += 10;
-      setUploadProgress((prev) => {
-        const newProgress = { ...prev, [index]: Math.min(progress, 90) };
-        return newProgress;
-      });
-    }, 200);
-
-    uploadMutation.mutate({ file, index }, {
-      onSettled: () => {
-        clearInterval(progressInterval);
-      },
+    // U-5 (audit): real progress from axios onUploadProgress — capped at 95 so
+    // the "done" checkmark only appears once the server actually responded
+    // (onSuccess sets 100).
+    uploadMutation.mutate({
+      file,
+      index,
+      onProgress: (percent) =>
+        setUploadProgress((prev) => ({ ...prev, [index]: Math.min(percent, 95) })),
     });
   };
 
