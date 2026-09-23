@@ -39,23 +39,63 @@ export class AiService {
   // Primary + fallback models, tried in order when the primary is unavailable.
   private readonly models: string[];
   private readonly maxTokens: number;
+  // H-2 (audit wave 3): per-call-type HTTP budgets. Classification is a tiny
+  // JSON call (seconds), extraction legitimately runs long (reasoning models,
+  // thousands of output tokens) — a single 120s ceiling for both made a
+  // hanging classify call block the pipeline for two minutes.
+  readonly classifyTimeoutMs: number;
+  readonly extractTimeoutMs: number;
+  // H-3 (audit wave 3): GLM-4.5+ are hybrid-reasoning models — by default they
+  // burn seconds and tokens on chain-of-thought even for tiny JSON answers
+  // (measured live: thinking off answered in ~1s vs minutes with thinking).
+  // Resolved per call type: 'enabled' | 'disabled' sends thinking.type;
+  // null omits the parameter (model default "auto").
+  readonly classifyThinking: 'enabled' | 'disabled' | null;
+  readonly extractThinking: 'enabled' | 'disabled' | null;
 
   constructor(private configService: ConfigService) {
     this.apiKey = this.configService.get('GLM_API_KEY') || '';
     this.baseUrl = this.configService.get('GLM_BASE_URL') || 'https://open.bigmodel.cn/api/paas/v4';
-    this.model = this.configService.get('GLM_MODEL') || 'glm-4-flash';
-    // glm-4.7-flash is a reasoning model: thinking tokens consume this budget too
-    // 16384 gives enough room for reasoning + JSON extraction output
-    this.maxTokens = 16384;
+    // H-3 (audit wave 3): default glm-4.5-flash with thinking disabled — fast on
+    // structured JSON tasks. glm-4-flash was REMOVED from open.bigmodel.cn
+    // (error 1211 "model does not exist", 2026-09-22); glm-4.7-flash thinks
+    // compulsorily and rate-limits at peak — demoted to fallback.
+    this.model = this.configService.get('GLM_MODEL') || 'glm-4.5-flash';
+    // H-3: reasoning models spend this budget on thinking tokens too, which is why
+    // it was 16384; for the JSON schemas in use 8192 is ample and bounds the
+    // worst-case generation time. Override via GLM_MAX_TOKENS.
+    const parsedMaxTokens = parseInt(this.configService.get('GLM_MAX_TOKENS') || '', 10);
+    this.maxTokens =
+      Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0 ? parsedMaxTokens : 8192;
 
     // Fallback models tried when the primary is overloaded (429 / 5xx / timeout)
     // on Z.ai. glm-4.7-flash intermittently rate-limits in peak hours; glm-4.5-flash
     // is a free flash-family alternative. Override via GLM_FALLBACK_MODELS (csv).
-    const fallbacks = (this.configService.get('GLM_FALLBACK_MODELS') || 'glm-4.5-flash')
+    const fallbacks = (this.configService.get('GLM_FALLBACK_MODELS') || 'glm-4.7-flash')
       .split(',')
       .map((s: string) => s.trim())
       .filter(Boolean);
     this.models = Array.from(new Set([this.model, ...fallbacks]));
+
+    const parseIntOr = (raw: string | undefined, fallback: number): number => {
+      const parsed = parseInt(raw || '', 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+    this.classifyTimeoutMs = parseIntOr(
+      this.configService.get('GLM_TIMEOUT_CLASSIFY_MS'),
+      30_000,
+    );
+    this.extractTimeoutMs = parseIntOr(this.configService.get('GLM_TIMEOUT_EXTRACT_MS'), 120_000);
+
+    const resolveThinking = (raw: string | undefined): 'enabled' | 'disabled' | null =>
+      raw === 'enabled' || raw === 'disabled' ? raw : null;
+    // Classification defaults to disabled: a keyword-ambiguity check doesn't
+    // need chain-of-thought. Extraction defaults to the model's own choice
+    // (null) — set GLM_THINKING_EXTRACT=disabled for speed after verifying
+    // extraction quality holds on your document mix.
+    this.classifyThinking =
+      resolveThinking(this.configService.get('GLM_THINKING_CLASSIFY')) ?? 'disabled';
+    this.extractThinking = resolveThinking(this.configService.get('GLM_THINKING_EXTRACT'));
 
     if (!this.apiKey) {
       this.logger.warn('GLM_API_KEY not set - AI features will be disabled');
@@ -71,18 +111,24 @@ export class AiService {
   /**
    * Single HTTP attempt against one model. Never throws for transient failures —
    * returns a discriminated result so the caller can decide to retry / fail over.
-   * @returns ok with text+usage, or { ok:false, retryable, message }
+   * @returns ok with text+usage, or { ok:false, retryable, reason, message }
    */
   private async callOnce(
     model: string,
     messages: ChatMessage[],
+    timeoutMs: number,
+    thinking?: 'enabled' | 'disabled' | null,
   ): Promise<
     | { ok: true; text: string; usage: { inputTokens: number; outputTokens: number } }
-    | { ok: false; retryable: boolean; message: string }
+    | {
+        ok: false;
+        retryable: boolean;
+        reason: 'rate-limit' | 'server' | 'timeout';
+        message: string;
+      }
   > {
     const controller = new AbortController();
-    const timeout = 120000;
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -96,6 +142,8 @@ export class AiService {
           messages,
           max_tokens: this.maxTokens,
           temperature: 0.3,
+          // GLM-4.5+ hybrid reasoning toggle — omit entirely for model default.
+          ...(thinking ? { thinking: { type: thinking } } : {}),
         }),
         signal: controller.signal,
       });
@@ -107,11 +155,13 @@ export class AiService {
         // another model. Client errors (4xx) are not retryable — a fallback model
         // won't fix a bad request / auth / unknown-model error.
         const errorText = await response.text();
-        const retryable = response.status === 429 || response.status >= 500;
+        const rateLimited = response.status === 429;
+        const retryable = rateLimited || response.status >= 500;
         this.logger.error(`GLM API error (${model}): ${response.status} - ${errorText}`);
         return {
           ok: false,
           retryable,
+          reason: rateLimited ? 'rate-limit' : 'server',
           message: `GLM API request failed: ${response.status}`,
         };
       }
@@ -119,7 +169,12 @@ export class AiService {
       const data = (await response.json()) as ChatCompletionResponse;
 
       if (!data.choices || data.choices.length === 0) {
-        return { ok: false, retryable: false, message: 'No response from GLM API' };
+        return {
+          ok: false,
+          retryable: false,
+          reason: 'server',
+          message: 'No response from GLM API',
+        };
       }
 
       return {
@@ -139,12 +194,18 @@ export class AiService {
         error instanceof Error &&
         (error.name === 'AbortError' || error.message.toLowerCase().includes('timed out'));
       if (isTimeout) {
-        this.logger.error(`GLM API request timed out after 120s (${model})`);
-        return { ok: false, retryable: true, message: 'AI request timed out - please try again' };
+        this.logger.error(`GLM API request timed out after ${timeoutMs}ms (${model})`);
+        return {
+          ok: false,
+          retryable: true,
+          reason: 'timeout',
+          message: 'AI request timed out - please try again',
+        };
       }
       return {
         ok: false,
         retryable: false,
+        reason: 'server',
         message: error instanceof Error ? error.message : String(error),
       };
     }
@@ -152,18 +213,23 @@ export class AiService {
 
   /**
    * Send a request, iterating models on transient (429 / 5xx / timeout) failures.
-   * Each model gets a small retry budget with backoff; when it is exhausted the
-   * next fallback model is tried. Non-retryable client errors throw immediately.
+   * 429 ("model busy" on Z.ai) fails over to the next model immediately — the
+   * overload won't clear within seconds, so same-model retries just burn the
+   * budget (observed live 2026-09-22: two 429s back-to-back, fallback fine).
+   * 5xx / timeouts get one same-model retry with jittered backoff before the
+   * failover. Non-retryable client errors throw immediately.
    */
   private async fetchWithRetry(
     messages: ChatMessage[],
+    timeoutMs: number,
+    thinking?: 'enabled' | 'disabled' | null,
   ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
     const attemptsPerModel = 2;
     let lastMessage = 'GLM API request failed after retries';
 
     for (const model of this.models) {
       for (let attempt = 1; attempt <= attemptsPerModel; attempt++) {
-        const result = await this.callOnce(model, messages);
+        const result = await this.callOnce(model, messages, timeoutMs, thinking);
 
         if (result.ok) {
           if (model !== this.model) {
@@ -184,11 +250,34 @@ export class AiService {
           throw new Error(result.message);
         }
 
-        // Retryable: backoff and retry the same model, then fail over to the next.
+        // Rate limit: don't retry the same model — move to the next one now.
+        if (result.reason === 'rate-limit') {
+          if (this.models.length > 1) {
+            this.logger.warn(
+              `GLM ${model} rate-limited (429) — failing over to next model immediately`,
+            );
+            break;
+          }
+          // I-1 (audit wave 3): single-model config has nowhere to fail over to —
+          // apply the same jittered backoff as the 5xx path instead of hammering
+          // the endpoint with two instant 429s.
+          if (attempt < attemptsPerModel) {
+            const base = Math.pow(2, attempt) * 3000;
+            const delay = Math.round(base * (0.7 + Math.random() * 0.6));
+            this.logger.warn(
+              `GLM ${model} rate-limited (429), retry ${attempt}/${attemptsPerModel} in ${delay}ms`,
+            );
+            await new Promise((r) => setTimeout(r, delay));
+          }
+          continue;
+        }
+
+        // 5xx / timeout: retry the same model with jittered backoff, then fail over.
         if (attempt < attemptsPerModel) {
-          const delay = Math.pow(2, attempt) * 3000;
+          const base = Math.pow(2, attempt) * 3000;
+          const delay = Math.round(base * (0.7 + Math.random() * 0.6));
           this.logger.warn(
-            `GLM ${model} transient failure, retry ${attempt}/${attemptsPerModel} in ${delay}ms`,
+            `GLM ${model} transient failure (${result.reason}), retry ${attempt}/${attemptsPerModel} in ${delay}ms`,
           );
           await new Promise((r) => setTimeout(r, delay));
         } else if (this.models.length > 1) {
@@ -205,6 +294,7 @@ export class AiService {
   async sendMessage(
     prompt: string,
     systemPrompt?: string,
+    opts?: { timeoutMs?: number; thinking?: 'enabled' | 'disabled' | null },
   ): Promise<{ text: string; usage: { inputTokens: number; outputTokens: number } }> {
     if (!this.apiKey) {
       throw new Error('GLM_API_KEY not configured');
@@ -221,7 +311,13 @@ export class AiService {
 
       messages.push({ role: 'user', content: prompt });
 
-      return await this.fetchWithRetry(messages);
+      // Extraction-sized budget by default; classification passes the shorter
+      // classifyTimeoutMs so a hung small call can't block the pipeline.
+      return await this.fetchWithRetry(
+        messages,
+        opts?.timeoutMs ?? this.extractTimeoutMs,
+        opts?.thinking !== undefined ? opts.thinking : this.extractThinking,
+      );
     } catch (error) {
       if (error instanceof Error) {
         this.logger.error(`GLM API error: ${error.message}`);
@@ -239,13 +335,14 @@ export class AiService {
   async sendJsonMessage<T>(
     prompt: string,
     systemPrompt?: string,
+    opts?: { timeoutMs?: number; thinking?: 'enabled' | 'disabled' | null },
   ): Promise<{ data: T; usage: { inputTokens: number; outputTokens: number } }> {
     // Add JSON instruction to prompt
     const jsonPrompt = `${prompt}
 
 Return your response as a valid JSON object. Do not include any text outside the JSON.`;
 
-    const response = await this.sendMessage(jsonPrompt, systemPrompt);
+    const response = await this.sendMessage(jsonPrompt, systemPrompt, opts);
 
     try {
       // Extract JSON from response (handle potential markdown code blocks)
