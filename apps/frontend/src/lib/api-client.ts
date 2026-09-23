@@ -327,6 +327,14 @@ export const authApi = {
 
   register: async (data: RegisterData): Promise<AuthResponse> => {
     const response = await apiClient.post<AuthResponse>('/auth/register', data);
+    // U-7 (audit): register returns tokens too — store them like login does so
+    // the user is auto-logged-in instead of re-typing the same credentials.
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('access_token', response.data.access_token);
+      localStorage.setItem('refresh_token', response.data.refresh_token);
+      setCookie('access_token', response.data.access_token);
+      setCookie('refresh_token', response.data.refresh_token);
+    }
     return response.data;
   },
 
