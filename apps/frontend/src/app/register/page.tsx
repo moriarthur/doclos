@@ -47,7 +47,8 @@ export default function RegisterPage() {
   const registerMutation = useMutation({
     mutationFn: (data: RegisterData) => authApi.register(data),
     onSuccess: () => {
-      router.push('/login?registered=true');
+      // U-7 (audit): authApi.register stored the tokens — go straight to the app
+      router.push('/');
     },
     onError: (err: any) => {
       setApiError(authApi.getErrorMessage(err));

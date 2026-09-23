@@ -2,7 +2,13 @@
 
 Full-project audit: backend, frontend, infra. Read-only review; nothing here was changed in the repo.
 
-## Status — living checklist (updated 2026-09-22 by main agent)
+## Status — living checklist (updated 2026-09-24 by main agent)
+
+**Wave `fix/loose-ends-u5-u7-ab` — loose ends + thinking A/B (2026-09-24, branch off `99373e9`):**
+U-7 ✅ auto-login after register (`0157fe6`) — U-5 ✅ real upload progress via
+axios `onUploadProgress`, simulated bar removed (`e8105e9`) — H-3 caveat ✅
+resolved by A/B: KEEP `GLM_THINKING_EXTRACT=disabled`, .env unchanged (see H-3;
+no code change, docs-only).
 
 **Wave `fix/hardening-glm-tls` — latency + TLS hardening (2026-09-22, branch off main `33fe4ef`):**
 H-1 ✅ H-2 ✅ H-3 ✅ (rev 2 — glm-4-flash removed from bigmodel.cn, see finding)
@@ -40,9 +46,9 @@ ownership, metadata sanitization, formula escaping, ?lang=) → then push (user 
 - P2-13 ◐ partial: 3 spec files / 18 tests (German dates+amounts, jobs ownership,
   customer scoping). More coverage optional.
 - FK migration customers.user_id ✅ `fb7315c` (column -> uuid + constraint)
-- Not done (out of waves, still open): **U-4** (line items editable / unit column),
-  **U-5** (real upload progress — limits already aligned in P0-4), **U-7** (auto-login
-  after register; email case-sensitivity itself was fixed by P0-3 normalization).
+- Not done (out of waves, still open): **U-4** (done later — editable line items /
+  unit column, merged `33fe4ef`), **U-5** + **U-7** (done in wave
+  `fix/loose-ends-u5-u7-ab`, see top block).
 
 Verification state: tsc green (both apps), 18/18 jest green, backend boots with env
 validation + helmet, both migrations applied to dev DB. NOT pushed to origin.
@@ -95,6 +101,20 @@ auto-accept, fields confidence 1.00 (was 73% needs_validation with thinking).
 Caveat (2026-09-23, auditor request): `GLM_THINKING_EXTRACT=disabled` in .env is
 an EXPERIMENT — confidence 90% verified on clean text PDFs only, not yet on
 scanned/messy documents. Revert is env-only (unset the var → model default auto).
+**A/B resolved 2026-09-24 (wave 4): KEEP `disabled`.** Same 20 docs reprocessed
+disabled vs auto (12 scan-like JPGs — rasterized 150dpi + noise, OCR path; 8 text
+PDFs from `1000+ PDF_Invoice_Folder`):
+- Confidence: scan arm overall 0.69 → 0.64, text arm 0.86 → 0.82; text parsed
+  7 → 4 (confidence-assessment downgrade with NO extracted-value changes).
+- Field regressions under auto on scans: invoice_number hallucinations/noise —
+  01.jpg `AB10015140` → `Var 08 2012` (source PDF `Order ID: CA-2012-AB10015140-40974`
+  confirms disabled correct); 05/08/12.jpg noise appended; 11.jpg errored twice.
+- Speed: extract median 9.7s (disabled) vs 107s (auto, max 302s) — ~11×.
+- Stability: 20-doc burst under auto → 66×429 + 6 empty-JSON (thinking burns the
+  8192 budget → empty content) → 10 docs `error`; disabled run: 0 errors.
+Verdict: disabled wins on quality, speed, and stability. Harness note: the 429
+storm is a burst artifact — sequential reprocessing is clean; batch reprocess
+could rate-limit itself someday (observation only, no finding ID).
 
 ### H-4. LLM classification call per document is unnecessary
 Keyword rules already existed as the fallback (`ruleBasedClassification`).

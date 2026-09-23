@@ -327,6 +327,14 @@ export const authApi = {
 
   register: async (data: RegisterData): Promise<AuthResponse> => {
     const response = await apiClient.post<AuthResponse>('/auth/register', data);
+    // U-7 (audit): register returns tokens too — store them like login does so
+    // the user is auto-logged-in instead of re-typing the same credentials.
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('access_token', response.data.access_token);
+      localStorage.setItem('refresh_token', response.data.refresh_token);
+      setCookie('access_token', response.data.access_token);
+      setCookie('refresh_token', response.data.refresh_token);
+    }
     return response.data;
   },
 
@@ -390,7 +398,11 @@ export const documentsApi = {
     return response.data;
   },
 
-  upload: async (file: File, type?: string): Promise<UploadResponse> => {
+  upload: async (
+    file: File,
+    type?: string,
+    onProgress?: (percent: number) => void,
+  ): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('file', file);
     if (type) formData.append('type', type);
@@ -398,6 +410,12 @@ export const documentsApi = {
     const response = await apiClient.post<UploadResponse>('/documents/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
+      },
+      // U-5 (audit): real byte-level upload progress instead of a simulated bar
+      onUploadProgress: (e) => {
+        if (!onProgress) return;
+        const total = e.total ?? file.size;
+        if (total > 0) onProgress(Math.round((e.loaded / total) * 100));
       },
     });
     return response.data;
