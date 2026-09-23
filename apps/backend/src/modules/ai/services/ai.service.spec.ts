@@ -94,6 +94,31 @@ describe('AiService — retry / failover (H-1)', () => {
     restore();
   });
 
+  it('backs off before the same-model 429 retry when no fallback is configured (I-1)', async () => {
+    jest.useFakeTimers();
+    // ',' parses to zero fallback models — a single-model service
+    const service = makeService({ GLM_FALLBACK_MODELS: ',' });
+    const callTimes: number[] = [];
+    let calls = 0;
+    const impl = async () => {
+      callTimes.push(Date.now());
+      calls += 1;
+      return calls === 1 ? errorResponse(429) : jsonResponse();
+    };
+    jest.spyOn(global, 'fetch').mockImplementation(impl as typeof fetch);
+
+    const pending = service.sendMessage('hello');
+    // drain first attempt, then the backoff window (base 6s ± jitter), then settle
+    await jest.advanceTimersByTimeAsync(50);
+    await jest.advanceTimersByTimeAsync(10_000);
+
+    await expect(pending).resolves.toHaveProperty('text', 'ok');
+    // exactly 2 attempts, the second delayed by the jittered backoff (4.2–7.8s)
+    expect(callTimes).toHaveLength(2);
+    expect(callTimes[1] - callTimes[0]).toBeGreaterThanOrEqual(4_200);
+    jest.restoreAllMocks();
+  });
+
   it('retries the same model once on 5xx, then fails over', async () => {
     jest.useFakeTimers();
     const service = makeService();
