@@ -276,13 +276,22 @@ Return JSON only.`;
 // `issues` are returned BILINGUAL (German + English) so the validation card can
 // render in whichever UI locale the user has selected, regardless of when the
 // document was processed. Each issue is one short, concrete sentence per language.
-export const CONFIDENCE_ASSESSMENT_PROMPT = (extraction: unknown, text: string) => `Assess the confidence of this extraction.
+export const CONFIDENCE_ASSESSMENT_PROMPT = (extraction: unknown, text: string) => `Assess the confidence of this extraction against the document text.
 
 Extracted data:
 ${JSON.stringify(extraction, null, 2)}
 
-Original text (first 1000 chars):
-${text.substring(0, 1000)}
+Document text:
+${text.substring(0, 4000)}
+
+Rules:
+- Score each field ONLY on evidence in the document text: for every field scored
+  above 0.5 you must be able to point at the exact span in the text the value
+  came from. If you cannot find that span, score the field 0.4 or lower and add
+  it to issues.
+- A value may be written differently than extracted (e.g. "Mar 06 2012" vs
+  "2012-03-06", "$7,115.53" vs 7115.53) — that still counts as evidence.
+- overall_confidence must not exceed the LOWEST field_confidence.
 
 Return JSON with:
 - overall_confidence: 0-1
