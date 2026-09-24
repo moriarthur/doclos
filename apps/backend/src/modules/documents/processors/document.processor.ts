@@ -14,6 +14,10 @@ import { S3Service } from '../../storage/services/s3.service';
 import { OcrService } from '../../ocr/services/ocr.service';
 import { DocumentClassifierService } from '../../ai/services/document-classifier.service';
 import { StructuredExtractionService, sanitizeMetadata } from '../../ai/services/structured-extraction.service';
+import {
+  applySourceVerification,
+  verifyExtractionAgainstSource,
+} from '../../ai/services/source-verification';
 
 // Part 3: AI Pipeline - Document processing worker
 // Part 8: Infrastructure & Deployment - Queue system with BullMQ
@@ -349,6 +353,22 @@ export class DocumentProcessor {
 
       const { n, confidence, cost } = await this.extractNormalizedCommercial(extractedText, type);
 
+      // S4 (audit wave 5): deterministic source-verification guard. The
+      // confidence assessor is unreliable on scanned documents (it scored a
+      // hallucinated invoice_number 1.0 in the wave-4 A/B), so every extracted
+      // value is mechanically checked against the OCR text it came from;
+      // unverified fields get their confidence capped here — the assessor can
+      // no longer raise them — and the overall score is clamped below the
+      // auto-accept threshold until everything verifies.
+      const verification = verifyExtractionAgainstSource(type, n, extractedText);
+      applySourceVerification(confidence, verification);
+      const unverifiedCount = Object.values(verification.verified).filter((v) => !v).length;
+      if (unverifiedCount > 0) {
+        this.logger.warn(
+          `Source verification: ${unverifiedCount} field(s) not found in document text — confidence capped, needs validation`,
+        );
+      }
+
       this.logger.log(
         `Extraction complete - Confidence: ${(confidence.overall * 100).toFixed(1)}% (cost: $${cost.toFixed(4)})`,
       );
@@ -631,6 +651,15 @@ export class DocumentProcessor {
       const n = this.structuredExtractionService.normalizeContract(
         extraction,
       ) as unknown as Record<string, unknown>;
+
+      // S4: same source-verification guard as the commercial path (see
+      // extractCommercialDocument).
+      const verification = verifyExtractionAgainstSource(
+        DocumentType.CONTRACT,
+        n,
+        extractedText,
+      );
+      applySourceVerification(confidence, verification);
 
       this.logger.log(
         `Extraction complete - Confidence: ${(confidence.overall * 100).toFixed(1)}% (cost: $${cost.toFixed(4)})`,
