@@ -204,14 +204,19 @@ function extractFields(doc) {
 
 function report(opts) {
   const truth = JSON.parse(FS.readFileSync(GROUND_TRUTH_PATH, 'utf8'));
+  // A run is named by its label under results/, or given as a direct path.
+  const resolveRunDir = (v) => {
+    if (!v) return null;
+    const underResults = PATH.join(WORK_DIR, 'results', v);
+    return FS.existsSync(underResults) ? underResults : PATH.resolve(v);
+  };
   const loadRun = (dir) => {
-    const p = dir ? PATH.resolve(dir) : null;
-    const file = p && FS.existsSync(PATH.join(p, 'results.json')) ? PATH.join(p, 'results.json') : null;
+    const file = dir && FS.existsSync(PATH.join(dir, 'results.json')) ? PATH.join(dir, 'results.json') : null;
     return file ? JSON.parse(FS.readFileSync(file, 'utf8')) : null;
   };
-  const current = loadRun(opts.current);
-  must(current, 'no current results (pass --current <dir> or run first)');
-  const baseline = opts.baseline ? loadRun(opts.baseline) : null;
+  const current = loadRun(resolveRunDir(opts.current));
+  must(current, 'no current results — pass --current <label-or-dir> (run first)');
+  const baseline = opts.baseline ? loadRun(resolveRunDir(opts.baseline)) : null;
 
   const FIELDS = Object.keys(truth.docs[0].fields);
   const scoreRun = (run) => {
