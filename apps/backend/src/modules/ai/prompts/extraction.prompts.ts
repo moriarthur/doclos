@@ -285,13 +285,19 @@ Document text:
 ${text.substring(0, 4000)}
 
 Rules:
-- Score each field ONLY on evidence in the document text: for every field scored
-  above 0.5 you must be able to point at the exact span in the text the value
-  came from. If you cannot find that span, score the field 0.4 or lower and add
-  it to issues.
-- A value may be written differently than extracted (e.g. "Mar 06 2012" vs
-  "2012-03-06", "$7,115.53" vs 7115.53) — that still counts as evidence.
-- overall_confidence must not exceed the LOWEST field_confidence.
+- Score each PRESENT (non-null) field ONLY on evidence in the document text: for
+  every field scored above 0.5 you must be able to point at the span in the text
+  the value came from. If a value appears nowhere in the text, or differs from
+  what the text says, score that field 0.4 or lower and add it to issues.
+- Equivalent spellings count as evidence: dates ("Mar 06 2012" = "2012-03-06"),
+  amounts ("$7,115.53" = 7115.53, "1.234,56" = 1234.56), currency ("$" = "USD",
+  "€" = "EUR").
+- A null field means the value was not found in the document. That is a normal
+  result, not a defect: score null fields 1.0 (omit them from issues) unless the
+  document clearly SHOWS such a value and the extraction missed it.
+- overall_confidence: at most 0.6 when a core field (the document number, the
+  total, or the date) lacks evidence; otherwise a holistic score of how
+  faithfully the extraction reflects the text.
 
 Return JSON with:
 - overall_confidence: 0-1
