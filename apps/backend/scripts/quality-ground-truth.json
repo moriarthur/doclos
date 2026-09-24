@@ -1,0 +1,395 @@
+{
+  "how": "auto-labeled 2026-09-24 from embedded PDF text; invoice_number=# line, supplier_name=next line, invoice_date=first Mon DD YYYY, amount_total=trailing totals run before Subtotal: (count-verified), others null/USD",
+  "docs": [
+    {
+      "source": "invoice_Aaron Bergman_36258.pdf",
+      "fields": {
+        "invoice_number": "36258",
+        "invoice_date": "2012-03-06",
+        "due_date": null,
+        "amount_total": 50.1,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Aimee Bixby_39795.pdf",
+      "fields": {
+        "invoice_number": "39795",
+        "invoice_date": "2012-03-04",
+        "due_date": null,
+        "amount_total": 39.15,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Alejandro Savely_20583.pdf",
+      "fields": {
+        "invoice_number": "20583",
+        "invoice_date": "2012-11-08",
+        "due_date": null,
+        "amount_total": 7115.53,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Andrew Allen_27673.pdf",
+      "fields": {
+        "invoice_number": "27673",
+        "invoice_date": "2012-06-23",
+        "due_date": null,
+        "amount_total": 4773.33,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Anna Andreadi_35317.pdf",
+      "fields": {
+        "invoice_number": "35317",
+        "invoice_date": "2012-06-21",
+        "due_date": null,
+        "amount_total": 510.17,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Anthony Jacobs_37592.pdf",
+      "fields": {
+        "invoice_number": "37592",
+        "invoice_date": "2012-12-27",
+        "due_date": null,
+        "amount_total": 10554.79,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Arthur Prichep_32439.pdf",
+      "fields": {
+        "invoice_number": "32439",
+        "invoice_date": "2012-09-28",
+        "due_date": null,
+        "amount_total": 36.17,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Barry Pond_40736.pdf",
+      "fields": {
+        "invoice_number": null,
+        "invoice_date": "2023-06-05",
+        "due_date": null,
+        "amount_total": 0,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": null,
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Brendan Dodson_7694.pdf",
+      "fields": {
+        "invoice_number": "7694",
+        "invoice_date": "2012-06-12",
+        "due_date": null,
+        "amount_total": 1970.23,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Carol Adams_27720.pdf",
+      "fields": {
+        "invoice_number": "27720",
+        "invoice_date": "2012-02-10",
+        "due_date": null,
+        "amount_total": 77398.84,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Corey Catlett_6832.pdf",
+      "fields": {
+        "invoice_number": "6832",
+        "invoice_date": "2012-11-25",
+        "due_date": null,
+        "amount_total": 3476.6,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Dave Brooks_21194.pdf",
+      "fields": {
+        "invoice_number": "21194",
+        "invoice_date": "2012-11-06",
+        "due_date": null,
+        "amount_total": 2731.18,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Denny Joy_18696.pdf",
+      "fields": {
+        "invoice_number": "18696",
+        "invoice_date": "2012-05-03",
+        "due_date": null,
+        "amount_total": 3338.09,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Emily Ducich_6440.pdf",
+      "fields": {
+        "invoice_number": "6440",
+        "invoice_date": "2012-10-02",
+        "due_date": null,
+        "amount_total": 8757.78,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Fred Wasserman_27932.pdf",
+      "fields": {
+        "invoice_number": "27932",
+        "invoice_date": "2012-10-14",
+        "due_date": null,
+        "amount_total": 2956.97,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Henry MacAllister_6659.pdf",
+      "fields": {
+        "invoice_number": "6659",
+        "invoice_date": "2012-09-08",
+        "due_date": null,
+        "amount_total": 2300.4,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Jessica Myrick_21672.pdf",
+      "fields": {
+        "invoice_number": "21672",
+        "invoice_date": "2012-06-09",
+        "due_date": null,
+        "amount_total": 5464.37,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Joni Wasserman_23832.pdf",
+      "fields": {
+        "invoice_number": "23832",
+        "invoice_date": "2012-11-21",
+        "due_date": null,
+        "amount_total": 752.18,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Larry Blacks_4449.pdf",
+      "fields": {
+        "invoice_number": "4449",
+        "invoice_date": "2012-09-20",
+        "due_date": null,
+        "amount_total": 2820.29,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Marc Harrigan_18843.pdf",
+      "fields": {
+        "invoice_number": "18843",
+        "invoice_date": "2012-01-22",
+        "due_date": null,
+        "amount_total": 3403.27,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Michael Nguyen_27369.pdf",
+      "fields": {
+        "invoice_number": "27369",
+        "invoice_date": "2012-08-31",
+        "due_date": null,
+        "amount_total": 10197.71,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Muhammed MacIntyre_50545.pdf",
+      "fields": {
+        "invoice_number": "50545",
+        "invoice_date": "2012-02-14",
+        "due_date": null,
+        "amount_total": 677.42,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Pamela Stobb_19569.pdf",
+      "fields": {
+        "invoice_number": "19569",
+        "invoice_date": "2012-07-15",
+        "due_date": null,
+        "amount_total": 1146.52,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Peter Fuller_29256.pdf",
+      "fields": {
+        "invoice_number": "29256",
+        "invoice_date": "2012-09-24",
+        "due_date": null,
+        "amount_total": 20195.6,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Rick Reed_22482.pdf",
+      "fields": {
+        "invoice_number": "22482",
+        "invoice_date": "2012-09-10",
+        "due_date": null,
+        "amount_total": 1425.19,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Russell D'Ascenzo_7833.pdf",
+      "fields": {
+        "invoice_number": "7833",
+        "invoice_date": "2012-11-24",
+        "due_date": null,
+        "amount_total": 4853.53,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Sean O'Donnell_10372.pdf",
+      "fields": {
+        "invoice_number": "10372",
+        "invoice_date": "2012-05-17",
+        "due_date": null,
+        "amount_total": 6438.4,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Sue Ann Reed_10365.pdf",
+      "fields": {
+        "invoice_number": "10365",
+        "invoice_date": "2012-03-30",
+        "due_date": null,
+        "amount_total": 16103.52,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Tiffany House_28513.pdf",
+      "fields": {
+        "invoice_number": "28513",
+        "invoice_date": "2012-08-18",
+        "due_date": null,
+        "amount_total": 1796.18,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    },
+    {
+      "source": "invoice_Trudy Brown_17042.pdf",
+      "fields": {
+        "invoice_number": "17042",
+        "invoice_date": "2012-11-23",
+        "due_date": null,
+        "amount_total": 1146.48,
+        "vat_amount": null,
+        "currency": "USD",
+        "supplier_name": "SuperStore",
+        "supplier_address": null
+      }
+    }
+  ]
+}

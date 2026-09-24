@@ -4,6 +4,17 @@ Full-project audit: backend, frontend, infra. Read-only review; nothing here was
 
 ## Status — living checklist (updated 2026-09-24 by main agent)
 
+**Wave `feat/s4-quality` — S4 parsing quality (2026-09-24, branch off `16e519a`):**
+T-1 quality harness ✅ (`e985488`) — T-2 ground truth 30 docs ✅ (`59603ee`) —
+T-3 baseline ✅ — T-4 deterministic source-verification guard ✅ (`c25d673`,
+enum-key fix `7b58346`) — T-5 evidence-based assessor prompt ✅ (`65dd4d4`,
+rev 2 `18ac841` after the rev-1 null/currency over-penalization, see
+QUALITY.md) — T-6 re-measured ✅: **auto-parse precision 94% → 98% (text arm),
+false-parsed scan docs eliminated (0/15)**; recall cost 28 → 11/30 text docs
+auto-accepted — assessor calibration is the documented next-wave lever.
+All numbers and scope limits in QUALITY.md. Tests 105/105, tsc green, backend
+boots. Awaiting user push confirmation (overnight rule: no merge/push).
+
 **Wave `fix/loose-ends-u5-u7-ab` — loose ends + thinking A/B (2026-09-24, branch off `99373e9`):**
 U-7 ✅ auto-login after register (`0157fe6`) — U-5 ✅ real upload progress via
 axios `onUploadProgress`, simulated bar removed (`e8105e9`) — H-3 caveat ✅

@@ -276,13 +276,28 @@ Return JSON only.`;
 // `issues` are returned BILINGUAL (German + English) so the validation card can
 // render in whichever UI locale the user has selected, regardless of when the
 // document was processed. Each issue is one short, concrete sentence per language.
-export const CONFIDENCE_ASSESSMENT_PROMPT = (extraction: unknown, text: string) => `Assess the confidence of this extraction.
+export const CONFIDENCE_ASSESSMENT_PROMPT = (extraction: unknown, text: string) => `Assess the confidence of this extraction against the document text.
 
 Extracted data:
 ${JSON.stringify(extraction, null, 2)}
 
-Original text (first 1000 chars):
-${text.substring(0, 1000)}
+Document text:
+${text.substring(0, 4000)}
+
+Rules:
+- Score each PRESENT (non-null) field ONLY on evidence in the document text: for
+  every field scored above 0.5 you must be able to point at the span in the text
+  the value came from. If a value appears nowhere in the text, or differs from
+  what the text says, score that field 0.4 or lower and add it to issues.
+- Equivalent spellings count as evidence: dates ("Mar 06 2012" = "2012-03-06"),
+  amounts ("$7,115.53" = 7115.53, "1.234,56" = 1234.56), currency ("$" = "USD",
+  "€" = "EUR").
+- A null field means the value was not found in the document. That is a normal
+  result, not a defect: score null fields 1.0 (omit them from issues) unless the
+  document clearly SHOWS such a value and the extraction missed it.
+- overall_confidence: at most 0.6 when a core field (the document number, the
+  total, or the date) lacks evidence; otherwise a holistic score of how
+  faithfully the extraction reflects the text.
 
 Return JSON with:
 - overall_confidence: 0-1
