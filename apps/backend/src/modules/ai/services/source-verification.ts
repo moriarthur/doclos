@@ -1,3 +1,4 @@
+import { DocumentType } from '../../documents/entities/document.entity';
 import type { LocalizedIssue } from '../../documents/entities/document.entity';
 import { parseGermanNumber } from './structured-extraction.service';
 
@@ -107,9 +108,11 @@ export function verifyDateInSource(isoDate: string, text: string): boolean {
   return false;
 }
 
-/** Field keys the guard understands, mapped per document type. */
+/** Guarded fields per document type — keyed by the DocumentType VALUE
+ * ('invoice', …), which is what call sites pass (the processor receives the
+ * enum value, not its name). */
 const GUARDED_FIELDS: Record<string, Array<{ field: string; kind: 'string' | 'date' | 'amount' }>> = {
-  INVOICE: [
+  [DocumentType.INVOICE]: [
     { field: 'invoice_number', kind: 'string' },
     { field: 'invoice_date', kind: 'date' },
     { field: 'due_date', kind: 'date' },
@@ -118,7 +121,7 @@ const GUARDED_FIELDS: Record<string, Array<{ field: string; kind: 'string' | 'da
     { field: 'supplier_name', kind: 'string' },
     { field: 'supplier_address', kind: 'string' },
   ],
-  PURCHASE_ORDER: [
+  [DocumentType.PURCHASE_ORDER]: [
     { field: 'po_number', kind: 'string' },
     { field: 'order_date', kind: 'date' },
     { field: 'expected_delivery_date', kind: 'date' },
@@ -126,7 +129,7 @@ const GUARDED_FIELDS: Record<string, Array<{ field: string; kind: 'string' | 'da
     { field: 'supplier_name', kind: 'string' },
     { field: 'supplier_address', kind: 'string' },
   ],
-  OFFER: [
+  [DocumentType.OFFER]: [
     { field: 'offer_number', kind: 'string' },
     { field: 'offer_date', kind: 'date' },
     { field: 'validity_date', kind: 'date' },
@@ -134,12 +137,12 @@ const GUARDED_FIELDS: Record<string, Array<{ field: string; kind: 'string' | 'da
     { field: 'supplier_name', kind: 'string' },
     { field: 'supplier_address', kind: 'string' },
   ],
-  DELIVERY_NOTE: [
+  [DocumentType.DELIVERY_NOTE]: [
     { field: 'delivery_note_number', kind: 'string' },
     { field: 'delivery_date', kind: 'date' },
     { field: 'supplier_name', kind: 'string' },
   ],
-  CONTRACT: [
+  [DocumentType.CONTRACT]: [
     { field: 'seller_name', kind: 'string' },
     { field: 'buyer_name', kind: 'string' },
     { field: 'effective_date', kind: 'date' },

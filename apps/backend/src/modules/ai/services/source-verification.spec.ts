@@ -7,6 +7,7 @@ import {
   verifyExtractionAgainstSource,
   verifyStringInSource,
 } from './source-verification';
+import { DocumentType } from '../../documents/entities/document.entity';
 import type { LocalizedIssue } from '../../documents/entities/document.entity';
 
 // S4 (audit wave 5): the guard's job is to catch what the assessor missed.
@@ -116,16 +117,28 @@ describe('verifyExtractionAgainstSource', () => {
   };
 
   it('passes a faithful extraction with no cap and no issues', () => {
-    const r = verifyExtractionAgainstSource('INVOICE', good, TEXT_36258);
+    const r = verifyExtractionAgainstSource(DocumentType.INVOICE, good, TEXT_36258);
     expect(Object.values(r.verified).every(Boolean)).toBe(true);
     expect(r.overallCap).toBeNull();
     expect(r.issues).toEqual([]);
     expect(r.cappedConfidences).toEqual({});
   });
 
+  it("guards by the enum VALUE — 'invoice' must never silently match nothing", () => {
+    // Regression: the map was once keyed by enum NAMES ('INVOICE') while call
+    // sites pass the enum VALUE ('invoice') — the guard silently no-op'd.
+    const r = verifyExtractionAgainstSource(
+      'invoice' as DocumentType,
+      { ...good, invoice_number: 'Var 08 2012' },
+      TEXT_36258,
+    );
+    expect(r.verified['invoice_number']).toBe(false);
+    expect(r.cappedConfidences['invoice_number']).toBeDefined();
+  });
+
   it('flags a hallucinated invoice_number (the 01.jpg failure mode)', () => {
     const r = verifyExtractionAgainstSource(
-      'INVOICE',
+      DocumentType.INVOICE,
       { ...good, invoice_number: 'Var 08 2012' },
       TEXT_36258,
     );
@@ -138,7 +151,11 @@ describe('verifyExtractionAgainstSource', () => {
   });
 
   it('skips null fields (missing values are validateByType’s job)', () => {
-    const r = verifyExtractionAgainstSource('INVOICE', { ...good, due_date: null }, TEXT_36258);
+    const r = verifyExtractionAgainstSource(
+      DocumentType.INVOICE,
+      { ...good, due_date: null },
+      TEXT_36258,
+    );
     expect(r.verified['due_date']).toBeUndefined();
   });
 
@@ -157,7 +174,7 @@ describe('applySourceVerification', () => {
       issues: [{ severity: 'review', message: { de: 'x', en: 'x' } }] as LocalizedIssue[],
     };
     const verification = verifyExtractionAgainstSource(
-      'INVOICE',
+      DocumentType.INVOICE,
       { invoice_number: 'Var 08 2012', amount_total: 50.1, supplier_name: 'SuperStore', invoice_date: '2012-03-06' },
       TEXT_36258,
     );
@@ -172,7 +189,7 @@ describe('applySourceVerification', () => {
   it('leaves a fully-verified extraction alone', () => {
     const confidence = { overall: 0.92, fields: { invoice_number: 0.95 }, issues: [] };
     const verification = verifyExtractionAgainstSource(
-      'INVOICE',
+      DocumentType.INVOICE,
       { invoice_number: '36258', amount_total: 50.1 },
       TEXT_36258,
     );
