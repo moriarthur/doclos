@@ -104,7 +104,7 @@
     "dropActive": "Datei loslassen",
     "orClick": "oder klicken zum Auswählen",
     "browse": "Durchsuchen",
-    "acceptedFormats": "Akzeptierte Formate: PDF, PNG, JPG, TIFF (max. 10 MB)",
+    "acceptedFormats": "Akzeptierte Formate: PDF, PNG, JPG, TIFF, WEBP (max. 20 MB)",
     "selectedFiles": "Ausgewählte Dateien ({count})",
     "uploadAll": "Alle hochladen",
     "uploadOne": "Hochladen",
@@ -116,7 +116,7 @@
     "toOverview": "Zur Übersicht",
     "fileErrors": "Dateifehler",
     "uploadFailed": "Upload fehlgeschlagen",
-    "fileTooLarge": "Datei ist zu groß (max. 10 MB)",
+    "fileTooLarge": "Datei ist zu groß (max. 20 MB)",
     "unsupportedType": "Nicht unterstützter Dateityp"
   },
   "Archive": {

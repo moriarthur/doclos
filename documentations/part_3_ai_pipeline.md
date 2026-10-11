@@ -146,7 +146,9 @@ Processing time:
 
 ## Case 2 — Scanned PDF
 
-> **STATUS (as built): NOT IMPLEMENTED.** "PDF to image conversion not yet implemented" — scanned/mixed PDFs currently error out instead of being OCR'd.
+> **STATUS (as built): IMPLEMENTED.** Scanned and mixed PDFs are rendered to
+> page images with `pdf-to-img`, preprocessed with Sharp, and OCR'd with the
+> long-lived Tesseract.js worker.
 
 Document contains images only.
 
@@ -200,7 +202,9 @@ Most invoices in Germany contain both languages.
 
 # IMAGE PREPROCESSING
 
-> **STATUS (as built): aspirational.** The OpenCV pipeline below is not implemented; OCR runs via Tesseract.js directly.
+> **STATUS (as built): PARTIAL.** Sharp provides grayscale conversion,
+> normalization, thresholding, denoising and sharpening. OpenCV-specific
+> adaptive thresholding and deskewing are not implemented.
 
 OCR accuracy depends heavily on preprocessing.
 
@@ -228,7 +232,10 @@ Image
 
 # HANDWRITTEN TEXT STRATEGY
 
-> **STATUS (as built): NOT IMPLEMENTED / aspirational.** Only Tesseract.js OCR (deu+eng) is wired up; there is no cloud-OCR fallback (Google Vision / AWS Textract) and no OpenCV preprocessing. Scanned/handwritten documents fall through to the not-yet-implemented PDF→image path.
+> **STATUS (as built): PARTIAL / OUT OF SCOPE FOR MVP.** Tesseract.js
+> (deu+eng) is wired up for images and scanned/mixed PDFs, with no cloud-OCR
+> fallback (Google Vision / AWS Textract). Handwritten text is not a quality
+> target for this MVP and may require a stronger OCR service later.
 
 Handwritten text is difficult for traditional OCR.
 
@@ -318,11 +325,14 @@ Example output:
 
 After classification the document text is sent to an LLM for structured parsing.
 
-> **STATUS (as built):** the production model is **GLM-4.7-Flash** (Zhipu AI / Z.ai, `open.bigmodel.cn`) — not Claude or OpenAI GPT. The original "Primary: Claude / Fallback: OpenAI" wording below was speculative and is superseded by `apps/backend/src/modules/ai/`.
+> **STATUS (as built):** the production model is **GLM-4.5-Flash** by default
+> (Zhipu AI / Z.ai, `open.bigmodel.cn`), with a configurable fallback. It is
+> not Claude or OpenAI GPT; the original wording below is superseded by
+> `apps/backend/src/modules/ai/`.
 
 Primary model:
 
-GLM-4.7-Flash (Z.ai)
+GLM-4.5-Flash (Z.ai) by default; fallback is configured via environment
 
 Reasons:
 
@@ -506,4 +516,3 @@ END OF PART 3
 Next file:
 
 PART 4 — API SPECIFICATION
-

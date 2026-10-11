@@ -20,9 +20,6 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api/v1');
 
-  // P2-7 (audit): baseline security headers for the API
-  app.use(helmet());
-
   // CORS — production allows only the configured frontend origin; dev also
   // allows localhost variants.
   const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
