@@ -55,8 +55,6 @@ doclos/
 │   │   │   ├── main.ts ✅
 │   │   │   └── app.module.ts ✅
 │   │   └── package.json ✅
-├── packages/
-│   └── shared/                # Reserved for shared types
 ├── docker/
 │   └── docker-compose.yml     # PostgreSQL + Redis ✅
 ├── documentations/            # Parts 1-9 (architecture) ✅
@@ -238,13 +236,14 @@ When working on Doclos:
 3. Break complex tasks into subtasks
 4. Track progress using task system
 5. Reference documentation in `documentations/` folder (Parts 1-9)
-6. **Audit-first discipline** (since 2026-09-22): `AUDIT.md` is the living checklist.
-   Non-trivial changes go on a branch; **one finding = one commit** referencing its ID
+6. **Audit-first discipline** (since 2026-09-22): the audit checklist lives in
+   `docs/archive/AUDIT.md` (historical — the 2026-09 audit is closed). Non-trivial
+   changes go on a branch; **one finding = one commit** referencing its ID
    (`P0-1`, `H-3`, `U-4`, …); `pnpm exec tsc --noEmit` green after each commit; backend
    must still boot. **codex is the auditor** — before merging, the user runs a codex
    review over the branch diff and all blockers are closed pre-merge; then merge
-   `--no-ff` and push. New findings discovered along the way get appended to
-   `AUDIT.md` with the next free ID instead of being fixed drive-by.
+   `--no-ff` and push. New findings get a fresh checklist document instead of
+   being fixed drive-by.
 
 ---
 
