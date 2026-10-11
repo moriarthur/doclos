@@ -13,6 +13,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { OcrModule } from './modules/ocr/ocr.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ExportModule } from './modules/export/export.module';
+import { HealthModule } from './modules/health/health.module';
 import { dataSourceOptions } from './database/data-source';
 
 // Part 1: System Architecture - Root application module
@@ -80,6 +81,7 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
     SearchModule,
     JobsModule,
     ExportModule,
+    HealthModule,
   ],
   controllers: [],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
