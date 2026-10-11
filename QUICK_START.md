@@ -30,9 +30,11 @@ cp .env.example .env
 ### 4. Initialize database
 
 ```bash
-# Create schema from entities (dev only), then apply migrations
+# Apply all migrations — creates the complete schema from scratch.
+# A destructive reset is never part of setup (db:reset:dev exists for
+# local development only).
 cd apps/backend
-pnpm db:reset && pnpm db:migrate
+pnpm db:migrate
 ```
 
 ### 5. Start development
@@ -40,7 +42,7 @@ pnpm db:reset && pnpm db:migrate
 ```bash
 # Start backend
 cd apps/backend
-npm run start:dev
+pnpm run start:dev
 ```
 
 The API will be available at `http://localhost:3001/api/v1`
@@ -57,10 +59,20 @@ Start infrastructure:
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-Start the backend from `apps/backend` with the local database explicitly
-selected. This is useful when `.env` normally points at Supabase:
+Seed the demo account and the synthetic sample invoice (idempotent — safe to
+re-run; uses `DEMO_EMAIL` / `DEMO_PASSWORD` from the environment or `.env`):
 
 ```bash
+pnpm demo:seed
+# ✅ demo user created: demo@doclos.dev
+# ✅ synthetic sample invoice written: apps/backend/seeds/sample-invoice.pdf
+```
+
+Build, then start the backend from `apps/backend` with the local database
+explicitly selected. This is useful when `.env` normally points at Supabase:
+
+```bash
+pnpm build
 cd apps/backend
 DATABASE_URL='postgresql://doclos:doclos_dev_password@localhost:5432/doclos' \
 REDIS_URL='redis://localhost:6379' \
@@ -75,10 +87,16 @@ cd apps/frontend
 pnpm start
 ```
 
-Open `http://localhost:3000/login` and demonstrate:
+Sanity checks: `http://localhost:3001/healthz` answers `{"status":"ok"}` and
+the frontend loads on `http://localhost:3000` without any `localhost:3001`
+references in the browser console (the frontend proxies `/api/v1/*` to
+`BACKEND_ORIGIN`).
 
-1. Register or log in.
-2. Upload `1000+ PDF_Invoice_Folder/invoice_Sample Company A_8884.pdf`.
+Demonstrate (`demo@doclos.dev` / your `DEMO_PASSWORD`):
+
+1. Log in with the demo account.
+2. Upload `apps/backend/seeds/sample-invoice.pdf` — a fully synthetic
+   invoice (fictional "Beispielbau GmbH" data, no PII).
 3. Wait for processing to finish.
 4. Open the result, review the flagged consistency issue, and confirm the data.
 5. Download the Excel export.
@@ -87,7 +105,45 @@ The expected demo path is `processing` → `needs_validation` → `validated`.
 The review step is intentional: Doclos exposes uncertain or inconsistent AI
 results instead of silently accepting them.
 
+Between demo runs, wipe everything the demo account created (other accounts
+are never touched):
+
+```bash
+pnpm demo:reset   # then re-run pnpm demo:seed if you want the sample file rewritten
+```
+
+## Demo preview deployment
+
+Production-style run of a clean clone (what the CI builds and what a demo
+host executes):
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build
+pnpm db:migrate                          # migrations only — no destructive reset
+cd apps/backend && pnpm start:prod       # API on :3001, GET /healthz for probes
+cd apps/frontend && pnpm start           # UI on :3000
+```
+
+Environment contract (see `.env.example` for the full set):
+
+| Variable | Who reads it | Purpose |
+|----------|--------------|---------|
+| `BACKEND_ORIGIN` | frontend server | target of the `/api/v1/*` rewrite — set to the backend's public URL |
+| `NEXT_PUBLIC_API_URL` | browser bundle | leave **unset** for same-origin deployments; set only for a separate API domain |
+| `FRONTEND_URL` | backend CORS | the one browser origin allowed in production |
+| `DEMO_EMAIL` / `DEMO_PASSWORD` | `pnpm demo:seed` | demo account credentials (12+ char password) |
+
+Demo-safety built in: uploads and reprocesses are rate-limited to 10
+requests/min/IP (auth: 10/min, everything else: 120/min), uploads are capped
+at 20 MB with magic-byte sniffing, and `GLM_THINKING_EXTRACT` defaults to
+`disabled` so extraction stays fast and deterministic.
+
 ## API Endpoints
+
+### Health
+
+- `GET /healthz` - Liveness probe (public, no prefix, no auth)
 
 ### Authentication
 
