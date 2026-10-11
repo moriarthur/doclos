@@ -13,6 +13,7 @@
 
 import { In, DataSource } from 'typeorm';
 import { DeleteObjectsCommand, S3Client } from '@aws-sdk/client-s3';
+import Bull from 'bull';
 import { User } from '../../modules/auth/entities/user.entity';
 import { Document } from '../../modules/documents/entities/document.entity';
 import { Invoice } from '../../modules/documents/entities/invoice.entity';
@@ -49,6 +50,50 @@ async function deleteStorageObjects(keys: string[]): Promise<void> {
       '⚠️  storage object cleanup failed (database rows were deleted):',
       err instanceof Error ? err.message : err,
     );
+  }
+}
+
+/**
+ * Remove Bull jobs that belong to the demo user from the `documents` queue
+ * (any state) — otherwise a reset during active processing leaves zombie
+ * jobs whose document rows are already gone. Best-effort: a Redis outage
+ * must not hide that the database reset itself succeeded.
+ */
+async function purgeQueueJobs(userId: string): Promise<number> {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    console.warn('⚠️  REDIS_URL not set — skipping Bull queue cleanup');
+    return 0;
+  }
+  // One-shot script: only non-blocking commands (getJobs/remove) are used,
+  // so no worker-specific ioredis tuning is required.
+  const queue = new Bull('documents', redisUrl);
+  try {
+    const jobs = await queue.getJobs(
+      ['waiting', 'active', 'completed', 'failed', 'delayed', 'paused'],
+      0,
+      1000,
+      true,
+    );
+    const mine = jobs.filter((job) => (job.data as { userId?: string })?.userId === userId);
+    let removed = 0;
+    for (const job of mine) {
+      try {
+        await job.remove();
+        removed += 1;
+      } catch {
+        // Job already completed/removed between listing and removal.
+      }
+    }
+    return removed;
+  } catch (err) {
+    console.warn(
+      '⚠️  Bull queue cleanup failed (database rows were deleted):',
+      err instanceof Error ? err.message : err,
+    );
+    return 0;
+  } finally {
+    await queue.close().catch(() => undefined);
   }
 }
 
@@ -104,6 +149,9 @@ async function main() {
     console.log(`   documents removed: ${documents.length}`);
     console.log(`   invoices removed:  ${invoiceIds.length}`);
     console.log('   (account kept — run `pnpm db:seed` to re-sync it / rewrite the sample)');
+
+    const queuedRemoved = await purgeQueueJobs(user.id);
+    if (queuedRemoved > 0) console.log(`   queue jobs removed: ${queuedRemoved}`);
 
     if (s3Keys.length) await deleteStorageObjects(s3Keys);
   } finally {
