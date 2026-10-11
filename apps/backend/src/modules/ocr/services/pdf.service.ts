@@ -22,7 +22,12 @@ export class PdfService {
     try {
       this.logger.log('Extracting text from PDF');
 
-      const data = await pdfParse(buffer);
+      // pdf.js 1.x (bundled in pdf-parse) unwraps `bytes.buffer` without
+      // honoring byteOffset — Node pool-allocates Buffers < 4 KiB at a
+      // non-zero offset, so a small PDF parsed as a plain Buffer is
+      // misaligned and fails with "bad XRef entry". Copy into a standalone
+      // view first (real uploads from multer can be pool slices too).
+      const data = await pdfParse(new Uint8Array(buffer) as unknown as Buffer);
 
       // Check if PDF has actual text content
       const hasText = Boolean(data.text && data.text.trim().length > 50);
@@ -91,7 +96,8 @@ export class PdfService {
     modificationDate?: Date;
   }> {
     try {
-      const data = await pdfParse(buffer);
+      // Same pdf.js byteOffset aliasing fix as in extractText.
+      const data = await pdfParse(new Uint8Array(buffer) as unknown as Buffer);
 
       return {
         pageCount: data.numpages,
