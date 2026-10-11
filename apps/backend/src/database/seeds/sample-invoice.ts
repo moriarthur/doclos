@@ -78,6 +78,7 @@ function pdfEscape(text: string): string {
     .replace(/[–—]/g, '-')
     .replace(/[’‘]/g, "'")
     .replace(/[“”]/g, '"')
+    // eslint-disable-next-line no-control-regex -- the rule's target IS non-latin1 removal
     .replace(/[^\x00-\xFF]/g, '?');
   return safe.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }

@@ -55,7 +55,7 @@ export class OcrService {
   async processDocument(
     fileBuffer: Buffer,
     mimeType: string,
-    jobRecord?: any,
+    jobRecord?: Job,
   ): Promise<OcrResult> {
     const startTime = Date.now();
 
@@ -83,7 +83,7 @@ export class OcrService {
    * @param jobRecord - Optional job record for progress tracking
    * @returns OCR result
    */
-  private async processPdf(buffer: Buffer, startTime: number, jobRecord?: any): Promise<OcrResult> {
+  private async processPdf(buffer: Buffer, startTime: number, jobRecord?: Job): Promise<OcrResult> {
     this.logger.log('Processing PDF document');
 
     // Get PDF metadata
@@ -212,7 +212,7 @@ export class OcrService {
    * @param jobRecord - Optional job record for progress tracking (not used for images)
    * @returns OCR result
    */
-  private async processImage(buffer: Buffer, startTime: number, jobRecord?: any): Promise<OcrResult> {
+  private async processImage(buffer: Buffer, startTime: number, jobRecord?: Job): Promise<OcrResult> {
     this.logger.log('Processing image document');
 
     // Preprocess image

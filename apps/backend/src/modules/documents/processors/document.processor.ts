@@ -9,7 +9,7 @@ import { Customer } from '../entities/customer.entity';
 import { Invoice } from '../entities/invoice.entity';
 import { InvoiceItem } from '../entities/invoice-item.entity';
 import { FieldExtraction } from '../entities/field-extraction.entity';
-import { Job as JobEntity, JobStatus } from '../../jobs/entities/job.entity';
+import { Job as JobEntity, JobStatus, JobType } from '../../jobs/entities/job.entity';
 import { S3Service } from '../../storage/services/s3.service';
 import { OcrService } from '../../ocr/services/ocr.service';
 import { DocumentClassifierService } from '../../ai/services/document-classifier.service';
@@ -81,7 +81,7 @@ export class DocumentProcessor {
     });
     if (!jobRecord) {
       jobRecord = this.jobsRepository.create({
-        job_type: 'process_document' as any,
+        job_type: JobType.PROCESS_DOCUMENT,
         status: JobStatus.PROCESSING,
         document_id: documentId,
       });
@@ -127,7 +127,8 @@ export class DocumentProcessor {
         const oldInvoiceId = document.invoiceId;
         // Clear the document's FK reference first (documents.invoiceId → invoices.id),
         // otherwise deleting the invoice violates the foreign-key constraint.
-        document.invoiceId = null as any;
+        // (Column is nullable in the DB; the entity types it as a plain string.)
+        (document as { invoiceId?: string | null }).invoiceId = null;
         await this.documentsRepository.save(document);
         await this.invoiceItemsRepository.delete({ invoice_id: oldInvoiceId });
         await this.invoicesRepository.delete({ id: oldInvoiceId });
@@ -441,8 +442,10 @@ export class DocumentProcessor {
         const invoice = new Invoice();
         invoice.document_id = document.id;
         invoice.invoice_number = carrier.number || '';
-        invoice.invoice_date = carrier.date ? new Date(carrier.date) : (null as any);
-        invoice.due_date = carrier.dueDate ? new Date(carrier.dueDate) : (null as any);
+        // date columns are nullable in the DB; the entity types them as Date
+        const invoiceDates = invoice as { invoice_date: Date | null; due_date: Date | null };
+        invoiceDates.invoice_date = carrier.date ? new Date(carrier.date) : null;
+        invoiceDates.due_date = carrier.dueDate ? new Date(carrier.dueDate) : null;
         invoice.amount_total = carrier.amountTotal ?? 0;
         invoice.vat_amount = carrier.vatAmount ?? 0;
         invoice.currency = carrier.currency || '';
