@@ -4,7 +4,6 @@
   "private": true,
   "description": "AI Document Automation SaaS for small businesses",
   "workspaces": [
-    "packages/*",
     "apps/*"
   ],
   "scripts": {

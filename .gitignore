@@ -68,5 +68,10 @@ test files/
 .serena/
 skills/
 
+# Local working notes / personal artifacts (never part of the repo)
+AUDIT
+LYCTRON_INTERVIEW_PREP.md
+CLAUDE.local.md
+
 # CodeGraph local index (per-machine)
 .codegraph/

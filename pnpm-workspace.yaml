@@ -1,7 +1,6 @@
 # pnpm workspace configuration
 packages:
   - 'apps/*'
-  - 'packages/*'
 
 # NOTE (pnpm 10+): these settings are read from pnpm-workspace.yaml, NOT from
 # the "pnpm" field in package.json (that field is ignored since pnpm 10).

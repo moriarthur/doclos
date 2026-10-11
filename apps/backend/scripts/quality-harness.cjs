@@ -12,7 +12,8 @@
  *   clean    — delete every document the harness created (from run manifests)
  *
  * No credentials in the repo: login comes from QUALITY_EMAIL / QUALITY_PASSWORD.
- * Corpus location: QUALITY_CORPUS_DIR (default: <repo>/1000+ PDF_Invoice_Folder).
+ * Corpus location: QUALITY_CORPUS_DIR — REQUIRED since the demo corpus moved
+ * out of the repo (it holds real names and must not ship with a release).
  * Work dir: QUALITY_WORK_DIR (default: <os tmpdir>/doclos-quality).
  *
  * Usage:

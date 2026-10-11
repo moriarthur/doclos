@@ -153,8 +153,6 @@ doclos/
 │       │   │   └── jobs/          # Background jobs
 │       │   └── database/          # Database entities
 │       └── package.json
-├── packages/
-│   └── shared/            # Shared types (future)
 ├── docker/
 │   └── docker-compose.yml
 └── turbo.json
