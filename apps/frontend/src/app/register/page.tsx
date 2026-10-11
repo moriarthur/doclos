@@ -58,7 +58,7 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterFormData) => {
     setApiError('');
     // Only send fields the API expects (exclude confirmPassword)
-    const { confirmPassword, ...apiData } = data;
+    const apiData = { email: data.email, password: data.password, name: data.name };
     registerMutation.mutate(apiData);
   };
 

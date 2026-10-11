@@ -80,15 +80,18 @@ export default function UploadPage() {
     },
   });
 
-  const validateFile = (file: File): string | null => {
-    if (file.size > MAX_FILE_SIZE) {
-      return t('fileTooLarge');
-    }
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      return t('unsupportedType');
-    }
-    return null;
-  };
+  const validateFile = useCallback(
+    (file: File): string | null => {
+      if (file.size > MAX_FILE_SIZE) {
+        return t('fileTooLarge');
+      }
+      if (!ACCEPTED_TYPES.includes(file.type)) {
+        return t('unsupportedType');
+      }
+      return null;
+    },
+    [t],
+  );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -122,7 +125,7 @@ export default function UploadPage() {
     if (validFiles.length > 0) {
       setFiles((prev) => [...prev, ...validFiles]);
     }
-  }, [t]);
+  }, [validateFile]);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {

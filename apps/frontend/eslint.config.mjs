@@ -7,7 +7,7 @@ const compat = new FlatCompat({
   baseDirectory: import.meta.dirname,
 });
 
-export default [
+const eslintConfig = [
   {
     // Vendored third-party assets (minified pdf.js worker) are not our code.
     ignores: ['node_modules/**', '.next/**', 'out/**', 'next-env.d.ts', 'public/**'],
@@ -21,3 +21,5 @@ export default [
     },
   },
 ];
+
+export default eslintConfig;
