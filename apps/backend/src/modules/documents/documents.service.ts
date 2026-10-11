@@ -646,7 +646,8 @@ export class DocumentsService {
       if (document.invoiceId) {
         const invoiceId = document.invoiceId;
         // Clear documents.invoiceId first, else deleting the invoice violates the FK.
-        document.invoiceId = null as any;
+        // (Column is nullable in the DB; the entity types it as a plain string.)
+        (document as { invoiceId?: string | null }).invoiceId = null;
         await manager.save(document);
         await manager.delete(InvoiceItem, { invoice_id: invoiceId });
         await manager.delete(Invoice, { id: invoiceId });

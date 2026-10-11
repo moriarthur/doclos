@@ -1,6 +1,14 @@
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+/** Request config augmented by the 401-refresh interceptor's bookkeeping. */
+type RetriableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
+
+// Same-origin by default: the browser calls /api/v1 on the frontend origin
+// and next.config.js rewrites it to BACKEND_ORIGIN (server-side), so a
+// deployed frontend never references localhost. Set NEXT_PUBLIC_API_URL only
+// for cross-origin deployments (separate API domain); the backend must then
+// allow that frontend origin via FRONTEND_URL.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 // Helper to read the active locale from the cookie (single-path i18n).
 function getLocale(): 'de' | 'en' {
@@ -55,21 +63,23 @@ const errorMaps = {
 } as const;
 
 // Helper to extract error message from response
-const getErrorMessage = (error: any): string => {
-  const data = error.response?.data;
+const getErrorMessage = (error: unknown): string => {
+  const data = (error as { response?: { data?: unknown } })?.response?.data;
   const map = errorMaps[getLocale()];
   if (!data) return map._fallback;
 
+  const message = (data as { message?: unknown })?.message;
+
   // Handle array of messages (validation errors)
-  if (Array.isArray(data.message)) {
-    return data.message
-      .map((msg: string) => (map as Record<string, string>)[msg] || msg)
+  if (Array.isArray(message)) {
+    return message
+      .map((msg) => (map as Record<string, string>)[String(msg)] || String(msg))
       .join(', ');
   }
 
   // Handle single message string
-  if (typeof data.message === 'string') {
-    return (map as Record<string, string>)[data.message] || data.message;
+  if (typeof message === 'string') {
+    return (map as Record<string, string>)[message] || message;
   }
 
   // Fallback
@@ -111,14 +121,14 @@ apiClient.interceptors.request.use((config) => {
 
 // Handle token refresh on 401
 let isRefreshing = false;
-let refreshPromise: Promise<any> | null = null;
+let refreshPromise: Promise<unknown> | null = null;
 
 apiClient.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError & { config?: any }) => {
-    const originalRequest = error.config;
+  async (error: AxiosError) => {
+    const originalRequest = error.config as RetriableRequestConfig | undefined;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       const isAuthEndpoint = originalRequest?.url?.includes('/auth/login') ||
                              originalRequest?.url?.includes('/auth/register') ||
                              originalRequest?.url?.includes('/auth/refresh');

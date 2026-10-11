@@ -4,7 +4,6 @@
   "private": true,
   "description": "AI Document Automation SaaS for small businesses",
   "workspaces": [
-    "packages/*",
     "apps/*"
   ],
   "scripts": {
@@ -15,7 +14,10 @@
     "test": "turbo run test",
     "clean": "turbo run clean && rm -rf node_modules",
     "db:migrate": "pnpm --filter @doclos/backend run db:migrate",
-    "db:seed": "pnpm --filter @doclos/backend run db:seed"
+    "db:reset:dev": "pnpm --filter @doclos/backend run db:reset:dev",
+    "db:seed": "pnpm --filter @doclos/backend run db:seed",
+    "demo:seed": "pnpm --filter @doclos/backend run db:seed",
+    "demo:reset": "pnpm --filter @doclos/backend run demo:reset"
   },
   "devDependencies": {
     "dotenv": "^17.4.2",
@@ -24,8 +26,8 @@
     "turbo": "^2.9.18"
   },
   "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=10.0.0"
+    "node": ">=22.13.0",
+    "pnpm": ">=11.0.0"
   },
   "packageManager": "pnpm@11.8.0"
 }

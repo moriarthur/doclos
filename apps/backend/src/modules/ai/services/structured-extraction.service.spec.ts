@@ -1,4 +1,4 @@
-import { StructuredExtractionService, parseGermanNumber, sanitizeMetadata } from './structured-extraction.service';
+import { DeliveryNoteExtraction, PurchaseOrderExtraction, StructuredExtractionService, parseGermanNumber, sanitizeMetadata } from './structured-extraction.service';
 import { AiService } from './ai.service';
 import { DocumentType } from '../../documents/entities/document.entity';
 
@@ -218,7 +218,7 @@ describe('StructuredExtractionService per-type normalization', () => {
       items: [
         { description: 'Widget', quantity: 2, unit_price: '500,25', line_total: '1000,50' },
         { description: 'Gesamtbetrag', quantity: 1, unit_price: 1200, line_total: 1200 },
-      ] as any,
+      ] as unknown as PurchaseOrderExtraction['items'],
     });
     expect(result.amount_total).toBe(1200.5);
     expect(result.vat_amount).toBe(228.1);
@@ -259,7 +259,7 @@ describe('StructuredExtractionService per-type normalization', () => {
       items: [
         { description: 'Paletten', quantity: 4, unit_price: null, line_total: null },
         { description: 'Siehe Lieferschein', quantity: null, unit_price: null, line_total: null },
-      ] as any,
+      ] as unknown as DeliveryNoteExtraction['items'],
     });
     expect(result.delivery_date).toBe('2026-05-12');
     expect(result.items).toHaveLength(1);

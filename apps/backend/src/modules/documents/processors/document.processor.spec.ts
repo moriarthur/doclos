@@ -1,9 +1,18 @@
 // P0-2 / P2-13 (audit): customer find-or-create must be scoped to the
 // owning user — the where-clause has to carry user_id, and new customers
 // must be created with it.
-import { EntityManager } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { DocumentProcessor } from './document.processor';
 import { Document } from '../entities/document.entity';
+import { Customer } from '../entities/customer.entity';
+import { Invoice } from '../entities/invoice.entity';
+import { InvoiceItem } from '../entities/invoice-item.entity';
+import { FieldExtraction } from '../entities/field-extraction.entity';
+import { Job as JobEntity } from '../../jobs/entities/job.entity';
+import { S3Service } from '../../storage/services/s3.service';
+import { OcrService } from '../../ocr/services/ocr.service';
+import { DocumentClassifierService } from '../../ai/services/document-classifier.service';
+import { StructuredExtractionService } from '../../ai/services/structured-extraction.service';
 
 const USER_A = '11111111-1111-1111-1111-111111111111';
 
@@ -44,17 +53,18 @@ const makeProcessor = () => {
   };
 
   const processor = new DocumentProcessor(
-    {} as any, // documentsRepository
-    {} as any, // customersRepository (per-type paths; this spec exercises the manager path)
-    {} as any, // invoicesRepository
-    {} as any, // invoiceItemsRepository
-    {} as any, // fieldExtractionsRepository
-    {} as any, // jobsRepository
-    {} as any, // s3Service
-    dataSource as any,
-    {} as any, // ocrService
-    {} as any, // documentClassifierService
-    structured as any,
+    {} as Repository<Document>, // documentsRepository
+    // customersRepository (per-type paths; this spec exercises the manager path)
+    {} as Repository<Customer>,
+    {} as Repository<Invoice>, // invoicesRepository
+    {} as Repository<InvoiceItem>, // invoiceItemsRepository
+    {} as Repository<FieldExtraction>, // fieldExtractionsRepository
+    {} as Repository<JobEntity>, // jobsRepository
+    {} as S3Service, // s3Service
+    dataSource as unknown as DataSource,
+    {} as OcrService, // ocrService
+    {} as DocumentClassifierService, // documentClassifierService
+    structured as unknown as StructuredExtractionService,
   );
 
   return { processor, manager, dataSource };
