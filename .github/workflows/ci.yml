@@ -1,0 +1,72 @@
+# CI for the demo preview: frozen install, typecheck, lint (no --fix),
+# backend tests, production builds. Mirrors the commands documented in
+# README.md / QUICK_START.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — typecheck, lint, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # version comes from packageManager (pnpm@11)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter @doclos/backend exec tsc --noEmit
+
+      # The unit suite is fully mocked — no Postgres/Redis services needed.
+      - name: Tests
+        run: pnpm --filter @doclos/backend test
+
+      - name: Lint (no --fix)
+        run: pnpm --filter @doclos/backend run lint:check
+
+      - name: Production build
+        run: pnpm --filter @doclos/backend build
+
+  frontend:
+    name: Frontend — typecheck, lint, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter @doclos/frontend exec tsc --noEmit
+
+      - name: Lint (no --fix)
+        run: pnpm --filter @doclos/frontend run lint
+
+      - name: Production build
+        run: pnpm --filter @doclos/frontend build
+        env:
+          # next build needs no real backend; NEXT_PUBLIC_API_URL stays unset
+          # on purpose (same-origin default is what ships).
+          NODE_ENV: production
