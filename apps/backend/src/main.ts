@@ -17,8 +17,9 @@ async function bootstrap() {
   // Security headers (HSTS, X-Frame-Options, no-sniff, etc.)
   app.use(helmet());
 
-  // Global prefix
-  app.setGlobalPrefix('api/v1');
+  // Global prefix — /healthz stays at the root so deployment platforms can
+  // probe it without knowing the API version prefix
+  app.setGlobalPrefix('api/v1', { exclude: ['healthz'] });
 
   // CORS — production allows only the configured frontend origin; dev also
   // allows localhost variants.
