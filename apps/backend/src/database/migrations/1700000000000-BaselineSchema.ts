@@ -71,7 +71,27 @@ export class BaselineSchema1700000000000 implements MigrationInterface {
     // AddCustomersUserIdFk1729500000001 below guards on this exact name and
     // additionally drops the synchronize-era FK_11d81… duplicate, so every
     // database ends up with exactly ONE FK on this column.
-    await this.addConstraint(queryRunner, 'fk_customers_user_id', `ALTER TABLE "customers" ADD CONSTRAINT "fk_customers_user_id" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+    //
+    // The guard is ALSO type-aware: on a pre-baseline legacy schema the
+    // column may still be the historical varchar (AddCustomerUserId created
+    // it that way). An FK varchar→uuid cannot be implemented — PostgreSQL
+    // would abort this migration before the repair migration ever runs.
+    // When the column isn't uuid yet, creating the FK is left to
+    // AddCustomersUserIdFk, which converts the type first.
+    await queryRunner.query(
+      `DO $$ BEGIN
+         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_customers_user_id')
+            AND EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'customers' AND column_name = 'user_id'
+                AND data_type = 'uuid'
+            ) THEN
+           ALTER TABLE "customers" ADD CONSTRAINT "fk_customers_user_id"
+             FOREIGN KEY ("user_id") REFERENCES "users"("id")
+             ON DELETE SET NULL ON UPDATE NO ACTION;
+         END IF;
+       END $$;`,
+    );
     await this.addConstraint(queryRunner, 'FK_04c08bd4d32a782db66084f7197', `ALTER TABLE "invoices" ADD CONSTRAINT "FK_04c08bd4d32a782db66084f7197" FOREIGN KEY ("document_id") REFERENCES "documents"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
     await this.addConstraint(queryRunner, 'FK_c7481daf5059307842edef74d73', `ALTER TABLE "documents" ADD CONSTRAINT "FK_c7481daf5059307842edef74d73" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
     await this.addConstraint(queryRunner, 'FK_390b85354b70567464f6f9f4364', `ALTER TABLE "documents" ADD CONSTRAINT "FK_390b85354b70567464f6f9f4364" FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
