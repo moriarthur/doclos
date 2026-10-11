@@ -59,7 +59,7 @@ function LoginForm() {
     onSuccess: () => {
       router.push('/');
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       setApiError(authApi.getErrorMessage(err));
     },
   });

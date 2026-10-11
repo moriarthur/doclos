@@ -50,7 +50,7 @@ export default function RegisterPage() {
       // U-7 (audit): authApi.register stored the tokens — go straight to the app
       router.push('/');
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       setApiError(authApi.getErrorMessage(err));
     },
   });
