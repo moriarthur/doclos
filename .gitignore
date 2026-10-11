@@ -50,6 +50,9 @@ Thumbs.db
 uploads/
 temp/
 
+# Generated demo artifacts (pnpm db:seed / demo:reset)
+apps/backend/seeds/*.pdf
+
  # Redis dump
 dump.rdb
 

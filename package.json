@@ -15,7 +15,8 @@
     "test": "turbo run test",
     "clean": "turbo run clean && rm -rf node_modules",
     "db:migrate": "pnpm --filter @doclos/backend run db:migrate",
-    "db:seed": "pnpm --filter @doclos/backend run db:seed"
+    "db:seed": "pnpm --filter @doclos/backend run db:seed",
+    "demo:reset": "pnpm --filter @doclos/backend run demo:reset"
   },
   "devDependencies": {
     "dotenv": "^17.4.2",
