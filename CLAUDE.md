@@ -1,8 +1,8 @@
 # Doclos - AI Document Automation SaaS
 
 > Project: Document automation SaaS for small businesses and German Mittelstand
-> Status: **Backend + Frontend MVP Complete** | Production ready
-> Last Updated: 2026-06-29
+> Status: **Backend + Frontend MVP Complete** | Demo-ready, with documented MVP boundaries
+> Last Updated: 2026-09-30
 
 ---
 
@@ -22,10 +22,10 @@ Doclos automatically processes business documents (invoices, contracts, offers, 
 | **Frontend** | Next.js 15, React, TypeScript, TailwindCSS, shadcn/ui, React Query, React Hook Form, Zod |
 | **Backend** | NestJS, TypeScript |
 | **Database** | PostgreSQL (Supabase) with JSONB, full-text search |
-| **Queue** | Redis (Upstash) + Bull |
+| **Queue** | Redis + Bull |
 | **Storage** | Cloudflare R2 (S3-compatible) |
 | **OCR** | Tesseract.js (German/English) |
-| **AI** | **GLM-4.7-Flash (Zhipu AI / Z.ai)** - FREE, with glm-4.5-flash auto-failover |
+| **AI** | **GLM-4.5-Flash (Zhipu AI / Z.ai)** - default, with configurable fallback |
 | **Workers** | Node.js background workers |
 | **Testing** | Jest |
 | **Monorepo** | Turborepo |
@@ -56,11 +56,11 @@ doclos/
 │   │   │   └── app.module.ts ✅
 │   │   └── package.json ✅
 ├── packages/
-│   └── shared/                # Shared types (empty - TODO)
+│   └── shared/                # Reserved for shared types
 ├── docker/
 │   └── docker-compose.yml     # PostgreSQL + Redis ✅
 ├── documentations/            # Parts 1-9 (architecture) ✅
-├── .env ✅ (FULLY CONFIGURED - all credentials set)
+├── .env (local, gitignored)
 ├── .env.example ✅
 ├── turbo.json ✅
 ├── pnpm-workspace.yaml ✅
@@ -124,7 +124,7 @@ Upload → S3 → Queue → Download → OCR (Tesseract) → Classify (GLM) → 
 ```
 
 **Document Status Flow:**
-`uploaded` → `processing` → `parsed` → `needs_validation` → `validated` → `archived`
+`processing` → `parsed` → `needs_validation` → `validated` → `archived`
 
 **Confidence Thresholds:**
 - `> 0.85`: Auto-accept → `parsed`
@@ -138,8 +138,8 @@ Upload → S3 → Queue → Download → OCR (Tesseract) → Classify (GLM) → 
 **API:** https://open.bigmodel.cn/api/paas/v4
 
 **Models Used:**
-- `glm-4.7-flash` - Primary (fast, free) for classification + extraction
-- `glm-4.5-flash` - Auto-failover when 4.7-flash rate-limits / times out on Z.ai
+- `glm-4.5-flash` - Primary for classification/extraction, with thinking disabled by default
+- `glm-4.7-flash` - Optional fallback when configured and available on Z.ai
 - `glm-4-plus`, `glm-4-air`, `glm-4-flash`, `glm-4` - Optional / configurable
 
 **Pricing:** ¥0.1 / 1M tokens (glm-4-flash) — effectively free at MVP volume
@@ -182,11 +182,11 @@ Credentials live in `.env` (gitignored — never commit real secrets). Copy
 > removed here, but they must be considered compromised — **rotate ALL secrets**
 > (Supabase DB password, R2 keys, GLM key, JWT secret) regardless.
 
-### Free Tiers Used
+### Example Development Services
 | Service | Plan | Status |
 |---------|-------|--------|
 | **Supabase** | 500 MB database | ✅ Connected |
-| **Upstash Redis** | 10K commands/day | ✅ Connected |
+| **Redis** | Local Docker Redis by default | ✅ Supported |
 | **Cloudflare R2** | 10 GB storage | ✅ Connected |
 | **GLM (Z.ai)** | ¥25 credits | ✅ Ready |
 
@@ -267,7 +267,7 @@ English, German — i18n via **next-intl** with a `?lang=de|en` locale switcher 
 
 | File | Purpose |
 |------|---------|
-| `.env` | Environment variables (FULLY CONFIGURED) |
+| `.env` | Local gitignored environment variables |
 | `.env.example` | Template with all options documented |
 | `CLOUD_SETUP.md` | Guide for cloud services setup |
 | `QUICK_START.md` | Quick start guide for local development |

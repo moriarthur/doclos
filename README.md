@@ -24,12 +24,12 @@ Built for the German market: handles German-language documents, DSGVO-compliant 
 ## Key Features
 
 - **PDF Ingestion** — Upload Rechnungen, Verträge, Angebote, Lieferscheine
-- **AI Extraction Pipeline** — GLM-4.7-Flash (Zhipu/Z.ai) for structured extraction with per-field confidence
-- **OCR Layer** — Tesseract for scanned documents
+- **AI Extraction Pipeline** — GLM-4.5-Flash by default (Zhipu/Z.ai) for structured extraction with per-field confidence
+- **OCR Layer** — Tesseract for images and scanned/mixed PDFs
 - **Background Jobs** — BullMQ + Redis queue for reliable async processing
 - **Cloud Storage** — AWS S3 / Cloudflare R2 with presigned URLs
 - **JWT Auth** — Secure multi-user authentication
-- **Search & Export** — Structured queries and Excel export
+- **Search & Export** — Server-side search and Excel export
 - **DSGVO-ready** — Data handling designed for German compliance requirements
 
 ## Architecture
@@ -60,7 +60,7 @@ doclos/
 | Database | PostgreSQL |
 | Queue | Redis, BullMQ |
 | Storage | AWS S3 / Cloudflare R2 |
-| AI | GLM-4.7-Flash (Zhipu/Z.ai) — free tier |
+| AI | GLM-4.5-Flash by default (Zhipu/Z.ai) |
 | OCR | Tesseract |
 | Build | Turborepo, pnpm workspaces |
 | Infra | Docker, Docker Compose |
