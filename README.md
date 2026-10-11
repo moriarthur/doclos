@@ -31,6 +31,7 @@ Built for the German market: handles German-language documents, DSGVO-compliant 
 - **JWT Auth** — Secure multi-user authentication
 - **Search & Export** — Server-side search and Excel export
 - **DSGVO-ready** — Data handling designed for German compliance requirements
+- **Demo-ready** — Public `/healthz` probe, rate-limited processing routes, idempotent demo seed with a synthetic (no-PII) sample invoice
 
 ## Architecture
 
@@ -68,26 +69,47 @@ doclos/
 ## Getting Started
 
 ```bash
-# Prerequisites: Node ≥20, pnpm ≥8, Docker
+# Prerequisites: Node ≥ 22.13, pnpm ≥ 11, Docker
 
 # Clone and install
 git clone https://github.com/moriarthur/doclos.git
-cd Doclos
+cd doclos
 pnpm install
 
-# Start infrastructure
-docker-compose -f docker/docker-compose.yml up -d
+# Start infrastructure (PostgreSQL + Redis)
+docker compose -f docker/docker-compose.yml up -d
 
 # Configure environment
 cp .env.example .env
-# Fill in: DB connection, JWT secret, S3 credentials, AI API keys
+# Fill in: DATABASE_URL, REDIS_URL, JWT_SECRET, S3_*, GLM_API_KEY
 
-# Run migrations
+# Apply migrations (never needs a destructive reset)
 pnpm db:migrate
 
-# Start development
+# Start development (backend :3001 + frontend :3000)
 pnpm dev
 ```
+
+Optional: seed a demo account and a synthetic sample invoice (no PII) for a
+demo run — see [QUICK_START.md](./QUICK_START.md#verified-local-demo):
+
+```bash
+DEMO_EMAIL="demo@doclos.dev" DEMO_PASSWORD="change-me-demo-1234" pnpm demo:seed
+```
+
+## Development
+
+```bash
+pnpm lint          # turbo: eslint in both apps (backend also has lint:check)
+pnpm test          # backend Jest suite (106 tests)
+pnpm exec tsc --noEmit -p apps/backend    # typecheck backend
+pnpm exec tsc --noEmit -p apps/frontend   # typecheck frontend
+pnpm build         # production builds (backend dist/ + frontend .next/)
+```
+
+CI (GitHub Actions) runs install with `--frozen-lockfile`, typechecks, the
+backend suite, lint without `--fix`, and both production builds on every push
+and PR.
 
 ## Documentation
 

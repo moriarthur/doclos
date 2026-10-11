@@ -6,8 +6,8 @@
 
 ## Prerequisites
 
-- Node.js >= 20.0.0 ✅ (You have this)
-- pnpm >= 8.0.0 ✅ (You have this)
+- Node.js >= 22.13.0
+- pnpm >= 11.0.0
 - Cloud accounts (see below)
 
 ---
@@ -65,10 +65,12 @@
 4. Copy the key
 
 **GLM Models Available:**
-- `glm-4-flash` - Fast, cost-effective (recommended for document processing)
-- `glm-4-plus` - More capable, higher cost
-- `glm-4-air` - Balanced performance
-- `glm-4` - Standard model
+- `glm-4.5-flash` - Default (free tier, hybrid reasoning; thinking disabled by default)
+- `glm-4.7-flash` - Optional failover (thinks compulsively, rate-limits at peak)
+- `glm-4-plus` / `glm-4-air` - Optional, higher cost
+
+Note: `glm-4-flash` was removed from open.bigmodel.cn (error 1211, verified
+2026-09-22) — do not use it.
 
 ---
 
@@ -90,10 +92,13 @@ Then update `.env` with your cloud credentials:
 # Database (Supabase) — use the IPv4 POOLER, not the direct db.* host
 # (db.*.supabase.co is IPv6-only and fails on IPv4-only networks like WSL2).
 # The app reads DATABASE_URL only. Session mode = port 5432; transaction mode = 6543.
-DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres"
+DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres"
 
-# Redis (Upstash)
-# Replace with your Redis URL
+# TLS on the DB connection — certificate verification is ON. The Supabase
+# pooler chain is issued by the private "Supabase Root 2021 CA", pinned via:
+DB_CA_CERT_PATH="certs/supabase-prod-ca-2021.crt"
+
+# Redis (Upstash — rediss:// enables TLS; local Docker uses redis://)
 REDIS_URL="redis://default:[PASSWORD]@[HOST].upstash.io:6379"
 REDIS_HOST="[HOST].upstash.io"
 REDIS_PORT="6379"
@@ -108,8 +113,10 @@ S3_SECRET_ACCESS_KEY="[YOUR-SECRET-KEY]"
 # AI Services - GLM (Zhipu AI / Z.ai)
 # Get your API key from: https://open.bigmodel.cn/usercenter/apikeys
 GLM_API_KEY="[YOUR-GLM-API-KEY]"
-GLM_MODEL="glm-4-flash"  # Options: glm-4-flash, glm-4-plus, glm-4-air, glm-4
+GLM_MODEL="glm-4.5-flash"
 GLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
+GLM_THINKING_CLASSIFY="disabled"
+GLM_THINKING_EXTRACT="disabled"
 
 # ============================================================================
 # Application Settings
@@ -123,7 +130,11 @@ APP_NAME="Doclos"
 APP_ENV="development"
 APP_PORT=3001
 APP_URL="http://localhost:3001"
-FRONTEND_URL="http://localhost:3000"
+NODE_ENV="development"
+
+# CORS / deployment wiring — see .env.example for the full contract
+FRONTEND_URL="http://localhost:3000"     # the browser origin the backend allows
+BACKEND_ORIGIN="http://localhost:3001"   # where the frontend proxies /api/v1/*
 
 # ============================================================================
 # Processing Configuration
@@ -134,9 +145,13 @@ CONFIDENCE_AUTO_ACCEPT="0.85"
 CONFIDENCE_NEEDS_VALIDATION="0.60"
 OCR_FALLBACK_THRESHOLD="0.70"
 
-# File upload
-MAX_FILE_SIZE=10485760  # 10MB
-ALLOWED_FILE_TYPES="application/pdf,image/png,image/jpeg,image/tiff"
+# File upload (informational — upload-constraints.ts is the runtime source of truth)
+MAX_FILE_SIZE=20971520  # 20MB
+ALLOWED_FILE_TYPES="application/pdf,image/png,image/jpeg,image/tiff,image/webp"
+
+# Demo seed (optional — pnpm demo:seed creates/re-syncs one demo account)
+DEMO_EMAIL="demo@doclos.dev"
+DEMO_PASSWORD="change-me-demo-1234"
 
 # ============================================================================
 # OCR Settings
@@ -150,14 +165,17 @@ TESSERACT_LANGUAGES="deu+eng"
 
 ### 1. Initialize Database
 
-The database tables will be created automatically on first run (TypeORM synchronize).
+The schema is created **via migrations only** — TypeORM `synchronize` is
+disabled in the codebase. Apply them from `apps/backend`:
 
-For production, you should disable auto-sync and use migrations:
-
-```env
-# In production, set this to false
-NODE_ENV="production"
+```bash
+pnpm db:migrate
 ```
+
+The baseline migration is idempotent, so it is also safe to run against a
+database that was provisioned earlier (tables that already exist are
+skipped). Schema changes go through `db:migration:generate` + `db:migrate` —
+never `schema:sync`.
 
 ### 2. Create Storage Bucket
 
@@ -168,13 +186,16 @@ Make sure your S3/R2 bucket exists and is accessible.
 ```bash
 # From the project root
 pnpm install
+pnpm db:migrate
 
-# Start the backend in development mode
+# Production-style start
+pnpm build
 cd apps/backend
-pnpm run start:dev
+pnpm start:prod
 ```
 
 The API will be available at: `http://localhost:3001/api/v1`
+Liveness probe (public, for platform health checks): `http://localhost:3001/healthz`
 
 ---
 
@@ -226,7 +247,7 @@ curl -X POST http://localhost:3001/api/v1/documents/upload \
 | **GLM API (Z.ai)** | New user credits | ¥25 free credits (≈$3.50) |
 
 **GLM Pricing (after free credits):**
-- GLM-4-Flash: ¥0.1 / 1M tokens (~$0.014 / 1M tokens) - Most cost-effective
+- GLM-4.5-Flash (default): free tier, flash-family pricing ~¥0.1 / 1M tokens when billed
 - GLM-4-Air: ¥0.5 / 1M tokens (~$0.07 / 1M tokens)
 - GLM-4-Plus: ¥1.0 / 1M tokens (~$0.14 / 1M tokens)
 
@@ -258,7 +279,7 @@ If document processing fails:
 - Check `GLM_API_KEY` is set correctly
 - Verify you have credits in your Zhipu AI account (https://open.bigmodel.cn/usercenter/balance)
 - Check the backend logs for specific errors
-- Try switching to a different GLM model (e.g., `glm-4-air` instead of `glm-4-flash`)
+- Try a different model via `GLM_MODEL` (e.g., `glm-4-air`) or check `GLM_FALLBACK_MODELS`
 
 ---
 
