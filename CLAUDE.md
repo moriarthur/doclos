@@ -1,8 +1,8 @@
 # Doclos - AI Document Automation SaaS
 
 > Project: Document automation SaaS for small businesses and German Mittelstand
-> Status: **Backend + Frontend MVP Complete** | Demo-ready, with documented MVP boundaries
-> Last Updated: 2026-09-30
+> Status: **Backend + Frontend MVP Complete** | Public demo preview prepared (deploy wiring, demo seed, CI)
+> Last Updated: 2026-10-11
 
 ---
 
@@ -85,6 +85,9 @@ doclos/
 ---
 
 ## API Endpoints (ALL IMPLEMENTED & TESTED)
+
+### Health
+- `GET /healthz` - Liveness probe (public, outside the /api/v1 prefix)
 
 ### Authentication
 - `POST /api/v1/auth/register` - User registration
@@ -213,6 +216,15 @@ pnpm run dev
 cd apps/backend && pnpm run build    # → dist/
 cd apps/frontend && pnpm run build   # → .next/
 ```
+
+**Demo preview:**
+```bash
+DEMO_EMAIL="..." DEMO_PASSWORD="..." pnpm demo:seed   # idempotent: demo account + synthetic sample invoice
+pnpm demo:reset                                        # wipe everything the demo account created
+pnpm db:migrate                                        # migrations only — baseline is idempotent
+```
+Deployment wiring (`BACKEND_ORIGIN` / `NEXT_PUBLIC_API_URL` / `FRONTEND_URL`)
+is documented in `.env.example` and QUICK_START.md ("Demo preview deployment").
 
 ---
 
