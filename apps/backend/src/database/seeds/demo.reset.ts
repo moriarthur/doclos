@@ -75,6 +75,11 @@ async function purgeQueueJobs(userId: string): Promise<number> {
       1000,
       true,
     );
+    if (jobs.length > 1000) {
+      console.warn(
+        '⚠️  queue listing hit the 1000-job page cap — run the reset again to purge the rest',
+      );
+    }
     const mine = jobs.filter((job) => (job.data as { userId?: string })?.userId === userId);
     let removed = 0;
     for (const job of mine) {
