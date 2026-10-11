@@ -147,6 +147,7 @@ function ImageViewer({
           onTransform={(_ref, state) => setScale(state.scale)}
         >
           <TransformComponent wrapperClass="!cursor-grab active:!cursor-grabbing">
+            {/* eslint-disable-next-line @next/next/no-img-element -- blob: URLs cannot be optimized by next/image */}
             <img
               src={blobUrl}
               alt={t('docAlt')}
