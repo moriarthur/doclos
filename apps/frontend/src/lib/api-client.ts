@@ -1,6 +1,11 @@
 import axios, { AxiosError } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+// Same-origin by default: the browser calls /api/v1 on the frontend origin
+// and next.config.js rewrites it to BACKEND_ORIGIN (server-side), so a
+// deployed frontend never references localhost. Set NEXT_PUBLIC_API_URL only
+// for cross-origin deployments (separate API domain); the backend must then
+// allow that frontend origin via FRONTEND_URL.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 // Helper to read the active locale from the cookie (single-path i18n).
 function getLocale(): 'de' | 'en' {
