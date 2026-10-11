@@ -41,6 +41,11 @@ export class BaselineSchema1700000000000 implements MigrationInterface {
   }
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Entity PKs default to uuid_generate_v4() — the extension must exist
+    // before the first CREATE TABLE. Explicit (not the driver's implicit
+    // connect-time call) so a pristine PostgreSQL works deterministically;
+    // IF NOT EXISTS keeps it idempotent on already-provisioned databases.
+    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
     await queryRunner.query(`CREATE TABLE IF NOT EXISTS "users" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), "email" character varying NOT NULL, "name" character varying, "password_hash" character varying, "oauth_provider" character varying, "oauth_id" character varying, "last_login" TIMESTAMP WITH TIME ZONE, CONSTRAINT "UQ_97672ac88f789774dd47f7c8be3" UNIQUE ("email"), CONSTRAINT "PK_a3ffb1c0c8416b9fc6f907b7433" PRIMARY KEY ("id"))`);
     await queryRunner.query(`CREATE TABLE IF NOT EXISTS "customers" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), "user_id" uuid, "name" character varying NOT NULL, "tax_id" character varying, "vat_id" character varying, "address" character varying, "city" character varying, "country" character varying, CONSTRAINT "PK_133ec679a801fab5e070f73d3ea" PRIMARY KEY ("id"))`);
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_c2f9ebb3eef7869e502644fc0f" ON "customers" ("user_id", "name") `);
@@ -61,7 +66,12 @@ export class BaselineSchema1700000000000 implements MigrationInterface {
     await this.createEnum(queryRunner, `"public"."jobs_status_enum" AS ENUM('pending', 'processing', 'completed', 'failed')`);
     await queryRunner.query(`CREATE TABLE IF NOT EXISTS "jobs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), "job_type" "public"."jobs_job_type_enum" NOT NULL, "status" "public"."jobs_status_enum" NOT NULL DEFAULT 'pending', "document_id" uuid, "attempts" integer NOT NULL DEFAULT '0', "last_error" text, "progress" json, CONSTRAINT "PK_cf0a6c42b72fcc7f7c237def345" PRIMARY KEY ("id"))`);
     await queryRunner.query(`CREATE TABLE IF NOT EXISTS "audit_logs" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), "entity_type" character varying NOT NULL, "entity_id" character varying NOT NULL, "user_id" uuid, "action" character varying NOT NULL, "old_value" jsonb, "new_value" jsonb, CONSTRAINT "PK_1bb179d048bbc581caa3b013439" PRIMARY KEY ("id"))`);
-    await this.addConstraint(queryRunner, 'FK_11d81cd7be87b6f8865b0cf7661', `ALTER TABLE "customers" ADD CONSTRAINT "FK_11d81cd7be87b6f8865b0cf7661" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+    // customers.user_id carries the audited final shape directly: named
+    // fk_customers_user_id with ON DELETE SET NULL (P0-2 follow-up intent).
+    // AddCustomersUserIdFk1729500000001 below guards on this exact name and
+    // additionally drops the synchronize-era FK_11d81… duplicate, so every
+    // database ends up with exactly ONE FK on this column.
+    await this.addConstraint(queryRunner, 'fk_customers_user_id', `ALTER TABLE "customers" ADD CONSTRAINT "fk_customers_user_id" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
     await this.addConstraint(queryRunner, 'FK_04c08bd4d32a782db66084f7197', `ALTER TABLE "invoices" ADD CONSTRAINT "FK_04c08bd4d32a782db66084f7197" FOREIGN KEY ("document_id") REFERENCES "documents"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
     await this.addConstraint(queryRunner, 'FK_c7481daf5059307842edef74d73', `ALTER TABLE "documents" ADD CONSTRAINT "FK_c7481daf5059307842edef74d73" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
     await this.addConstraint(queryRunner, 'FK_390b85354b70567464f6f9f4364', `ALTER TABLE "documents" ADD CONSTRAINT "FK_390b85354b70567464f6f9f4364" FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
@@ -83,7 +93,7 @@ export class BaselineSchema1700000000000 implements MigrationInterface {
     await queryRunner.query(`ALTER TABLE "documents" DROP CONSTRAINT IF EXISTS "FK_390b85354b70567464f6f9f4364"`);
     await queryRunner.query(`ALTER TABLE "documents" DROP CONSTRAINT IF EXISTS "FK_c7481daf5059307842edef74d73"`);
     await queryRunner.query(`ALTER TABLE "invoices" DROP CONSTRAINT IF EXISTS "FK_04c08bd4d32a782db66084f7197"`);
-    await queryRunner.query(`ALTER TABLE "customers" DROP CONSTRAINT IF EXISTS "FK_11d81cd7be87b6f8865b0cf7661"`);
+    await queryRunner.query(`ALTER TABLE "customers" DROP CONSTRAINT IF EXISTS "fk_customers_user_id"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "audit_logs"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "jobs"`);
     await queryRunner.query(`DROP TYPE IF EXISTS "public"."jobs_status_enum"`);

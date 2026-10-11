@@ -31,11 +31,28 @@ export class AddCustomersUserIdFk1729500000001 implements MigrationInterface {
         END IF;
       END $$;
     `);
+    // The synchronize-era schema (and older baseline versions) created the
+    // same FK under the TypeORM-generated name — a second FK on the same
+    // column with ON DELETE NO ACTION would block user deletion. Exactly one
+    // FK survives: fk_customers_user_id (ON DELETE SET NULL).
+    await queryRunner.query(
+      `ALTER TABLE customers DROP CONSTRAINT IF EXISTS "FK_11d81cd7be87b6f8865b0cf7661"`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `ALTER TABLE customers DROP CONSTRAINT IF EXISTS fk_customers_user_id`,
+    );
+    // Restore the synchronize-era duplicate this migration removed.
+    await queryRunner.query(
+      `DO $$ BEGIN
+         IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'FK_11d81cd7be87b6f8865b0cf7661') THEN
+           ALTER TABLE customers
+             ADD CONSTRAINT "FK_11d81cd7be87b6f8865b0cf7661"
+             FOREIGN KEY (user_id) REFERENCES users(id);
+         END IF;
+       END $$;`,
     );
     await queryRunner.query(
       `ALTER TABLE customers ALTER COLUMN user_id TYPE varchar USING user_id::text`,
