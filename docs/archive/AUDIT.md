@@ -1,5 +1,10 @@
 # Doclos — Code & UX Audit (2026-09-21)
 
+> **HISTORICAL (2026-10-11):** the 2026-09 audit cycle is closed. All findings were
+> fixed and merged (see git history for the per-ID commits). Kept for reference in
+> `docs/archive/` — do not append new findings here; start a fresh checklist
+> document for any new audit round.
+
 Full-project audit: backend, frontend, infra. Read-only review; nothing here was changed in the repo.
 
 ## Status — living checklist (updated 2026-09-24 by main agent)

@@ -89,13 +89,16 @@ export class AiService {
 
     const resolveThinking = (raw: string | undefined): 'enabled' | 'disabled' | null =>
       raw === 'enabled' || raw === 'disabled' ? raw : null;
-    // Classification defaults to disabled: a keyword-ambiguity check doesn't
-    // need chain-of-thought. Extraction defaults to the model's own choice
-    // (null) — set GLM_THINKING_EXTRACT=disabled for speed after verifying
-    // extraction quality holds on your document mix.
+    // Both call types default to disabled: a keyword-ambiguity check and the
+    // structured extraction JSON don't need chain-of-thought, and thinking
+    // turned minutes-long responses into timeout/failover churn on
+    // hybrid-reasoning fallback models. Set GLM_THINKING_EXTRACT=auto to
+    // restore the model's own choice.
     this.classifyThinking =
       resolveThinking(this.configService.get('GLM_THINKING_CLASSIFY')) ?? 'disabled';
-    this.extractThinking = resolveThinking(this.configService.get('GLM_THINKING_EXTRACT'));
+    this.extractThinking = resolveThinking(
+      this.configService.get('GLM_THINKING_EXTRACT') ?? 'disabled',
+    );
 
     if (!this.apiKey) {
       this.logger.warn('GLM_API_KEY not set - AI features will be disabled');

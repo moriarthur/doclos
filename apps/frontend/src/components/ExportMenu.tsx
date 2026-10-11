@@ -119,8 +119,8 @@ export function ExportMenu({
           : await exportApi.list({ format: formatId, status, ids });
       triggerDownload(blob, filename);
       setOpen(false);
-    } catch (err: any) {
-      const blob = err?.response?.data;
+    } catch (err) {
+      const blob = (err as { response?: { data?: unknown } })?.response?.data;
       setErrMsg(blob instanceof Blob ? await blobErrorMessage(blob, t('error')) : t('error'));
     } finally {
       setBusy(false);

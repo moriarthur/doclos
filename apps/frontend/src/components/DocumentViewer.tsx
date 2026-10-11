@@ -11,6 +11,7 @@ import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, FileText } from 
 import { Button } from '@/components/ui/Button';
 import { CancelableLoader } from '@/components/ui/CancelableLoader';
 import { documentsApi } from '@/lib/api-client';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 interface DocumentViewerProps {
   documentId: string;
@@ -146,6 +147,7 @@ function ImageViewer({
           onTransform={(_ref, state) => setScale(state.scale)}
         >
           <TransformComponent wrapperClass="!cursor-grab active:!cursor-grabbing">
+            {/* eslint-disable-next-line @next/next/no-img-element -- blob: URLs cannot be optimized by next/image */}
             <img
               src={blobUrl}
               alt={t('docAlt')}
@@ -216,7 +218,7 @@ function PdfViewer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<ReactZoomPanPinchRef | null>(null);
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1);

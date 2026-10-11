@@ -9,7 +9,7 @@ import { ExportMenu } from '@/components/ExportMenu';
 import { DocumentViewer } from '@/components/DocumentViewer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { Badge, type BadgeProps } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { CancelableLoader } from '@/components/ui/CancelableLoader';
 import { useToast } from '@/components/ui/Toast';
@@ -515,7 +515,7 @@ export default function DocumentDetailPage() {
                       ? getFieldValue('supplier_name', invoiceData?.supplier_name) || tCommon('docPlaceholder')
                       : tDocType(document.type) || document.original_filename || tCommon('docPlaceholder')}
                   </h1>
-                  <Badge variant={document.status as any} className="shrink-0">
+                  <Badge variant={document.status as BadgeProps['variant']} className="shrink-0">
                     {tStatus(document.status)}
                   </Badge>
                 </div>

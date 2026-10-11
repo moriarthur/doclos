@@ -50,6 +50,9 @@ Thumbs.db
 uploads/
 temp/
 
+# Generated demo artifacts (pnpm db:seed / demo:reset)
+apps/backend/seeds/*.pdf
+
  # Redis dump
 dump.rdb
 
@@ -64,6 +67,11 @@ test files/
 .claude/
 .serena/
 skills/
+
+# Local working notes / personal artifacts (never part of the repo)
+AUDIT
+LYCTRON_INTERVIEW_PREP.md
+CLAUDE.local.md
 
 # CodeGraph local index (per-machine)
 .codegraph/

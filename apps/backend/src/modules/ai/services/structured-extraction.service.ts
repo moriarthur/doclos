@@ -141,6 +141,7 @@ const MAX_METADATA_STRING_LENGTH = 2000;
 function sanitizeString(raw: string): string | null {
   const stripped = raw
     .replace(/<[^>]*>/g, ' ') // HTML tags
+    // eslint-disable-next-line no-control-regex -- the rule's target IS control-char removal
     .replace(/[\u0000-\u001F\u007F]/g, ' ') // control chars (incl. DEL)
     .replace(/\s+/g, ' ')
     .trim();
