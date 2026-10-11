@@ -37,7 +37,7 @@ jobs:
         run: pnpm --filter @doclos/backend test
 
       - name: Lint (no --fix)
-        run: pnpm --filter @doclos/backend run lint:check
+        run: pnpm --filter @doclos/backend run lint
 
       - name: Production build
         run: pnpm --filter @doclos/backend build

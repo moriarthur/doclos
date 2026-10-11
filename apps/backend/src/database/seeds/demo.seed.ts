@@ -70,6 +70,16 @@ export async function ensureDemoUser(dataSource: DataSource): Promise<{
   }
 
   if (!passwordMatches) {
+    // Only accounts explicitly marked as the demo account may be re-synced —
+    // never overwrite the password of an ordinary user who happened to match
+    // DEMO_EMAIL. FORCE_DEMO_SEED=1 is the deliberate escape hatch.
+    const isDemoAccount = existing.name === DEMO_USER_NAME;
+    if (!isDemoAccount && process.env.FORCE_DEMO_SEED !== '1') {
+      throw new Error(
+        `DEMO_EMAIL ${email} already belongs to a non-demo account ("${existing.name}"). ` +
+          'Pick a different DEMO_EMAIL, or set FORCE_DEMO_SEED=1 to take the account over.',
+      );
+    }
     existing.password_hash = await bcrypt.hash(password, 10);
     await usersRepository.save(existing);
     return { created: false, passwordResynced: true };

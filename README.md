@@ -100,7 +100,7 @@ DEMO_EMAIL="demo@doclos.dev" DEMO_PASSWORD="change-me-demo-1234" pnpm demo:seed
 ## Development
 
 ```bash
-pnpm lint          # turbo: eslint in both apps (backend also has lint:check)
+pnpm lint          # turbo: read-only eslint in both apps (backend also has lint:fix)
 pnpm test          # backend Jest suite (106 tests)
 pnpm exec tsc --noEmit -p apps/backend    # typecheck backend
 pnpm exec tsc --noEmit -p apps/frontend   # typecheck frontend
