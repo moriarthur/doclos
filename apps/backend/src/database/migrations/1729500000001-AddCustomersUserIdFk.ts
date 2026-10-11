@@ -6,8 +6,19 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddCustomersUserIdFk1729500000001 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Fresh installs get user_id as uuid straight from the baseline schema —
+    // only convert when the column is still the legacy varchar.
     await queryRunner.query(
-      `ALTER TABLE customers ALTER COLUMN user_id TYPE uuid USING NULLIF(user_id, '')::uuid`,
+      `DO $$ BEGIN
+         IF EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_name = 'customers' AND column_name = 'user_id'
+             AND data_type <> 'uuid'
+         ) THEN
+           ALTER TABLE customers ALTER COLUMN user_id TYPE uuid
+             USING NULLIF(user_id::text, '')::uuid;
+         END IF;
+       END $$;`,
     );
     await queryRunner.query(`
       DO $$ BEGIN
