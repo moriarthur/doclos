@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { DocumentsService } from './documents.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -36,6 +37,10 @@ import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
 export class DocumentsController {
   constructor(private documentsService: DocumentsService) {}
 
+  // Demo-preview hardening: uploads and reprocesses trigger the full
+  // OCR + LLM pipeline (queue job, storage write, GLM tokens), so they get a
+  // much stricter per-IP budget than the 120/min global limit.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('upload')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -97,6 +102,7 @@ export class DocumentsController {
     return this.documentsService.validateDocument(id, user.id, dto.fields, dto.items);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post(':id/reprocess')
   async reprocessDocument(@Param('id') id: string, @CurrentUser() user: User) {
     return this.documentsService.reprocessDocument(id, user.id);
