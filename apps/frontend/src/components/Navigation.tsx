@@ -15,7 +15,18 @@ import {
   Archive,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { authApi } from '@/lib/api-client';
+import { authApi, accountApi } from '@/lib/api-client';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/AlertDialog';
+import { Trash2 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { LocaleSwitcher } from './LocaleSwitcher';
 
@@ -46,6 +57,24 @@ export function Navigation() {
     // PD-A2: revoke the refresh session server-side, then hard-redirect.
     await authApi.logout();
     window.location.href = '/login';
+  };
+
+  // PD-T1: self-service account deletion with an explicit confirmation.
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await accountApi.deleteAccount();
+      await authApi.logout();
+      window.location.href = '/login?deleted=true';
+    } catch (err) {
+      setDeleteError(authApi.getErrorMessage(err));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -99,6 +128,13 @@ export function Navigation() {
           >
             <LogOut className="h-5 w-5" />
             <span className="text-sm">{t('logout')}</span>
+          </button>
+          <button
+            onClick={() => setDeleteDialogOpen(true)}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 w-full"
+          >
+            <Trash2 className="h-5 w-5" />
+            <span className="text-sm">{t('deleteAccount')}</span>
           </button>
         </div>
       </nav>
@@ -157,9 +193,43 @@ export function Navigation() {
               <LogOut className="h-5 w-5" />
               <span className="text-sm">{t('logout')}</span>
             </button>
+            <button
+              onClick={() => setDeleteDialogOpen(true)}
+              className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-all duration-200 w-full"
+            >
+              <Trash2 className="h-5 w-5" />
+              <span className="text-sm">{t('deleteAccount')}</span>
+            </button>
           </div>
         )}
       </nav>
+
+      {/* PD-T1: explicit, informed confirmation before the irreversible wipe. */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteAccountTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteAccountDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <p className="text-sm text-destructive">{deleteError}</p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>{t('deleteAccountCancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(event) => {
+                event.preventDefault(); // keep the dialog open while working
+                void handleDeleteAccount();
+              }}
+            >
+              {deleting ? t('deleteAccountDeleting') : t('deleteAccountConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

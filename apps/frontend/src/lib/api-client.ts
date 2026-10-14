@@ -559,3 +559,15 @@ export const demoApi = {
     return response.data;
   },
 };
+
+// PD-T1: self-service account deletion (irreversible; erases the whole
+// tenant incl. storage via the retry queue).
+export const accountApi = {
+  deleteAccount: async (): Promise<{ message: string; storage_objects_queued: number }> => {
+    const response = await apiClient.delete<{
+      message: string;
+      storage_objects_queued: number;
+    }>('/account');
+    return response.data;
+  },
+};

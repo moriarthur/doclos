@@ -47,10 +47,13 @@ function LoginForm() {
 
   const password = watch('password');
 
-  // Check if user just registered
+  // Check if user just registered (PD-A4 flow) or deleted their account (PD-T1)
   useEffect(() => {
     if (searchParams.get('registered') === 'true') {
       setSuccessMessage(t('registeredSuccess'));
+    }
+    if (searchParams.get('deleted') === 'true') {
+      setSuccessMessage(t('deletedSuccess'));
     }
   }, [searchParams, t]);
 
