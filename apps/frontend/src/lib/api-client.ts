@@ -86,18 +86,39 @@ const getErrorMessage = (error: unknown): string => {
   return map._fallback;
 };
 
-// Helper to set cookies on client side
-const setCookie = (name: string, value: string, days = 7) => {
+// PD-A1 (public-demo audit): the browser holds NO token material anymore —
+// access/refresh live in HttpOnly cookies set by the backend through the
+// same-origin proxy. The only JS-readable cookie is csrf_token (double-submit,
+// not a credential) and the logged_in marker for pure-UX checks.
+
+const readCookie = (name: string): string | null => {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
+const setMarkerCookie = (name: string, value: string, days = 7) => {
   if (typeof window === 'undefined') return;
   const expires = new Date();
   expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
-  // Set cookie with SameSite=Lax for better compatibility
   document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
 };
 
-const deleteCookie = (name: string) => {
+const deleteMarkerCookie = (name: string) => {
   if (typeof window === 'undefined') return;
   document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+};
+
+const LOGGED_IN_MARKER = 'logged_in';
+
+/**
+ * PD-A3: make sure a csrf_token cookie exists before a state-changing call.
+ * Idempotent — skips the round-trip when the cookie is already there.
+ */
+export const ensureCsrfToken = async (): Promise<void> => {
+  if (typeof window === 'undefined') return;
+  if (readCookie('csrf_token')) return;
+  await apiClient.get('/auth/csrf');
 };
 
 // Create axios instance
@@ -108,12 +129,17 @@ export const apiClient = axios.create({
   },
 });
 
-// Add auth token to requests
+// PD-A3: echo the csrf_token cookie in the double-submit header on every
+// state-changing request. Cross-site pages can send cookies but cannot read
+// them, so they cannot produce this header.
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const method = (config.method || 'get').toLowerCase();
+    if (!['get', 'head', 'options'].includes(method)) {
+      const csrf = readCookie('csrf_token');
+      if (csrf) {
+        config.headers['X-CSRF-Token'] = csrf;
+      }
     }
   }
   return config;
@@ -139,48 +165,28 @@ apiClient.interceptors.response.use(
 
       originalRequest._retry = true;
 
-      // Try to refresh the token
+      // PD-A1: cookie-only rotation — the HttpOnly refresh cookie rides along
+      // with the POST automatically; the response re-sets fresh cookies.
       if (!isRefreshing) {
         isRefreshing = true;
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (refreshToken) {
-          refreshPromise = apiClient.post('/auth/refresh', { refresh_token: refreshToken })
-            .then((res) => {
-              const { access_token, refresh_token } = res.data;
-              localStorage.setItem('access_token', access_token);
-              localStorage.setItem('refresh_token', refresh_token);
-              setCookie('access_token', access_token);
-              setCookie('refresh_token', refresh_token);
-              return res;
-            })
-            .catch(() => {
-              // Refresh failed — clear tokens
-              localStorage.removeItem('access_token');
-              localStorage.removeItem('refresh_token');
-              deleteCookie('access_token');
-              deleteCookie('refresh_token');
-              window.location.href = '/login';
-              return Promise.reject(error);
-            })
-            .finally(() => {
-              isRefreshing = false;
-              refreshPromise = null;
-            });
-        } else {
-          localStorage.removeItem('access_token');
-          deleteCookie('access_token');
-          window.location.href = '/login';
-          return Promise.reject(error);
-        }
+        refreshPromise = apiClient.post('/auth/refresh')
+          .catch(() => {
+            // Refresh failed — the session is dead (the backend already
+            // revoked the chain and cleared the cookies).
+            deleteMarkerCookie(LOGGED_IN_MARKER);
+            window.location.href = '/login';
+            return Promise.reject(error);
+          })
+          .finally(() => {
+            isRefreshing = false;
+            refreshPromise = null;
+          });
       }
 
-      // Wait for the refresh to complete, then retry the original request
+      // Wait for the refresh to complete, then retry the original request —
+      // no header rewrite needed: the new access cookie is sent automatically.
       try {
         await refreshPromise;
-        const token = localStorage.getItem('access_token');
-        if (token) {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-        }
         return apiClient(originalRequest);
       } catch {
         return Promise.reject(error);
@@ -203,10 +209,11 @@ export interface RegisterData {
   name: string;
 }
 
+// PD-A1: tokens never appear in API responses — bodies carry identifiers or
+// a message only.
 export interface AuthResponse {
-  access_token: string;
-  refresh_token: string;
   user_id?: string;
+  message?: string;
 }
 
 export interface Document {
@@ -324,45 +331,43 @@ export interface UploadResponse {
 // API Functions
 export const authApi = {
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
+    // PD-A3: login is state-changing — make sure the csrf cookie exists first.
+    await ensureCsrfToken();
     const response = await apiClient.post<AuthResponse>('/auth/login', credentials);
-    // Store tokens in both localStorage and cookies
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('access_token', response.data.access_token);
-      localStorage.setItem('refresh_token', response.data.refresh_token);
-      setCookie('access_token', response.data.access_token);
-      setCookie('refresh_token', response.data.refresh_token);
-    }
+    // PD-A1: session cookies are HttpOnly and set by the backend through the
+    // proxy. Only the UX marker lives in JS-land.
+    setMarkerCookie(LOGGED_IN_MARKER, '1');
     return response.data;
   },
 
+  // PD-A4: registration never opens a session and never reveals whether the
+  // email was taken — the uniform success message routes the user to login.
   register: async (data: RegisterData): Promise<AuthResponse> => {
+    await ensureCsrfToken();
     const response = await apiClient.post<AuthResponse>('/auth/register', data);
-    // U-7 (audit): register returns tokens too — store them like login does so
-    // the user is auto-logged-in instead of re-typing the same credentials.
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('access_token', response.data.access_token);
-      localStorage.setItem('refresh_token', response.data.refresh_token);
-      setCookie('access_token', response.data.access_token);
-      setCookie('refresh_token', response.data.refresh_token);
-    }
     return response.data;
   },
 
-  logout: () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      deleteCookie('access_token');
-      deleteCookie('refresh_token');
+  // PD-A2: server-side logout — revokes the refresh session; the backend
+  // clears the HttpOnly cookies. Best-effort: local cleanup runs regardless.
+  logout: async (): Promise<void> => {
+    try {
+      await ensureCsrfToken();
+      await apiClient.post('/auth/logout');
+    } catch {
+      // Network errors must not strand the user in a logged-in-looking UI.
+    } finally {
+      if (typeof window !== 'undefined') {
+        deleteMarkerCookie(LOGGED_IN_MARKER);
+      }
     }
   },
 
   isAuthenticated: (): boolean => {
     if (typeof window === 'undefined') return false;
-    const hasLocalStorage = !!localStorage.getItem('access_token');
-    // Also check cookies
-    const hasCookie = document.cookie.includes('access_token=');
-    return hasLocalStorage || hasCookie;
+    // Purely a UX check — page protection is the middleware's job (it sees
+    // the HttpOnly cookie server-side).
+    return readCookie(LOGGED_IN_MARKER) === '1';
   },
 
   getErrorMessage, // Export helper for use in components
@@ -400,7 +405,7 @@ export const documentsApi = {
 
   // P1-6 (audit): fetch the raw file through apiClient so the 401-refresh
   // interceptor applies (DocumentViewer previously used raw fetch with the
-  // localStorage token, which failed once the 15-min access token expired)
+  // non-cookie request, which failed once the 15-min access token expired)
   getFile: async (id: string): Promise<Blob> => {
     const response = await apiClient.get<Blob>(`/documents/${id}/file`, {
       responseType: 'blob',
