@@ -7,6 +7,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { resolvePort } from './config/resolve-port';
 
 // Part 4: API Specification - CORS, Validation, Global Prefix
 
@@ -49,7 +50,9 @@ async function bootstrap() {
   // P2-6 (audit): graceful shutdown — lets Bull drain running jobs on SIGTERM
   app.enableShutdownHooks();
 
-  const port = configService.get<number>('APP_PORT') || 3001;
+  // PD-DEP1 (public-demo audit): platform-injected PORT (Render) wins over
+  // APP_PORT; Nest's default host is 0.0.0.0, which is what platforms need.
+  const port = resolvePort(process.env);
   await app.listen(port);
 
   console.log(`🚀 Doclos API running on: http://localhost:${port}/api/v1`);

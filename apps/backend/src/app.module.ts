@@ -25,9 +25,43 @@ const PRODUCTION_FORBIDDEN_SECRETS = [
   'change-me-demo-1234',
 ];
 
-// Parse Redis URL to extract password for Upstash
-const redisUrl = process.env.REDIS_URL || '';
-const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
+// PD-R6 (public-demo audit): build the Bull/ioredis connection from REDIS_URL
+// when present — the primary deployment shape is an Upstash TLS URL
+// (user-confirmed decision; Render Key Value is fallback-only and also hands
+// you a URL). REDIS_HOST/REDIS_PORT remain the local-docker fallback. The old
+// code only fished a password out of the URL with a regex, so a managed
+// REDIS_URL would have been silently ignored in favor of localhost defaults.
+export function bullRedisOptions() {
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    const parsed = new URL(redisUrl);
+    return {
+      host: parsed.hostname,
+      port: parsed.port ? parseInt(parsed.port, 10) : 6379,
+      username:
+        parsed.username && parsed.username !== 'default'
+          ? decodeURIComponent(parsed.username)
+          : undefined,
+      password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
+      db: parsed.pathname.length > 1 ? parseInt(parsed.pathname.slice(1), 10) : undefined,
+      tls: parsed.protocol === 'rediss:' ? {} : undefined,
+      // Required by Bull: the worker pulls jobs with a blocking command
+      // (BRPOPLPUSH). Without these, ioredis aborts that blocking request
+      // after its retry limit once a managed Redis drops an idle connection,
+      // and the worker permanently stops consuming the queue (jobs pile up in
+      // "wait" with active=0). maxRetriesPerRequest:null disables that limit;
+      // enableReadyCheck:false avoids ready-check stalls on the bclient.
+      maxRetriesPerRequest: null as null,
+      enableReadyCheck: false,
+    };
+  }
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    maxRetriesPerRequest: null as null,
+    enableReadyCheck: false,
+  };
+}
 
 @Module({
   imports: [
@@ -74,22 +108,9 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
     // Database - TypeORM with PostgreSQL
     TypeOrmModule.forRoot(dataSourceOptions),
 
-    // Queue - Bull with Redis (Upstash with TLS)
+    // Queue - Bull with Redis (REDIS_URL-first: Upstash TLS / Render KV fallback)
     BullModule.forRoot({
-      redis: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: redisPassword,
-        tls: process.env.REDIS_URL?.startsWith('rediss://') ? {} : undefined,
-        // Required by Bull: the worker pulls jobs with a blocking command
-        // (BRPOPLPUSH). Without these, ioredis aborts that blocking request
-        // after its retry limit once Upstash drops an idle connection, and the
-        // worker permanently stops consuming the queue (jobs pile up in "wait"
-        // with active=0). maxRetriesPerRequest:null disables that limit;
-        // enableReadyCheck:false avoids ready-check stalls on the bclient.
-        maxRetriesPerRequest: null,
-        enableReadyCheck: false,
-      },
+      redis: bullRedisOptions(),
       defaultJobOptions: {
         removeOnComplete: 100,
         removeOnFail: 200,
