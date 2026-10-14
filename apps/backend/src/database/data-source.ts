@@ -18,6 +18,7 @@ import { InvoiceItem } from '../modules/documents/entities/invoice-item.entity';
 import { FieldExtraction } from '../modules/documents/entities/field-extraction.entity';
 import { Job } from '../modules/jobs/entities/job.entity';
 import { AuditLog } from '../modules/jobs/entities/audit-log.entity';
+import { PendingStorageDeletion } from '../modules/storage/entities/pending-storage-deletion.entity';
 
 // Load .env file early for TypeORM configuration
 // From dist/apps/backend/database, we need to go up 4 levels to reach project root
@@ -71,6 +72,7 @@ export const dataSourceOptions: DataSourceOptions = {
     FieldExtraction,
     Job,
     AuditLog,
+    PendingStorageDeletion,
   ],
   // P1-5 (audit): __dirname is src/database — the old path pointed at a
   // nonexistent src/database/database/migrations
