@@ -44,7 +44,7 @@ Tracked-tree scan (2026-10-15): every secret-shaped value in tracked files is a 
 | R-3 | M | IP limits don't match the public-demo spec: upload 10/min (spec 5), reprocess 10/min (spec 5), no registration 3/h, no sample 2/h. | `documents.controller.ts`, `auth.controller.ts`, new demo controller |
 | R-4 | M | No `trust proxy` handling: behind Render's proxy every client shares the proxy IP (breaks per-IP limits) unless X-Forwarded-For is handled safely; a client can also spoof XFF for a direct hit. | `main.ts` |
 | R-5 | M | 429 responses carry no retry information. | `common/rate-limit/` |
-| R-6 | H | Bull is configured from `REDIS_HOST`/`REDIS_PORT` only — a `REDIS_URL` (what Render Key Value / Upstash provide) is parsed just for a password. Deploying to Render KV would silently ignore the URL. | `app.module.ts` |
+| R-6 | H | Bull is configured from `REDIS_HOST`/`REDIS_PORT` only — a `REDIS_URL` (what Upstash and Render Key Value provide) is parsed just for a password, so a managed Redis URL would be silently ignored. **Decision (user-confirmed): Upstash Redis Free (EU, TLS `rediss://`) is the primary provider; Render Key Value is fallback-only. Redis must never be load-bearing for correctness — the stale-document recovery sweeper stays.** | `app.module.ts` |
 
 ### Upload / OCR hardening
 
@@ -106,7 +106,7 @@ The synthetic invoice content itself is clean (fictional companies, Musterstraß
 |----|-----|---------|-------|
 | DEP-1 | H | Backend binds `APP_PORT` (default 3001) only; Render injects `PORT`. Must bind `PORT || APP_PORT` on 0.0.0.0. | `main.ts` |
 | DEP-2 | M | No Render deployment docs / post-deploy smoke runbook / rotation doc. | `docs/DEPLOYMENT_RENDER.md`, `docs/POST_DEPLOY_SMOKE.md` |
-| DEP-3 | M | Frontend can't be a static export: `middleware.ts` (auth redirects) + same-origin `/api/v1` rewrite proxy (required once auth is cookie-based) need the Next server → Render Web Service for the frontend, not Vercel/Cloudflare Pages (both would work, but Render keeps the stack on one platform and the rewrite proxy needs `BACKEND_ORIGIN` env support at build/run time, which Render provides). | `docs/DEPLOYMENT_RENDER.md` |
+| DEP-3 | M | Frontend can't be a static export: `middleware.ts` (auth redirects) + same-origin `/api/v1` rewrite proxy (required once auth is cookie-based) need the Next server. **Decision (user-confirmed): two Render Web Services (backend + frontend, existing Next.js server model); Cloudflare stays for R2/DNS/TLS only; no Cloudflare Pages/Workers migration in this task.** | `docs/DEPLOYMENT_RENDER.md` |
 | DEP-4 | M | No automated smoke script exercising the full user journey without printing secrets. | new `scripts/smoke-demo.mjs` |
 
 ### CI & tests
