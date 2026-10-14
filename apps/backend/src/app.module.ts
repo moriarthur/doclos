@@ -18,6 +18,13 @@ import { dataSourceOptions } from './database/data-source';
 
 // Part 1: System Architecture - Root application module
 
+// PD-S2 (public-demo audit): values that must never be live in production —
+// or anywhere, for the legacy demo password.
+const PRODUCTION_FORBIDDEN_SECRETS = [
+  'your-super-secret-jwt-key-change-in-production',
+  'change-me-demo-1234',
+];
+
 // Parse Redis URL to extract password for Upstash
 const redisUrl = process.env.REDIS_URL || '';
 const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
@@ -33,16 +40,33 @@ const redisPassword = redisUrl.match(/rediss?:\/\/[^:]+:([^@]+)@/)?.[1];
       isGlobal: true,
       envFilePath: '../../.env',
       // P2-6 (audit): fail fast on missing critical configuration instead of
-      // dying later with cryptic connection/auth errors
+      // dying later with cryptic connection/auth errors.
+      // PD-S2 (public-demo audit): production additionally refuses weak or
+      // placeholder secrets and demands FRONTEND_URL.
       validationSchema: Joi.object({
         DATABASE_URL: Joi.string().required(),
         REDIS_URL: Joi.string().required(),
-        JWT_SECRET: Joi.string().required(),
+        JWT_SECRET: Joi.string()
+          .min(32)
+          .max(256)
+          .required()
+          .when('NODE_ENV', {
+            is: 'production',
+            then: Joi.invalid(...PRODUCTION_FORBIDDEN_SECRETS),
+          }),
         S3_ENDPOINT: Joi.string().required(),
         S3_BUCKET: Joi.string().required(),
         S3_ACCESS_KEY_ID: Joi.string().required(),
         S3_SECRET_ACCESS_KEY: Joi.string().required(),
         GLM_API_KEY: Joi.string().required(),
+        FRONTEND_URL: Joi.string().uri().when('NODE_ENV', {
+          is: 'production',
+          then: Joi.required(),
+        }),
+        NODE_ENV: Joi.string().valid('development', 'production', 'test'),
+        // PD-S2: if the legacy demo-password var is still around anywhere, the
+        // placeholder value must never be live in any environment.
+        DEMO_PASSWORD: Joi.string().invalid(...PRODUCTION_FORBIDDEN_SECRETS),
       }),
       validationOptions: { abortEarly: false },
     }),
