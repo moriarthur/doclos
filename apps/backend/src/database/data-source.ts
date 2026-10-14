@@ -10,6 +10,7 @@ dns.setDefaultResultOrder('ipv4first');
 
 // Explicitly import entities for Webpack compatibility
 import { User } from '../modules/auth/entities/user.entity';
+import { RefreshSession } from '../modules/auth/entities/refresh-session.entity';
 import { Customer } from '../modules/documents/entities/customer.entity';
 import { Document } from '../modules/documents/entities/document.entity';
 import { Invoice } from '../modules/documents/entities/invoice.entity';
@@ -62,6 +63,7 @@ export const dataSourceOptions: DataSourceOptions = {
   // Explicitly list entities for Webpack compatibility
   entities: [
     User,
+    RefreshSession,
     Customer,
     Document,
     Invoice,
