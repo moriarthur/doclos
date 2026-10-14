@@ -27,6 +27,6 @@ import { PendingStorageDeletion } from '../storage/entities/pending-storage-dele
   ],
   controllers: [AuthController, AccountController],
   providers: [AuthService, JwtStrategy, AccountService],
-  exports: [AuthService],
+  exports: [AuthService, AccountService],
 })
 export class AuthModule {}

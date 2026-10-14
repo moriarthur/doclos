@@ -542,3 +542,20 @@ export const exportApi = {
     return response.data;
   },
 };
+
+// PD-D1 (public-demo audit): per-user synthetic sample — runs the real
+// pipeline under the caller's own tenant. 1/day/user server-side.
+export const demoApi = {
+  createSample: async (): Promise<{ document_id: string; status: string }> => {
+    const response = await apiClient.post<{ document_id: string; status: string }>(
+      '/demo/sample',
+    );
+    return response.data;
+  },
+
+  // Deletes ONLY the current user's synthetic sample documents.
+  resetSample: async (): Promise<{ deleted: number }> => {
+    const response = await apiClient.delete<{ deleted: number }>('/demo/sample');
+    return response.data;
+  },
+};

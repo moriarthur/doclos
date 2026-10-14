@@ -21,8 +21,6 @@
     "db:migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
     "db:drop:dev": "ts-node src/database/drop.schema.ts",
     "db:reset:dev": "pnpm run db:drop:dev && pnpm run db:migrate",
-    "db:seed": "ts-node src/database/seeds/demo.seed.ts",
-    "demo:reset": "ts-node src/database/seeds/demo.reset.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {

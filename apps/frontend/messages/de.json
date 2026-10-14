@@ -60,7 +60,13 @@
     "selectAll": "Alle auswählen",
     "deselectAll": "Auswahl aufheben",
     "selectedCount": "{count} ausgewählt",
-    "bulkDeleteTitle": "{count} Dokumente löschen?"
+    "bulkDeleteTitle": "{count} Dokumente löschen?",
+    "sampleBtn": "Synthetisches Beispiel laden",
+    "sampleLoading": "Beispiel wird geladen…",
+    "sampleHint": "Synthetisches Beispiel — ausschließlich fiktive Daten, keine personenbezogenen Angaben.",
+    "sampleReset": "Beispiel zurücksetzen",
+    "sampleResetting": "Wird zurückgesetzt…",
+    "sampleResetDone": "{count, plural, =0 {Keine Beispiel-Dokumente gefunden} one {Beispiel-Dokument gelöscht} other {{count} Beispiel-Dokumente gelöscht}}"
   },
   "Login": {
     "welcome": "Willkommen zurück",

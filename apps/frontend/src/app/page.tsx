@@ -2,7 +2,7 @@
 
 import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations, useLocale } from 'next-intl';
-import { documentsApi } from '@/lib/api-client';
+import { documentsApi, demoApi, authApi } from '@/lib/api-client';
 import { Navigation } from '@/components/Navigation';
 import { ExportMenu } from '@/components/ExportMenu';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -65,6 +65,48 @@ export default function DashboardPage() {
     const handle = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(handle);
   }, [searchQuery]);
+
+  // PD-D1: per-user synthetic sample — load/reset with visible states.
+  const [sampleFeedback, setSampleFeedback] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const sampleMutation = useMutation({
+    mutationFn: () => demoApi.createSample(),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      // Straight into the viewer — the pipeline keeps processing there.
+      window.location.assign(`/documents/${result.document_id}`);
+    },
+    onError: (err: unknown) => {
+      setSampleFeedback({ kind: 'error', text: authApi.getErrorMessage(err) });
+    },
+  });
+  const resetSampleMutation = useMutation({
+    mutationFn: () => demoApi.resetSample(),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      setSampleFeedback({
+        kind: 'success',
+        text: t('sampleResetDone', { count: result.deleted }),
+      });
+    },
+    onError: (err: unknown) => {
+      setSampleFeedback({ kind: 'error', text: authApi.getErrorMessage(err) });
+    },
+  });
+
+  const sampleButton = (
+    <Button
+      variant="secondary"
+      className="gap-2"
+      disabled={sampleMutation.isPending || resetSampleMutation.isPending}
+      onClick={() => {
+        setSampleFeedback(null);
+        sampleMutation.mutate();
+      }}
+    >
+      <Sparkles className="h-4 w-4" />
+      {sampleMutation.isPending ? t('sampleLoading') : t('sampleBtn')}
+    </Button>
+  );
 
   const {
     data,
@@ -245,8 +287,41 @@ export default function DashboardPage() {
                   {t('uploadBtn')}
                 </Button>
               </Link>
+              {sampleButton}
             </div>
           </div>
+
+          {/* PD-D1: sample feedback + reset — visible whenever a sample flow
+              ran, independent of the document list state. */}
+          {(sampleFeedback || !isLoading && total === 0 && !debouncedSearch && !statusFilter) && (
+            <div className="mb-6 flex flex-wrap items-center gap-3 text-sm">
+              {sampleFeedback && (
+                <span
+                  className={
+                    sampleFeedback.kind === 'error'
+                      ? 'text-destructive'
+                      : 'text-emerald-600 dark:text-emerald-400'
+                  }
+                >
+                  {sampleFeedback.text}
+                </span>
+              )}
+              {sampleFeedback?.kind !== 'error' && !sampleMutation.isPending && (
+                <span className="text-muted-foreground">{t('sampleHint')}</span>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={sampleMutation.isPending || resetSampleMutation.isPending}
+                onClick={() => {
+                  setSampleFeedback(null);
+                  resetSampleMutation.mutate();
+                }}
+              >
+                {resetSampleMutation.isPending ? t('sampleResetting') : t('sampleReset')}
+              </Button>
+            </div>
+          )}
 
           {/* Search and Filters */}
           <Card className="mb-8 animate-scale-in">
@@ -362,12 +437,15 @@ export default function DashboardPage() {
                   {debouncedSearch || statusFilter ? t('emptyNoResultsDesc') : t('emptyNoDocsDesc')}
                 </p>
                 {!debouncedSearch && !statusFilter && (
-                  <Link href="/upload">
-                    <Button className="gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      {t('firstInvoiceBtn')}
-                    </Button>
-                  </Link>
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    <Link href="/upload">
+                      <Button className="gap-2">
+                        <Sparkles className="h-4 w-4" />
+                        {t('firstInvoiceBtn')}
+                      </Button>
+                    </Link>
+                    {sampleButton}
+                  </div>
                 )}
               </CardContent>
             </Card>
