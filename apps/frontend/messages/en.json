@@ -60,7 +60,13 @@
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
     "selectedCount": "{count} selected",
-    "bulkDeleteTitle": "Delete {count} documents?"
+    "bulkDeleteTitle": "Delete {count} documents?",
+    "sampleBtn": "Load synthetic sample",
+    "sampleLoading": "Loading sample…",
+    "sampleHint": "Synthetic sample — fictional data only, no personal information.",
+    "sampleReset": "Reset sample",
+    "sampleResetting": "Resetting…",
+    "sampleResetDone": "{count, plural, =0 {No sample documents found} one {Deleted {count} sample document} other {Deleted {count} sample documents}}"
   },
   "Login": {
     "welcome": "Welcome back",

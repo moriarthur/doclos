@@ -20,6 +20,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { OcrModule } from './modules/ocr/ocr.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ExportModule } from './modules/export/export.module';
+import { DemoModule } from './modules/demo/demo.module';
 import { HealthModule } from './modules/health/health.module';
 import { dataSourceOptions } from './database/data-source';
 
@@ -80,6 +81,8 @@ const PRODUCTION_FORBIDDEN_SECRETS = [
         // 0 disables X-Forwarded-For handling — MUST stay 0 when the API is
         // reachable directly, or clients could forge their rate-limit IP.
         TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(10),
+        // PD-D3: optional retention window for inactive accounts (days).
+        DEMO_RETENTION_DAYS: Joi.number().integer().min(1).max(365).empty(''),
         // PD-S2: if the legacy demo-password var is still around anywhere, the
         // placeholder value must never be live in any environment.
         DEMO_PASSWORD: Joi.string().invalid(...PRODUCTION_FORBIDDEN_SECRETS),
@@ -110,6 +113,7 @@ const PRODUCTION_FORBIDDEN_SECRETS = [
     SearchModule,
     JobsModule,
     ExportModule,
+    DemoModule,
     HealthModule,
   ],
   controllers: [],
