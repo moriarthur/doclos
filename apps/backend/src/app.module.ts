@@ -4,7 +4,11 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import * as Joi from 'joi';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
+import { RateLimitGuard } from './common/rate-limit/rate-limit.guard';
+import { RedisThrottlerStorage } from './common/rate-limit/redis-throttler-storage';
+import { redisConnectionOptions } from './config/redis-options';
 import { AuthModule } from './modules/auth/auth.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { SearchModule } from './modules/search/search.module';
@@ -25,49 +29,20 @@ const PRODUCTION_FORBIDDEN_SECRETS = [
   'change-me-demo-1234',
 ];
 
-// PD-R6 (public-demo audit): build the Bull/ioredis connection from REDIS_URL
-// when present — the primary deployment shape is an Upstash TLS URL
-// (user-confirmed decision; Render Key Value is fallback-only and also hands
-// you a URL). REDIS_HOST/REDIS_PORT remain the local-docker fallback. The old
-// code only fished a password out of the URL with a regex, so a managed
-// REDIS_URL would have been silently ignored in favor of localhost defaults.
-export function bullRedisOptions() {
-  const redisUrl = process.env.REDIS_URL;
-  if (redisUrl) {
-    const parsed = new URL(redisUrl);
-    return {
-      host: parsed.hostname,
-      port: parsed.port ? parseInt(parsed.port, 10) : 6379,
-      username:
-        parsed.username && parsed.username !== 'default'
-          ? decodeURIComponent(parsed.username)
-          : undefined,
-      password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
-      db: parsed.pathname.length > 1 ? parseInt(parsed.pathname.slice(1), 10) : undefined,
-      tls: parsed.protocol === 'rediss:' ? {} : undefined,
-      // Required by Bull: the worker pulls jobs with a blocking command
-      // (BRPOPLPUSH). Without these, ioredis aborts that blocking request
-      // after its retry limit once a managed Redis drops an idle connection,
-      // and the worker permanently stops consuming the queue (jobs pile up in
-      // "wait" with active=0). maxRetriesPerRequest:null disables that limit;
-      // enableReadyCheck:false avoids ready-check stalls on the bclient.
-      maxRetriesPerRequest: null as null,
-      enableReadyCheck: false,
-    };
-  }
-  return {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379', 10),
-    maxRetriesPerRequest: null as null,
-    enableReadyCheck: false,
-  };
-}
-
 @Module({
   imports: [
-    // Rate limiting — guards every route; auth routes get a stricter limit
-    // via @Throttle() on AuthController. TTL is in milliseconds (throttler v5+).
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    // Rate limiting — guards every route; stricter budgets via @Throttle() on
+    // the abusive routes (auth, upload, reprocess, demo sample). TTL is in
+    // milliseconds (throttler v5+). PD-R1: counters live in Redis so limits
+    // survive restarts and share state across instances.
+    ThrottlerModule.forRootAsync({
+      imports: [RateLimitModule],
+      inject: [RedisThrottlerStorage],
+      useFactory: (storage: RedisThrottlerStorage) => ({
+        throttlers: [{ ttl: 60_000, limit: 120 }],
+        storage,
+      }),
+    }),
 
     // Configuration - loads .env file
     ConfigModule.forRoot({
@@ -98,6 +73,10 @@ export function bullRedisOptions() {
           then: Joi.required(),
         }),
         NODE_ENV: Joi.string().valid('development', 'production', 'test'),
+        // PD-R4: trusted reverse-proxy hops in front of the API (Render = 1).
+        // 0 disables X-Forwarded-For handling — MUST stay 0 when the API is
+        // reachable directly, or clients could forge their rate-limit IP.
+        TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(10),
         // PD-S2: if the legacy demo-password var is still around anywhere, the
         // placeholder value must never be live in any environment.
         DEMO_PASSWORD: Joi.string().invalid(...PRODUCTION_FORBIDDEN_SECRETS),
@@ -110,7 +89,7 @@ export function bullRedisOptions() {
 
     // Queue - Bull with Redis (REDIS_URL-first: Upstash TLS / Render KV fallback)
     BullModule.forRoot({
-      redis: bullRedisOptions(),
+      redis: redisConnectionOptions(),
       defaultJobOptions: {
         removeOnComplete: 100,
         removeOnFail: 200,
@@ -118,6 +97,7 @@ export function bullRedisOptions() {
     }),
 
     // Feature modules
+    RateLimitModule,
     StorageModule,
     OcrModule,
     AiModule,
@@ -129,6 +109,6 @@ export function bullRedisOptions() {
     HealthModule,
   ],
   controllers: [],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: RateLimitGuard }],
 })
 export class AppModule {}
