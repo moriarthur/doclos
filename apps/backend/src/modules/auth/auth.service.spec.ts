@@ -71,10 +71,14 @@ describe('AuthService refresh sessions', () => {
     };
 
     const service = Object.create(AuthService.prototype) as AuthService;
-    Object.defineProperty(service, 'usersRepository', { value: usersRepository });
-    Object.defineProperty(service, 'refreshSessionsRepository', { value: sessionsRepository });
-    Object.defineProperty(service, 'jwtService', { value: jwtService });
-    Object.defineProperty(service, 'logger', { value: { warn: jest.fn(), log: jest.fn() } });
+    Object.defineProperty(service, 'usersRepository', {
+      configurable: true, value: usersRepository });
+    Object.defineProperty(service, 'refreshSessionsRepository', {
+      configurable: true, value: sessionsRepository });
+    Object.defineProperty(service, 'jwtService', {
+      configurable: true, value: jwtService });
+    Object.defineProperty(service, 'logger', {
+      configurable: true, value: { warn: jest.fn(), log: jest.fn() } });
 
     // Token issuance under test: generateTokens is private, so the harness
     // reaches it through one typed cast instead of driving the register path.
@@ -185,5 +189,51 @@ describe('AuthService refresh sessions', () => {
     // sessions for anyone else.
     expect(rotated.refresh_token).toContain('|u1|');
     expect(rotated.access_token).toContain('|u1|');
+  });
+
+  describe('PD-A4: registration does not leak email existence', () => {
+    const usersRepositoryWith = (existingEmails: string[]) => {
+      const users = new Map(existingEmails.map((e) => [e, { id: 'u-x', email: e }]));
+      return {
+        findOne: async ({ where }: { where: { id?: string; email?: string } }) => {
+          if (where.id) return users.get(where.id) ?? null;
+          return where.email && users.has(where.email) ? users.get(where.email)! : null;
+        },
+        create: (x: Record<string, unknown>) => ({ id: 'u-new', ...x }),
+        save: async (u: Record<string, unknown>) => u,
+      };
+    };
+
+    const makeRegisterService = (existingEmails: string[]) => {
+      const { service } = makeHarness();
+      Object.defineProperty(service, 'usersRepository', {
+      configurable: true,
+        value: usersRepositoryWith(existingEmails),
+      });
+      Object.defineProperty(service, 'refreshSessionsRepository', {
+      configurable: true,
+        value: {
+          create: (x: object) => x,
+          save: async (x: object) => x,
+          delete: async () => undefined,
+        },
+      });
+      return service;
+    };
+
+    it('a duplicate registration answers the same body as a fresh one', async () => {
+      const fresh = await makeRegisterService([]).register({
+        email: 'Newcomer@x.com',
+        password: 'long-enough-password',
+        name: 'N',
+      });
+      const duplicate = await makeRegisterService(['taken@x.com']).register({
+        email: 'TAKEN@x.com',
+        password: 'whatever-password',
+        name: 'D',
+      });
+      expect(duplicate).toEqual(fresh);
+      expect(duplicate.message).toContain('You can now log in');
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThan, IsNull } from 'typeorm';
@@ -17,6 +17,9 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 // every refresh token issued has a row holding only its SHA-256 hash. Each
 // refresh ROTATES the token (old session revoked, new one issued); reusing a
 // revoked token is treated as theft and revokes the user's entire chain.
+
+// PD-A4: identical body for fresh and duplicate registrations.
+export const REGISTER_SUCCESS_MESSAGE = 'Registration successful. You can now log in.';
 
 export function parseDurationMs(raw: string): number {
   const m = raw.match(/^(\d+)([smhd])$/);
@@ -50,10 +53,15 @@ export class AuthService {
     const existingUser = await this.usersRepository.findOne({
       where: { email },
     });
+
     if (existingUser) {
-      // PD-A4 (public-demo audit): commit 9 makes this response indistinguishable
-      // from a successful registration to prevent email enumeration.
-      throw new ConflictException('User already exists');
+      // PD-A4 (public-demo audit): no "User already exists" oracle. The
+      // response is byte-identical to a fresh registration (same 201, same
+      // body, no Set-Cookie difference), and a bcrypt round burns the same
+      // CPU as the real path so timing doesn't answer either. Login is the
+      // single gate — it already answers a uniform "Invalid credentials".
+      await bcrypt.hash(dto.password, 10);
+      return { message: REGISTER_SUCCESS_MESSAGE };
     }
 
     // Hash password
@@ -67,12 +75,7 @@ export class AuthService {
     });
     await this.usersRepository.save(user);
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user.id);
-    return {
-      user_id: user.id,
-      ...tokens,
-    };
+    return { message: REGISTER_SUCCESS_MESSAGE };
   }
 
   async login(dto: LoginDto) {
