@@ -106,15 +106,11 @@ export class AuthController {
   // + storage quota). Overrides the class-wide 10/min for this method only.
   @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   @Post('register')
-  async register(
-    @Body() dto: RegisterDto,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const tokens = await this.authService.register(dto);
-    this.setAuthCookies(res, tokens);
-    this.setCsrfCookie(res);
-    // PD-A1: token material is cookie-only — the body carries no tokens.
-    return { user_id: tokens.user_id };
+  async register(@Body() dto: RegisterDto) {
+    // PD-A4: identical response for fresh and duplicate registrations — no
+    // session cookies (no auto-login), so Set-Cookie presence can't answer
+    // "does this email exist" either. The frontend forwards to the login form.
+    return this.authService.register(dto);
   }
 
   @Post('login')
