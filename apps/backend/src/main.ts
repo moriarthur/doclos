@@ -3,10 +3,12 @@ import * as dns from 'dns';
 dns.setDefaultResultOrder('ipv4first');
 
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
+import * as crypto from 'crypto';
+import type { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 import { resolvePort } from './config/resolve-port';
 
@@ -39,9 +41,31 @@ async function bootstrap() {
   // expose .set(), go through the underlying Express instance.
   app.getHttpAdapter().getInstance().set('trust proxy', hops);
 
-  // Global prefix — /healthz stays at the root so deployment platforms can
-  // probe it without knowing the API version prefix
-  app.setGlobalPrefix('api/v1', { exclude: ['healthz'] });
+  // Global prefix — /healthz (liveness) and /readyz (PD-H1 readiness) stay at
+  // the root so deployment platforms can probe them without the API prefix
+  app.setGlobalPrefix('api/v1', { exclude: ['healthz', 'readyz'] });
+
+  // PD-H2 (public-demo audit): request correlation ID — honor a sane inbound
+  // X-Request-ID, else mint one; always echoed back so clients and logs line
+  // up. Request logs below carry method/path/status/duration ONLY — no query
+  // strings (search terms are user content), no bodies, no user IDs.
+  const httpLogger = new Logger('HTTP');
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const incoming = req.headers['x-request-id'];
+    const requestId =
+      typeof incoming === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(incoming)
+        ? incoming
+        : crypto.randomUUID();
+    res.setHeader('X-Request-Id', requestId);
+
+    const startedAt = Date.now();
+    res.on('finish', () => {
+      // Probe endpoints would drown the log — skip them.
+      if (req.path === '/healthz' || req.path === '/readyz') return;
+      httpLogger.log(`${req.method} ${req.path} ${res.statusCode} ${Date.now() - startedAt}ms [${requestId}]`);
+    });
+    next();
+  });
 
   // CORS — production allows only the configured frontend origin; dev also
   // allows localhost variants.
