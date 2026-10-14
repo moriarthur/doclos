@@ -11,6 +11,7 @@ import { RedisThrottlerStorage } from './common/rate-limit/redis-throttler-stora
 import { redisConnectionOptions } from './config/redis-options';
 import { QuotaModule } from './common/quota/quota.module';
 import { QuotaExceptionFilter } from './common/quota/quota.exceptions';
+import { CsrfGuard } from './common/csrf/csrf.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { SearchModule } from './modules/search/search.module';
@@ -114,6 +115,9 @@ const PRODUCTION_FORBIDDEN_SECRETS = [
   controllers: [],
   providers: [
     { provide: APP_GUARD, useClass: RateLimitGuard },
+    // PD-A3: double-submit CSRF for the cookie transport — runs after the
+    // rate limiter, before route-level auth guards.
+    { provide: APP_GUARD, useClass: CsrfGuard },
     { provide: APP_FILTER, useClass: QuotaExceptionFilter },
   ],
 })

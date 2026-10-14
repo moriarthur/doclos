@@ -6,6 +6,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { resolvePort } from './config/resolve-port';
 
@@ -18,6 +19,10 @@ async function bootstrap() {
 
   // Security headers (HSTS, X-Frame-Options, no-sniff, etc.)
   app.use(helmet());
+
+  // PD-A1: cookie-based auth transport — parse cookies for the JWT strategy
+  // and the CSRF double-submit guard.
+  app.use(cookieParser.default());
 
   // PD-R4 (public-demo audit): rate limiting keys on req.ip, which Express
   // only resolves from X-Forwarded-For when the proxy chain length is trusted.
@@ -47,7 +52,8 @@ async function bootstrap() {
       : [frontendUrl, 'http://localhost:3000', 'http://127.0.0.1:3000'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    // PD-A3: X-CSRF-Token is the double-submit header for cookie auth.
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token'],
   });
 
   // Validation
