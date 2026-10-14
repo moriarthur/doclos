@@ -42,8 +42,9 @@ export function Navigation() {
 
   const toggleTheme = () => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
 
-  const handleLogout = () => {
-    authApi.logout();
+  const handleLogout = async () => {
+    // PD-A2: revoke the refresh session server-side, then hard-redirect.
+    await authApi.logout();
     window.location.href = '/login';
   };
 
