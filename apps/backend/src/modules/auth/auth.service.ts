@@ -18,7 +18,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 // refresh ROTATES the token (old session revoked, new one issued); reusing a
 // revoked token is treated as theft and revokes the user's entire chain.
 
-function parseDurationMs(raw: string): number {
+export function parseDurationMs(raw: string): number {
   const m = raw.match(/^(\d+)([smhd])$/);
   if (!m) return 30 * 24 * 3_600_000; // 30d default
   const n = parseInt(m[1], 10);
@@ -101,10 +101,15 @@ export class AuthService {
 
     // Generate tokens
     const tokens = await this.generateTokens(user.id);
-    return tokens;
+    // PD-A1: tokens travel as cookies (set by the controller); the body
+    // identifies the user only.
+    return { user_id: user.id, ...tokens };
   }
 
   async refreshTokens(dto: RefreshTokenDto) {
+    if (!dto.refresh_token) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
     let payload: { sub: string; type?: string };
     try {
       payload = this.jwtService.verify<{ sub: string; type?: string }>(dto.refresh_token, {
