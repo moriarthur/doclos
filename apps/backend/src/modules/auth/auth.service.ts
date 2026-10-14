@@ -1,21 +1,45 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThan, IsNull } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { User } from './entities/user.entity';
+import { RefreshSession } from './entities/refresh-session.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 
 // Part 4: API Specification - Auth service
 // Part 7: Security & GDPR - Password hashing with bcrypt
+//
+// PD-A2 (public-demo audit): refresh tokens are server-side sessions now —
+// every refresh token issued has a row holding only its SHA-256 hash. Each
+// refresh ROTATES the token (old session revoked, new one issued); reusing a
+// revoked token is treated as theft and revokes the user's entire chain.
+
+function parseDurationMs(raw: string): number {
+  const m = raw.match(/^(\d+)([smhd])$/);
+  if (!m) return 30 * 24 * 3_600_000; // 30d default
+  const n = parseInt(m[1], 10);
+  const unitMs: Record<string, number> = {
+    s: 1_000,
+    m: 60_000,
+    h: 3_600_000,
+    d: 24 * 3_600_000,
+  };
+  return n * unitMs[m[2]];
+}
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(RefreshSession)
+    private refreshSessionsRepository: Repository<RefreshSession>,
     private jwtService: JwtService,
   ) {}
 
@@ -27,6 +51,8 @@ export class AuthService {
       where: { email },
     });
     if (existingUser) {
+      // PD-A4 (public-demo audit): commit 9 makes this response indistinguishable
+      // from a successful registration to prevent email enumeration.
       throw new ConflictException('User already exists');
     }
 
@@ -70,33 +96,86 @@ export class AuthService {
     user.last_login = new Date();
     await this.usersRepository.save(user);
 
+    // Hygiene: expired sessions have no forensic value — drop them lazily.
+    await this.refreshSessionsRepository.delete({ expires_at: LessThan(new Date()) });
+
     // Generate tokens
     const tokens = await this.generateTokens(user.id);
     return tokens;
   }
 
   async refreshTokens(dto: RefreshTokenDto) {
+    let payload: { sub: string; type?: string };
     try {
-      const payload = this.jwtService.verify<{ sub: string; type?: string }>(dto.refresh_token, {
+      payload = this.jwtService.verify<{ sub: string; type?: string }>(dto.refresh_token, {
         secret: process.env.JWT_SECRET,
       });
-
-      // P0-3 (audit): refresh endpoint must accept refresh tokens only
-      if (payload.type !== 'refresh') {
-        throw new UnauthorizedException('Invalid refresh token');
-      }
-
-      const user = await this.usersRepository.findOne({
-        where: { id: payload.sub },
-      });
-      if (!user) {
-        throw new UnauthorizedException('Invalid refresh token');
-      }
-
-      return this.generateTokens(user.id);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
+
+    // P0-3 (audit): refresh endpoint must accept refresh tokens only
+    if (payload.type !== 'refresh') {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const hash = hashToken(dto.refresh_token);
+    const session = await this.refreshSessionsRepository.findOne({
+      where: { token_hash: hash },
+    });
+
+    // Signed correctly but no live session row: purged or never issued.
+    if (!session) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // PD-A2: reuse of an already-rotated/revoked refresh token is theft —
+    // burn the user's whole session chain so the stolen token and the
+    // legitimate one both die.
+    if (session.revoked_at) {
+      this.logger.warn(`Refresh token reuse detected for user ${session.user_id} — revoking all sessions`);
+      await this.revokeAllForUser(session.user_id);
+      throw new UnauthorizedException('Refresh token reuse detected — all sessions revoked');
+    }
+
+    if (session.expires_at.getTime() <= Date.now()) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // Rotate: this exact token can never be used again.
+    session.revoked_at = new Date();
+    session.last_used_at = session.revoked_at;
+    await this.refreshSessionsRepository.save(session);
+
+    // Belt and braces: the user must still exist.
+    const user = await this.usersRepository.findOne({
+      where: { id: session.user_id },
+    });
+    if (!user) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    return this.generateTokens(user.id);
+  }
+
+  /** PD-A2: server-side logout — the refresh token dies here, not just in the browser. */
+  async logout(refreshToken?: string): Promise<{ message: string }> {
+    if (refreshToken) {
+      await this.refreshSessionsRepository.update(
+        { token_hash: hashToken(refreshToken) },
+        { revoked_at: new Date() },
+      );
+    }
+    // Idempotent: an unknown/expired token still counts as logged out.
+    return { message: 'Logged out' };
+  }
+
+  /** PD-A2: kill every live session of a user (theft response / account deletion). */
+  async revokeAllForUser(userId: string): Promise<void> {
+    await this.refreshSessionsRepository.update(
+      { user_id: userId, revoked_at: IsNull() },
+      { revoked_at: new Date() },
+    );
   }
 
   private async generateTokens(userId: string) {
@@ -114,10 +193,25 @@ export class AuthService {
         expiresIn: process.env.JWT_REFRESH_EXPIRATION || '30d',
       },
     );
+
+    // PD-A2: persist the session (hash only). Rotation invalidates the old
+    // row; logout and reuse detection flip revoked_at.
+    const refreshTtlMs = parseDurationMs(process.env.JWT_REFRESH_EXPIRATION || '30d');
+    const session = this.refreshSessionsRepository.create({
+      user_id: userId,
+      token_hash: hashToken(refresh_token),
+      expires_at: new Date(Date.now() + refreshTtlMs),
+    });
+    await this.refreshSessionsRepository.save(session);
+
     return { access_token, refresh_token };
   }
 
   async findById(id: string) {
     return this.usersRepository.findOne({ where: { id } });
   }
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }

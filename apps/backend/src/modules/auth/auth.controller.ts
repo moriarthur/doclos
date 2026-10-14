@@ -34,4 +34,12 @@ export class AuthController {
   async refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refreshTokens(dto);
   }
+
+  // PD-A2: server-side logout — revokes the refresh session so the token is
+  // dead even if a copy was exfiltrated. Idempotent by design.
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Body() dto: RefreshTokenDto) {
+    return this.authService.logout(dto.refresh_token);
+  }
 }
