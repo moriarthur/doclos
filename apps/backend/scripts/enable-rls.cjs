@@ -47,7 +47,26 @@ if (!m) {
 }
 const [, dbUser, dbPass, dbHost, dbPort, dbName] = m;
 const useSsl = dbHost.includes('pooler.supabase.com');
-console.log(`Connecting as ${dbUser} → ${dbHost}:${dbPort}/${dbName} (ssl: ${useSsl})\n`);
+
+// PD-M1 (public-demo audit): use the SAME pinned-CA logic as the application
+// (data-source.ts) instead of rejectUnauthorized:false. The Supabase pooler
+// chain is issued by the private "Supabase Root 2021 CA" — pinned via
+// DB_CA_CERT_PATH (apps/backend/certs/supabase-prod-ca-2021.crt).
+// DB_SSL_REJECT_UNAUTHORIZED=false remains the escape hatch ONLY for a
+// TLS-intercepting corporate proxy.
+function sslOptions() {
+  if (!useSsl) return false;
+  if (process.env.DB_CA_CERT_PATH) {
+    const caPath = path.isAbsolute(process.env.DB_CA_CERT_PATH)
+      ? process.env.DB_CA_CERT_PATH
+      : path.resolve(__dirname, '..', process.env.DB_CA_CERT_PATH);
+    return { ca: fs.readFileSync(caPath, 'utf8'), rejectUnauthorized: true };
+  }
+  return { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' };
+}
+
+// Never print credentials — host/port/database only.
+console.log(`Connecting → ${dbHost}:${dbPort}/${dbName} (ssl: ${useSsl})\n`);
 
 const pool = new pg.Pool({
   host: dbHost,
@@ -55,7 +74,7 @@ const pool = new pg.Pool({
   user: dbUser,
   password: dbPass,
   database: dbName,
-  ssl: useSsl ? { rejectUnauthorized: false } : false, // dev TLS debt — see tls-security-todo
+  ssl: sslOptions(),
   connectionTimeoutMillis: 15000,
 });
 
