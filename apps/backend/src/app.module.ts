@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
@@ -9,6 +9,8 @@ import { RateLimitModule } from './common/rate-limit/rate-limit.module';
 import { RateLimitGuard } from './common/rate-limit/rate-limit.guard';
 import { RedisThrottlerStorage } from './common/rate-limit/redis-throttler-storage';
 import { redisConnectionOptions } from './config/redis-options';
+import { QuotaModule } from './common/quota/quota.module';
+import { QuotaExceptionFilter } from './common/quota/quota.exceptions';
 import { AuthModule } from './modules/auth/auth.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { SearchModule } from './modules/search/search.module';
@@ -98,6 +100,7 @@ const PRODUCTION_FORBIDDEN_SECRETS = [
 
     // Feature modules
     RateLimitModule,
+    QuotaModule,
     StorageModule,
     OcrModule,
     AiModule,
@@ -109,6 +112,9 @@ const PRODUCTION_FORBIDDEN_SECRETS = [
     HealthModule,
   ],
   controllers: [],
-  providers: [{ provide: APP_GUARD, useClass: RateLimitGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: RateLimitGuard },
+    { provide: APP_FILTER, useClass: QuotaExceptionFilter },
+  ],
 })
 export class AppModule {}
