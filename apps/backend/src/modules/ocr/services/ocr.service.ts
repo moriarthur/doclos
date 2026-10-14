@@ -5,6 +5,13 @@ import { PdfService } from './pdf.service';
 import { ImagePreprocessingService } from './image-preprocessing.service';
 import { TesseractService } from './tesseract.service';
 import { Job } from '../../jobs/entities/job.entity';
+import {
+  maxPdfPages,
+  ocrPageTimeoutMs,
+  pdfParseTimeoutMs,
+  pdfRenderTimeoutMs,
+  withTimeout,
+} from '../../../common/limits/processing-limits';
 
 // Part 3: AI Pipeline - Complete OCR pipeline
 // Orchestrates text extraction from various document types
@@ -88,9 +95,24 @@ export class OcrService {
 
     // Get PDF metadata
     const metadata = await this.pdfService.getMetadata(buffer);
-    
+
+    // PD-U1 (public-demo audit): hard page cap BEFORE any render/OCR/LLM work —
+    // the error propagates to the worker, which parks the document in a
+    // visible `error` state with this message as job.last_error.
+    const maxPages = maxPdfPages();
+    if (metadata.pageCount > maxPages) {
+      throw new Error(
+        `PDF has ${metadata.pageCount} pages — the maximum supported is ${maxPages}. Split the document and upload the parts separately.`,
+      );
+    }
+
     // Try to extract embedded text first
-    const extractedText = await this.pdfService.extractText(buffer);
+    // PD-U2: bounded parse — pdf-parse can spin on malformed files.
+    const extractedText = await withTimeout(
+      this.pdfService.extractText(buffer),
+      pdfParseTimeoutMs(),
+      'PDF text extraction',
+    );
     
     let documentCategory: DocumentCategory;
     let pageTexts: Array<{ pageNumber: number; text: string; confidence: number }> = [];
@@ -115,7 +137,13 @@ export class OcrService {
       this.logger.log('Document requires OCR (no embedded text found)');
       
       // Convert PDF to images
-      const pageImages = await this.pdfService.pdfToImages(buffer);
+      // PD-U2: bounded render — page count is already capped above, so the
+      // image list is bounded too.
+      const pageImages = await withTimeout(
+        this.pdfService.pdfToImages(buffer),
+        pdfRenderTimeoutMs(),
+        'PDF page rendering',
+      );
       
       // Determine if mixed or fully scanned
       documentCategory = extractedText.hasEmbeddedText
@@ -147,12 +175,18 @@ export class OcrService {
         }
 
         // Preprocess image
-        const preprocessed = await this.imagePreprocessingService.preprocessImage(
-          pageImages[i],
+        const preprocessed = await withTimeout(
+          this.imagePreprocessingService.preprocessImage(pageImages[i]),
+          ocrPageTimeoutMs(),
+          `Page ${i + 1} preprocessing`,
         );
 
         // Perform OCR
-        const ocrResult = await this.tesseractService.performOcr(preprocessed);
+        const ocrResult = await withTimeout(
+          this.tesseractService.performOcr(preprocessed),
+          ocrPageTimeoutMs(),
+          `Page ${i + 1} OCR`,
+        );
 
         const pageTime = Date.now() - startTime;
         this.logger.log(`Page ${i + 1}/${pageImages.length} complete in ${pageTime}ms (confidence: ${(ocrResult.confidence * 100).toFixed(1)}%)`);
@@ -216,10 +250,18 @@ export class OcrService {
     this.logger.log('Processing image document');
 
     // Preprocess image
-    const preprocessed = await this.imagePreprocessingService.preprocessImage(buffer);
+    const preprocessed = await withTimeout(
+      this.imagePreprocessingService.preprocessImage(buffer),
+      ocrPageTimeoutMs(),
+      'Image preprocessing',
+    );
 
     // Perform OCR
-    const ocrResult = await this.tesseractService.performOcr(preprocessed);
+    const ocrResult = await withTimeout(
+      this.tesseractService.performOcr(preprocessed),
+      ocrPageTimeoutMs(),
+      'Image OCR',
+    );
 
     // Normalize text
     const normalizedText = this.normalizeText(ocrResult.text);
