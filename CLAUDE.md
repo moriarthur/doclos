@@ -1,8 +1,8 @@
 # Doclos - AI Document Automation SaaS
 
 > Project: Document automation SaaS for small businesses and German Mittelstand
-> Status: **Backend + Frontend MVP Complete** | Public demo preview prepared (deploy wiring, demo seed, CI)
-> Last Updated: 2026-10-11
+> Status: **Backend + Frontend MVP Complete** | Public demo hardened: per-user sample flow (no shared account), cookie sessions + CSRF + rotation, quotas, /readyz (PD wave 2026-10-15, branch feat/public-demo-hardening)
+> Last Updated: 2026-10-15
 
 ---
 
@@ -88,6 +88,14 @@ doclos/
 
 ### Health
 - `GET /healthz` - Liveness probe (public, outside the /api/v1 prefix)
+- `GET /readyz` - Readiness probe: Postgres/Redis-queue/storage checks, no secrets (public, outside the prefix)
+
+### Demo sample (per-user)
+- `POST /api/v1/demo/sample` - Queue the synthetic (no-PII) sample into the caller's tenant (auth; 2/h/IP, 1/day/user)
+- `DELETE /api/v1/demo/sample` - Delete only the caller's sample documents
+
+### Account
+- `DELETE /api/v1/account` - Self-service account deletion (auth; transactional + storage retry queue)
 
 ### Authentication
 - `POST /api/v1/auth/register` - User registration
@@ -217,11 +225,18 @@ cd apps/backend && pnpm run build    # → dist/
 cd apps/frontend && pnpm run build   # → .next/
 ```
 
-**Demo preview:**
+**Demo preview (public demo hardening merged 2026-10-15):**
+There is **no shared demo account** — every visitor registers an isolated
+account and loads the synthetic sample in-product (`POST /api/v1/demo/sample`,
+1/day/user; frontend button "Load synthetic sample"; "Reset sample" wipes only
+that user's samples). `DEMO_EMAIL`/`DEMO_PASSWORD`/`demo:seed`/`demo:reset`
+were removed. Retention for inactive accounts is `DEMO_RETENTION_DAYS`
+(off by default). Sessions are HttpOnly cookies (CSRF double-submit), with
+refresh rotation + reuse detection; per-user quotas and Redis-backed IP
+limits protect GLM/R2; `/readyz` sits next to `/healthz`; render deployment
+in `docs/DEPLOYMENT_RENDER.md`, smoke in `scripts/smoke-demo.mjs`.
 ```bash
-DEMO_EMAIL="..." DEMO_PASSWORD="..." pnpm demo:seed   # idempotent: demo account + synthetic sample invoice
-pnpm demo:reset                                        # wipe everything the demo account created
-pnpm db:migrate                                        # migrations only — baseline is idempotent
+pnpm db:migrate     # migrations only — baseline is idempotent
 ```
 Deployment wiring (`BACKEND_ORIGIN` / `NEXT_PUBLIC_API_URL` / `FRONTEND_URL`)
 is documented in `.env.example` and QUICK_START.md ("Demo preview deployment").
