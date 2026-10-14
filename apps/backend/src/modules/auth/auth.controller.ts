@@ -14,6 +14,10 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  // PD-R3 (public-demo audit): registration gets its own long-window budget —
+  // 3/hour/IP — so one IP cannot mass-create tenant accounts (each one is GLM
+  // + storage quota). Overrides the class-wide 10/min for this method only.
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
   @Post('register')
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);

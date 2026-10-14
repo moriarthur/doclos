@@ -14,9 +14,25 @@ import { resolvePort } from './config/resolve-port';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+  const isProduction = configService.get('NODE_ENV') === 'production';
 
   // Security headers (HSTS, X-Frame-Options, no-sniff, etc.)
   app.use(helmet());
+
+  // PD-R4 (public-demo audit): rate limiting keys on req.ip, which Express
+  // only resolves from X-Forwarded-For when the proxy chain length is trusted.
+  // Render fronts the API with exactly one reverse proxy → TRUST_PROXY_HOPS=1
+  // makes req.ip the LAST XFF entry (set by the trusted proxy from the real
+  // socket), so client-supplied XFF entries are ignored, not spoofable.
+  // Keep 0 whenever the API is exposed directly (default outside production).
+  const trustProxyHops = process.env.TRUST_PROXY_HOPS ?? (isProduction ? '1' : '0');
+  const hops = Number(trustProxyHops);
+  if (!Number.isInteger(hops) || hops < 0 || hops > 10) {
+    throw new Error(`Invalid TRUST_PROXY_HOPS: ${trustProxyHops} (expected integer 0-10)`);
+  }
+  // Express-level setting (req.ip resolution) — INestApplication doesn't
+  // expose .set(), go through the underlying Express instance.
+  app.getHttpAdapter().getInstance().set('trust proxy', hops);
 
   // Global prefix — /healthz stays at the root so deployment platforms can
   // probe it without knowing the API version prefix
@@ -25,7 +41,6 @@ async function bootstrap() {
   // CORS — production allows only the configured frontend origin; dev also
   // allows localhost variants.
   const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
-  const isProduction = configService.get('NODE_ENV') === 'production';
   app.enableCors({
     origin: isProduction
       ? [frontendUrl]
