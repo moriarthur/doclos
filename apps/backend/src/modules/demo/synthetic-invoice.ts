@@ -1,9 +1,11 @@
 // Synthetic demo invoice as a handcrafted, uncompressed single-page PDF.
 //
-// Why handcrafted: the demo seed must stay dependency-free (no PDF library,
-// no binary fixture in git) and byte-stable across runs. The document text
-// is embedded (text-based PDF), so the pipeline classifies/extracts it via
-// the fast pdf-parse path — no OCR involved.
+// PD-D1 (public-demo audit): generated per-user on demand by
+// POST /api/v1/demo/sample — there is no shared demo account anymore. The
+// builder stays dependency-free (no PDF library, no binary fixture in git)
+// and byte-stable across runs. The document text is embedded (text-based
+// PDF), so the pipeline classifies/extracts it via the fast pdf-parse path —
+// no OCR involved.
 //
 // Content policy: strictly fictional data ("Beispielbau GmbH", "Musterkunde
 // AG", the Bundesbank sample IBAN) — no real persons, addresses or account

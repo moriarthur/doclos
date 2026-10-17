@@ -22,6 +22,7 @@ import { S3Service } from '../storage/services/s3.service';
 import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
 import { ValidateInvoiceFieldsDto, ValidateInvoiceItemDto } from './dto/validate-document.dto';
 import { sanitizeMetadata } from '../ai/services/structured-extraction.service';
+import { QuotaService } from '../../common/quota/quota.service';
 
 // P0-4 (audit): magic bytes for every allowed upload type. The client-declared
 // Content-Type is not trusted — the first bytes of the buffer must match.
@@ -98,6 +99,7 @@ export class DocumentsService {
     @InjectQueue('documents') private documentsQueue: Queue,
     private s3Service: S3Service,
     private dataSource: DataSource,
+    private quotaService: QuotaService,
   ) {}
 
   async uploadDocument(
@@ -113,6 +115,10 @@ export class DocumentsService {
     if (!UPLOAD_MIME_TYPES.includes(file.mimetype)) {
       throw new BadRequestException('Invalid file type');
     }
+
+    // PD-R2 (public-demo audit): per-user admission before any storage/queue
+    // work — storage bytes, one active job, hourly and daily upload windows.
+    await this.quotaService.assertUploadQuota(userId, file.size);
 
     // P0-4 (audit): sniff magic bytes — a renamed file (fake .pdf) is rejected;
     // declared Content-Type must agree with the actual bytes
@@ -509,6 +515,9 @@ export class DocumentsService {
     if (document.status === DocumentStatus.PROCESSING) {
       throw new ConflictException('Document is already being processed');
     }
+
+    // PD-R2 (public-demo audit): 2 reprocesses per document per day.
+    await this.quotaService.assertCanReprocess(documentId);
 
     // Reset status
     document.status = DocumentStatus.PROCESSING;

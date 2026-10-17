@@ -20,7 +20,13 @@
     "archive": "Archiv",
     "lightMode": "Heller Modus",
     "darkMode": "Dunkler Modus",
-    "logout": "Abmelden"
+    "logout": "Abmelden",
+    "deleteAccount": "Konto löschen",
+    "deleteAccountTitle": "Konto wirklich löschen?",
+    "deleteAccountDescription": "Ihr Konto wird samt aller Dokumente, Extraktionen, Jobs und gespeicherten Dateien endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "deleteAccountCancel": "Konto behalten",
+    "deleteAccountConfirm": "Alles löschen",
+    "deleteAccountDeleting": "Wird gelöscht…"
   },
   "Status": {
     "uploaded": "Hochgeladen",
@@ -60,7 +66,13 @@
     "selectAll": "Alle auswählen",
     "deselectAll": "Auswahl aufheben",
     "selectedCount": "{count} ausgewählt",
-    "bulkDeleteTitle": "{count} Dokumente löschen?"
+    "bulkDeleteTitle": "{count} Dokumente löschen?",
+    "sampleBtn": "Synthetisches Beispiel laden",
+    "sampleLoading": "Beispiel wird geladen…",
+    "sampleHint": "Synthetisches Beispiel — ausschließlich fiktive Daten, keine personenbezogenen Angaben.",
+    "sampleReset": "Beispiel zurücksetzen",
+    "sampleResetting": "Wird zurückgesetzt…",
+    "sampleResetDone": "{count, plural, =0 {Keine Beispiel-Dokumente gefunden} one {Beispiel-Dokument gelöscht} other {{count} Beispiel-Dokumente gelöscht}}"
   },
   "Login": {
     "welcome": "Willkommen zurück",
@@ -75,7 +87,8 @@
     "submitting": "Anmeldung...",
     "registeredSuccess": "Registrierung erfolgreich! Bitte melden Sie sich an.",
     "noAccount": "Noch kein Konto?",
-    "registerLink": "Registrieren"
+    "registerLink": "Registrieren",
+    "deletedSuccess": "Ihr Konto und alle Daten wurden gelöscht."
   },
   "Register": {
     "createAccount": "Konto erstellen",

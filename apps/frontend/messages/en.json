@@ -20,7 +20,13 @@
     "archive": "Archive",
     "lightMode": "Light mode",
     "darkMode": "Dark mode",
-    "logout": "Sign out"
+    "logout": "Sign out",
+    "deleteAccount": "Delete account",
+    "deleteAccountTitle": "Delete your account?",
+    "deleteAccountDescription": "This permanently erases your account with all documents, extractions, jobs and stored files. This cannot be undone.",
+    "deleteAccountCancel": "Keep my account",
+    "deleteAccountConfirm": "Delete everything",
+    "deleteAccountDeleting": "Deleting…"
   },
   "Status": {
     "uploaded": "Uploaded",
@@ -60,7 +66,13 @@
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
     "selectedCount": "{count} selected",
-    "bulkDeleteTitle": "Delete {count} documents?"
+    "bulkDeleteTitle": "Delete {count} documents?",
+    "sampleBtn": "Load synthetic sample",
+    "sampleLoading": "Loading sample…",
+    "sampleHint": "Synthetic sample — fictional data only, no personal information.",
+    "sampleReset": "Reset sample",
+    "sampleResetting": "Resetting…",
+    "sampleResetDone": "{count, plural, =0 {No sample documents found} one {Deleted {count} sample document} other {Deleted {count} sample documents}}"
   },
   "Login": {
     "welcome": "Welcome back",
@@ -75,7 +87,8 @@
     "submitting": "Signing in...",
     "registeredSuccess": "Registration successful! Please sign in.",
     "noAccount": "No account yet?",
-    "registerLink": "Register"
+    "registerLink": "Register",
+    "deletedSuccess": "Your account and all its data have been deleted."
   },
   "Register": {
     "createAccount": "Create account",

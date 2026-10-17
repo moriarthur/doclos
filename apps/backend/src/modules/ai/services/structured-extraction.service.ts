@@ -17,7 +17,7 @@ import { DocumentType } from '../../documents/entities/document.entity';
 import type { LocalizedIssue } from '../../documents/entities/document.entity';
 
 // Part 3: AI Pipeline - Structured data extraction service
-// Extracts invoice data using Claude LLM
+// Extracts invoice data using the GLM LLM
 
 export interface InvoiceExtraction {
   invoice_number: string | null;

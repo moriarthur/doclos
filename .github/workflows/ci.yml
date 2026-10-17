@@ -13,6 +13,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secrets:
+    name: Secret scanning (tracked tree)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history — pattern scan includes history-adjacent files
+      - name: Scan tracked files for secret-shaped values
+        run: bash scripts/check-secrets.sh
+
+  migrations:
+    name: Migrations apply on a clean PostgreSQL (twice — idempotency)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Start clean PostgreSQL
+        run: |
+          docker run -d --name pg \
+            -e POSTGRES_USER=doclos -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=doclos_ci \
+            -p 5432:5432 postgres:16-alpine
+          for i in $(seq 1 30); do
+            docker exec pg pg_isready -U doclos && break
+            sleep 1
+          done
+
+      - name: Run migrations (first pass)
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: postgresql://doclos:ci@localhost:5432/doclos_ci
+
+      - name: Run migrations again (idempotency guard)
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: postgresql://doclos:ci@localhost:5432/doclos_ci
+
   backend:
     name: Backend — typecheck, lint, tests, build
     runs-on: ubuntu-latest

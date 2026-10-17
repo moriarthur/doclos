@@ -327,7 +327,7 @@ After classification the document text is sent to an LLM for structured parsing.
 
 > **STATUS (as built):** the production model is **GLM-4.5-Flash** by default
 > (Zhipu AI / Z.ai, `open.bigmodel.cn`), with a configurable fallback. It is
-> not Claude or OpenAI GPT; the original wording below is superseded by
+> not any other third-party provider; the original wording below is superseded by
 > `apps/backend/src/modules/ai/`.
 
 Primary model:

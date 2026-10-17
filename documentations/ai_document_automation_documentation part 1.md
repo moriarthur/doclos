@@ -1,6 +1,6 @@
 # AI Document Automation SaaS — Master Documentation (Part 1)
 
-This documentation is intentionally split into multiple parts so it fits within context limits when used with Claude Code.
+This documentation is intentionally split into multiple parts so it fits within context limits
 
 Parts:
 1. Product & System Architecture
@@ -10,7 +10,7 @@ Parts:
 5. Excel Export System
 6. Security & Infrastructure
 7. Deployment & CI/CD
-8. Claude Code Operating Guide
+8. Development System Guide
 9. Persistent Memory System
 
 This file = **Part 1: Product Vision + System Architecture**

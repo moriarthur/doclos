@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import sharp from 'sharp';
+import { assertImageDimensions } from '../../../common/limits/processing-limits';
 
 // Part 3: AI Pipeline - Image preprocessing for OCR
 // Improves OCR accuracy by enhancing images
@@ -16,6 +17,12 @@ export class ImagePreprocessingService {
   async preprocessImage(imageBuffer: Buffer): Promise<Buffer> {
     try {
       this.logger.debug('Preprocessing image for OCR');
+
+      // PD-U4 (public-demo audit): decode-bounds check — a 30000×30000 JPEG
+      // fits the upload byte cap but decompresses into gigabytes inside
+      // sharp/Tesseract. Read the header and reject before any allocation.
+      const meta = await sharp(imageBuffer).metadata();
+      assertImageDimensions({ width: meta.width, height: meta.height });
 
       let pipeline = sharp(imageBuffer);
 
