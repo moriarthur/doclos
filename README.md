@@ -134,11 +134,3 @@ Full architecture documentation available in [`documentations/`](./documentation
 ## License
 
 This project is licensed under the [MIT License](./LICENSE).
-
----
-
-<div align="center">
-
-*Built with [Claude Code](https://claude.ai/code) — AI-native development workflow*
-
-</div>

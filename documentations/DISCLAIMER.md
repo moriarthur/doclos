@@ -8,10 +8,10 @@ They are kept as a **historical design reference**, **not** as a description of
 the current system. The implementation has diverged from the spec in several
 ways:
 
-- **Source of truth for current status** is [`/CLAUDE.md`](../CLAUDE.md) and the
+- **Source of truth for current status** is [`/README.md`](../README.md) and the
   code under `apps/`. When the docs and the code disagree, **the code wins**.
 - **AI model:** the LLM is **GLM-4.5-Flash** by default, with a configurable
-  fallback model (Zhipu AI / Z.ai), *not* Claude or OpenAI GPT as Parts 1–3
+  fallback model (Zhipu AI / Z.ai), *not* any other third-party provider as Parts 1–3
   originally speculate.
 - **OCR:** Tesseract.js (deu + eng) with Sharp preprocessing. PDF→image
   conversion for scanned and mixed PDFs is implemented. Cloud-OCR fallback

@@ -4,7 +4,6 @@
 > Goal: any visitor from GitHub can register an isolated account and safely
 > process a synthetic document. **No shared demo login** — this replaces the
 > previous `DEMO_EMAIL`/`DEMO_PASSWORD` shared-account model merged in 3649f7c.
-> Scope driver: `codex_audit` (root, untracked).
 
 ## 0. Baseline state (verified against code, 2026-10-15)
 
