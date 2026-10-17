@@ -129,6 +129,10 @@ async function main() {
 
   // 4. Registration (isolated accounts, uniform response — PD-A4)
   for (const [label, user] of [['A', userA], ['B', userB]]) {
+    // Registration is state-changing and is protected by the global
+    // double-submit CSRF guard, just like the browser flow.
+    const csrfResponse = await call(label, 'GET', `${API}/auth/csrf`);
+    if (csrfResponse.status !== 200) boom('CSRF bootstrap', `status ${csrfResponse.status}`);
     const response = await call(label, 'POST', `${API}/auth/register`, { json: user });
     if (response.status !== 201) boom('registration', `status ${response.status}`);
     const body = await response.json();
