@@ -40,7 +40,7 @@ export function DocumentViewer({
     let cancelled = false;
 
     // P1-6 (audit): fetch through apiClient so the 401-refresh interceptor
-    // applies — raw fetch with the localStorage token failed silently once
+    // applies — raw fetch without the cookie context failed silently once
     // the 15-min access token expired
     documentsApi
       .getFile(documentId)

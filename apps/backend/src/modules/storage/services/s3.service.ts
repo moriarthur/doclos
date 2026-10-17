@@ -20,11 +20,23 @@ export class S3Service {
   private readonly bucketName: string;
   private readonly region: string;
   private readonly endpoint?: string;
+  /** PD-U3: presigned download TTL — short-lived for the public demo. */
+  private readonly signedUrlExpiration: number;
 
   constructor(private configService: ConfigService) {
     this.region = this.configService.get('S3_REGION') || 'auto';
     this.endpoint = this.configService.get('S3_ENDPOINT');
     this.bucketName = this.configService.get('S3_BUCKET') || 'doclos-documents';
+
+    // PD-U3 (public-demo audit): S3_SIGNED_URL_EXPIRATION (seconds) was in the
+    // contract but never read — every URL silently lived 24h. Demo default is
+    // 15 minutes; anything outside 1 min–24 h falls back to the default
+    // instead of trusting an arbitrary value.
+    const configured = Number(this.configService.get('S3_SIGNED_URL_EXPIRATION'));
+    this.signedUrlExpiration =
+      Number.isInteger(configured) && configured >= 60 && configured <= 86_400
+        ? configured
+        : 900;
 
     // Initialize S3 client
     // Supports both AWS S3 and Cloudflare R2 (via custom endpoint)
@@ -102,10 +114,11 @@ export class S3Service {
   /**
    * Generate a presigned URL for downloading a file
    * @param key - The S3 key of the file
-   * @param expiresIn - URL expiration time in seconds (default: 24 hours)
+   * @param expiresIn - URL expiration time in seconds
+   *                    (default: S3_SIGNED_URL_EXPIRATION, 15 min for the demo)
    * @returns The presigned URL
    */
-  async getSignedUrl(key: string, expiresIn: number = 86400): Promise<string> {
+  async getSignedUrl(key: string, expiresIn: number = this.signedUrlExpiration): Promise<string> {
     try {
       const command = new GetObjectCommand({
         Bucket: this.bucketName,

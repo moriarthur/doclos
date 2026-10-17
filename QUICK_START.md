@@ -59,14 +59,10 @@ Start infrastructure:
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-Seed the demo account and the synthetic sample invoice (idempotent — safe to
-re-run; uses `DEMO_EMAIL` / `DEMO_PASSWORD` from the environment or `.env`):
-
-```bash
-pnpm demo:seed
-# ✅ demo user created: demo@doclos.dev
-# ✅ synthetic sample invoice written: apps/backend/seeds/sample-invoice.pdf
-```
+There is **no shared demo account** — each presenter registers an isolated
+account in the UI (Register → login) and clicks **Load synthetic sample** on
+the dashboard. The sample is a fictional invoice (no PII) processed through
+the real pipeline (1/day/user).
 
 Build, then start the backend from `apps/backend` with the local database
 explicitly selected. This is useful when `.env` normally points at Supabase:
@@ -92,11 +88,11 @@ the frontend loads on `http://localhost:3000` without any `localhost:3001`
 references in the browser console (the frontend proxies `/api/v1/*` to
 `BACKEND_ORIGIN`).
 
-Demonstrate (`demo@doclos.dev` / your `DEMO_PASSWORD`):
+Demonstrate:
 
-1. Log in with the demo account.
-2. Upload `apps/backend/seeds/sample-invoice.pdf` — a fully synthetic
-   invoice (fictional "Beispielbau GmbH" data, no PII).
+1. Register an account (any email — it is isolated per user) and log in.
+2. Click **Load synthetic sample** — a fully synthetic invoice (fictional
+   "Beispielbau GmbH" data, no PII) is queued through the real pipeline.
 3. Wait for processing to finish.
 4. Open the result, review the flagged consistency issue, and confirm the data.
 5. Download the Excel export.
@@ -105,12 +101,9 @@ The expected demo path is `processing` → `needs_validation` → `validated`.
 The review step is intentional: Doclos exposes uncertain or inconsistent AI
 results instead of silently accepting them.
 
-Between demo runs, wipe everything the demo account created (other accounts
-are never touched):
-
-```bash
-pnpm demo:reset   # then re-run pnpm demo:seed if you want the sample file rewritten
-```
+Between demo runs, wipe the sample via **Reset sample** on the dashboard
+(deletes only that user's synthetic documents) — or delete the whole demo
+account from the navigation (**Delete account**).
 
 ## Demo preview deployment
 
@@ -131,13 +124,19 @@ Environment contract (see `.env.example` for the full set):
 |----------|--------------|---------|
 | `BACKEND_ORIGIN` | frontend server | target of the `/api/v1/*` rewrite — set to the backend's public URL |
 | `NEXT_PUBLIC_API_URL` | browser bundle | leave **unset** for same-origin deployments; set only for a separate API domain |
-| `FRONTEND_URL` | backend CORS | the one browser origin allowed in production |
-| `DEMO_EMAIL` / `DEMO_PASSWORD` | `pnpm demo:seed` | demo account credentials (12+ char password) |
+| `FRONTEND_URL` | backend CORS | the one browser origin allowed in production (required in production) |
 
-Demo-safety built in: uploads and reprocesses are rate-limited to 10
-requests/min/IP (auth: 10/min, everything else: 120/min), uploads are capped
-at 20 MB with magic-byte sniffing, and `GLM_THINKING_EXTRACT` defaults to
-`disabled` so extraction stays fast and deterministic.
+Demo-safety built in (PD wave 2026-10): auth 10/min/IP, registration
+3/hour/IP, upload + reprocess 5/min/IP, sample 2/hour/IP, API 120/min/IP
+(Redis-backed counters); per-user quotas (3 docs/hour, 10/day, 100 MB
+storage, 1 active job, 2 reprocess/day/doc, 1 sample/day); uploads capped at
+20 MB with magic-byte sniffing, PDFs at 10 pages and stage timeouts; signed
+URLs expire after 15 minutes; sessions are HttpOnly cookies with refresh
+rotation + reuse detection; `GLM_THINKING_EXTRACT` defaults to `disabled`.
+
+See [docs/DEPLOYMENT_RENDER.md](./docs/DEPLOYMENT_RENDER.md) for the exact
+Render setup and [docs/POST_DEPLOY_SMOKE.md](./docs/POST_DEPLOY_SMOKE.md)
+for the post-deploy verification.
 
 ## API Endpoints
 
@@ -240,3 +239,22 @@ The following are intentionally outside the MVP:
 2. OAuth (Google/Microsoft)
 3. Cloud-OCR fallback for difficult handwriting or very poor scans
 4. Account-wide GDPR erasure endpoint
+
+## Demo privacy, retention & imprint (placeholders)
+
+> Status: **MVP demo preview** — not a production service, no contract, no
+> AVV (data-processing agreement), no certified deletion concept.
+
+- **Privacy notice**: uploads are processed by an external AI provider
+  (Z.ai/GLM) and stored on cloud infrastructure (Cloudflare R2, EU region).
+  Upload only synthetic or non-confidential documents. Accounts and their
+  data are isolated per user.
+- **Retention**: demo data is not kept forever. With `DEMO_RETENTION_DAYS`
+  set, accounts inactive for that window are fully deleted (documents,
+  extractions, jobs, storage objects). Any user can delete their account
+  immediately via **Delete account** in the navigation.
+- **Imprint / contact**: *placeholder* — operator legal entity, address and
+  contact go here before any non-demo use.
+- **AI processing**: document contents are sent to the LLM provider for
+  classification and extraction; provider errors are logged redacted
+  (status + size, never contents).

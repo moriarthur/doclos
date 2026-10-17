@@ -157,10 +157,16 @@ export class AiService {
         // Retry rate-limit (429) and server errors (5xx) by failing over to
         // another model. Client errors (4xx) are not retryable — a fallback model
         // won't fix a bad request / auth / unknown-model error.
+        //
+        // PD-H3 (public-demo audit): provider error bodies may echo request
+        // data (the extracted document text travels in the prompt). Log the
+        // status and body size only — never the body itself.
         const errorText = await response.text();
         const rateLimited = response.status === 429;
         const retryable = rateLimited || response.status >= 500;
-        this.logger.error(`GLM API error (${model}): ${response.status} - ${errorText}`);
+        this.logger.error(
+          `GLM API error (${model}): status ${response.status}, body ${errorText.length} bytes (redacted)`,
+        );
         return {
           ok: false,
           retryable,

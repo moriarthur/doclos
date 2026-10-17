@@ -5,6 +5,7 @@ import { DocumentsService } from './documents.service';
 import { DocumentsController } from './documents.controller';
 import { OcrModule } from '../ocr/ocr.module';
 import { AiModule } from '../ai/ai.module';
+import { QuotaModule } from '../../common/quota/quota.module';
 import { Document } from './entities/document.entity';
 import { Invoice } from './entities/invoice.entity';
 import { InvoiceItem } from './entities/invoice-item.entity';
@@ -31,6 +32,7 @@ import { DocumentsRecoveryService } from './documents-recovery.service';
     }),
     OcrModule,
     AiModule,
+    QuotaModule,
   ],
   controllers: [DocumentsController],
   providers: [DocumentsService, DocumentProcessor, DocumentsRecoveryService],

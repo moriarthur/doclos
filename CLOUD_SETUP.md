@@ -145,13 +145,9 @@ CONFIDENCE_AUTO_ACCEPT="0.85"
 CONFIDENCE_NEEDS_VALIDATION="0.60"
 OCR_FALLBACK_THRESHOLD="0.70"
 
-# File upload (informational — upload-constraints.ts is the runtime source of truth)
-MAX_FILE_SIZE=20971520  # 20MB
-ALLOWED_FILE_TYPES="application/pdf,image/png,image/jpeg,image/tiff,image/webp"
-
-# Demo seed (optional — pnpm demo:seed creates/re-syncs one demo account)
-DEMO_EMAIL="demo@doclos.dev"
-DEMO_PASSWORD="change-me-demo-1234"
+# File upload limits live in upload-constraints.ts (runtime source of truth):
+# 20 MB, PDF/PNG/JPEG/TIFF/WEBP — MAX_FILE_SIZE / ALLOWED_FILE_TYPES were
+# removed from the contract (never read).
 
 # ============================================================================
 # OCR Settings

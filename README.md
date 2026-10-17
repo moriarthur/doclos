@@ -19,19 +19,28 @@
 
 Doclos is a SaaS platform that automates business document processing for small businesses. Upload a PDF invoice, contract, offer, or delivery note — the AI pipeline extracts key data (dates, amounts, parties, line items) and stores it in a structured, searchable format.
 
-Built for the German market: handles German-language documents, DSGVO-compliant architecture.
+Built for the German market: handles German-language documents, with data handling designed toward DSGVO requirements (public demo preview — see the notice below).
 
 ## Key Features
 
 - **PDF Ingestion** — Upload Rechnungen, Verträge, Angebote, Lieferscheine
 - **AI Extraction Pipeline** — GLM-4.5-Flash by default (Zhipu/Z.ai) for structured extraction with per-field confidence
 - **OCR Layer** — Tesseract for images and scanned/mixed PDFs
-- **Background Jobs** — BullMQ + Redis queue for reliable async processing
-- **Cloud Storage** — AWS S3 / Cloudflare R2 with presigned URLs
-- **JWT Auth** — Secure multi-user authentication
+- **Background Jobs** — BullMQ + Redis (Upstash) queue for reliable async processing
+- **Cloud Storage** — AWS S3 / Cloudflare R2 with short-lived presigned URLs
+- **Session Auth** — HttpOnly-cookie sessions with rotation, reuse detection and server-side logout
 - **Search & Export** — Server-side search and Excel export
-- **DSGVO-ready** — Data handling designed for German compliance requirements
-- **Demo-ready** — Public `/healthz` probe, rate-limited processing routes, idempotent demo seed with a synthetic (no-PII) sample invoice
+- **DSGVO-ready demo** — data handling designed toward German compliance requirements (demo status — see the notice below)
+- **Public demo preview** — every visitor registers an isolated account, loads a synthetic (no-PII) sample in-product, per-user quotas + rate limits
+
+## ⚠️ MVP demo notice — please read before signing up
+
+This is a **public MVP demo preview**, not a production service:
+
+- **Upload only synthetic or non-confidential documents.** Anything you upload may be processed by an external AI provider (Z.ai/GLM) and stored on cloud infrastructure.
+- Each account is isolated per user; **demo data may be deleted automatically** (retention sweep for inactive accounts, `DEMO_RETENTION_DAYS`).
+- **Delete your account anytime**: log in → Profile → *Delete account* (frontend control ships with the demo preview; the API endpoint is `DELETE /api/v1/account`). This erases your documents, extractions, jobs and storage objects.
+- **Privacy notice / retention / imprint**: placeholder sections live in [QUICK_START.md](./QUICK_START.md#demo-privacy-retention-imprint) until legal entities are in place. This demo is "DSGVO-ready", not DSGVO-certified — no contract, no AVV, no certified deletion concept yet.
 
 ## Architecture
 
@@ -90,12 +99,10 @@ pnpm db:migrate
 pnpm dev
 ```
 
-Optional: seed a demo account and a synthetic sample invoice (no PII) for a
-demo run — see [QUICK_START.md](./QUICK_START.md#verified-local-demo):
-
-```bash
-DEMO_EMAIL="demo@doclos.dev" DEMO_PASSWORD="change-me-demo-1234" pnpm demo:seed
-```
+Optional (demo presentations): each presenter registers an isolated account
+in the UI and clicks **Load synthetic sample** — a fictional, no-PII invoice
+processed through the real pipeline. No shared demo account exists; see
+[QUICK_START.md](./QUICK_START.md#verified-local-demo).
 
 ## Development
 
