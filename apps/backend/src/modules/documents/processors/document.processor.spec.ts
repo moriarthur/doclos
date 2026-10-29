@@ -56,9 +56,9 @@ const makeProcessor = () => {
     {} as Repository<Document>, // documentsRepository
     // customersRepository (per-type paths; this spec exercises the manager path)
     {} as Repository<Customer>,
-    {} as Repository<Invoice>, // invoicesRepository
-    {} as Repository<InvoiceItem>, // invoiceItemsRepository
-    {} as Repository<FieldExtraction>, // fieldExtractionsRepository
+    // fieldExtractionsRepository (pre-extraction cleanup now goes through the
+    // transaction manager — DD-2)
+    {} as Repository<FieldExtraction>,
     {} as Repository<JobEntity>, // jobsRepository
     {} as S3Service, // s3Service
     dataSource as unknown as DataSource,
@@ -128,5 +128,72 @@ describe('DocumentProcessor customer scoping (P0-2)', () => {
       expect.anything(),
       expect.objectContaining({ name: 'Müller GmbH' }),
     );
+  });
+});
+
+// DD-2 (deployed-demo 500 root producer): the previous-run cleanup must be ONE
+// transaction. The old non-transactional sequence (save document with
+// invoiceId=NULL → delete items → delete invoice) left an orphan invoice row
+// behind whenever the process died in between, which then FK-blocked every
+// delete of that document (see DD-1 in documents.service).
+describe('DocumentProcessor previous-run cleanup (DD-2)', () => {
+  it('runs the invoice teardown inside one transaction, in FK-safe order', async () => {
+    const manager = {
+      delete: jest.fn(async () => undefined),
+      save: jest.fn(async (e: object) => e),
+    };
+    const dataSource = {
+      transaction: jest.fn(
+        async (cb: (m: unknown) => Promise<unknown>) => cb(manager),
+      ),
+    };
+    const documentsRepository = {
+      findOne: jest.fn(async () => ({
+        id: 'doc-1',
+        user_id: 'u1',
+        invoiceId: 'old-inv',
+        status: 'processing',
+        s3_key: 'k',
+        mime_type: 'application/pdf',
+      })),
+      save: jest.fn(async (e: object) => e),
+    };
+    const jobsRepository = {
+      findOne: jest.fn(async () => null),
+      create: jest.fn((x: object) => ({ id: 'job-1', ...x })),
+      save: jest.fn(async (e: object) => e),
+    };
+    // The cleanup runs before the S3 download — fail there to end the run.
+    const s3Service = {
+      downloadFile: jest.fn(async () => {
+        throw new Error('storage unavailable');
+      }),
+    };
+    const processor = new DocumentProcessor(
+      documentsRepository as never, // documentsRepository
+      {} as never, // customersRepository
+      {} as never, // fieldExtractionsRepository
+      jobsRepository as never, // jobsRepository
+      s3Service as never, // s3Service
+      dataSource as never, // dataSource
+      {} as never, // ocrService
+      {} as never, // documentClassifierService
+      {} as never, // structuredExtractionService
+    );
+
+    await expect(
+      processor.handleProcessDocument({
+        data: { documentId: 'doc-1', userId: 'u1' },
+        progress: jest.fn(),
+      } as never),
+    ).rejects.toThrow('storage unavailable');
+
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(manager.delete).toHaveBeenCalledWith(FieldExtraction, { document_id: 'doc-1' });
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({ invoiceId: null }),
+    );
+    expect(manager.delete).toHaveBeenCalledWith(InvoiceItem, { invoice_id: 'old-inv' });
+    expect(manager.delete).toHaveBeenCalledWith(Invoice, { id: 'old-inv' });
   });
 });

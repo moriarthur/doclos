@@ -36,10 +36,6 @@ export class DocumentProcessor {
     private documentsRepository: Repository<Document>,
     @InjectRepository(Customer)
     private customersRepository: Repository<Customer>,
-    @InjectRepository(Invoice)
-    private invoicesRepository: Repository<Invoice>,
-    @InjectRepository(InvoiceItem)
-    private invoiceItemsRepository: Repository<InvoiceItem>,
     @InjectRepository(FieldExtraction)
     private fieldExtractionsRepository: Repository<FieldExtraction>,
     @InjectRepository(JobEntity)
@@ -122,17 +118,25 @@ export class DocumentProcessor {
 
       // Clean up artifacts from a previous run so reprocessing never leaves
       // duplicate invoices or accumulating field extractions behind (Bug A).
-      await this.fieldExtractionsRepository.delete({ document_id: documentId });
-      if (document.invoiceId) {
-        const oldInvoiceId = document.invoiceId;
-        // Clear the document's FK reference first (documents.invoiceId → invoices.id),
-        // otherwise deleting the invoice violates the foreign-key constraint.
-        // (Column is nullable in the DB; the entity types it as a plain string.)
-        (document as { invoiceId?: string | null }).invoiceId = null;
-        await this.documentsRepository.save(document);
-        await this.invoiceItemsRepository.delete({ invoice_id: oldInvoiceId });
-        await this.invoicesRepository.delete({ id: oldInvoiceId });
-      }
+      // DD-2 (deployed-demo 500 root producer): this cleanup is now ONE
+      // transaction. The old non-transactional sequence (save document with
+      // invoiceId=NULL → delete items → delete invoice) left the old invoice
+      // row alive but unlinked whenever the process died in between (Render
+      // restart/deploy mid-reprocess) — an orphan invoice whose document_id
+      // then FK-blocked every delete of that document forever (DD-1).
+      await this.dataSource.transaction(async (manager) => {
+        await manager.delete(FieldExtraction, { document_id: documentId });
+        if (document.invoiceId) {
+          const oldInvoiceId = document.invoiceId;
+          // Clear the document's FK reference first (documents.invoiceId → invoices.id),
+          // otherwise deleting the invoice violates the foreign-key constraint.
+          // (Column is nullable in the DB; the entity types it as a plain string.)
+          (document as { invoiceId?: string | null }).invoiceId = null;
+          await manager.save(document);
+          await manager.delete(InvoiceItem, { invoice_id: oldInvoiceId });
+          await manager.delete(Invoice, { id: oldInvoiceId });
+        }
+      });
 
       // 1. Download file from S3
       // H-7 (audit wave 3): per-stage wall-clock timings — one summary line per
