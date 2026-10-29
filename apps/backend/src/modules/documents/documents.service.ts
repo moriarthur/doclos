@@ -8,7 +8,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { In, Repository, DataSource } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import * as crypto from 'crypto';
@@ -19,6 +19,7 @@ import { FieldExtraction } from './entities/field-extraction.entity';
 import { AuditLog } from '../jobs/entities/audit-log.entity';
 import { Job } from '../jobs/entities/job.entity';
 import { S3Service } from '../storage/services/s3.service';
+import { StorageCleanupService } from '../storage/services/storage-cleanup.service';
 import { UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES } from './upload-constraints';
 import { ValidateInvoiceFieldsDto, ValidateInvoiceItemDto } from './dto/validate-document.dto';
 import { sanitizeMetadata } from '../ai/services/structured-extraction.service';
@@ -100,6 +101,7 @@ export class DocumentsService {
     private s3Service: S3Service,
     private dataSource: DataSource,
     private quotaService: QuotaService,
+    private storageCleanupService: StorageCleanupService,
   ) {}
 
   async uploadDocument(
@@ -650,17 +652,30 @@ export class DocumentsService {
       // The FKs are circular and NOT ON DELETE CASCADE at the DB level
       // (documents.invoiceId -> invoices.id, invoices.document_id -> documents.id),
       // so a single `remove(document)` FK-violates on any extracted document.
-      // Clear the invoice FK on the document, then delete items -> invoice ->
-      // extractions -> jobs -> document.
+      //
+      // DD-1 (deployed-demo 500): invoices are collected by document_id, NOT via
+      // the documents.invoiceId pointer alone. A crashed reprocess (worker clears
+      // the pointer, then dies before deleting the row) leaves an ORPHAN invoice
+      // whose document_id still references this document; deleting only via the
+      // pointer skipped it and the document delete FK-violated (23503 on
+      // FK_04c08bd4d32a782db66084f7197) — a permanent 500 for that document on
+      // both DELETE /documents/:id and DELETE /demo/sample.
+      const invoices = await manager.find(Invoice, {
+        where: { document_id: documentId },
+        select: ['id'],
+      });
+
       if (document.invoiceId) {
-        const invoiceId = document.invoiceId;
         // Clear documents.invoiceId first, else deleting the invoice violates the FK.
         // (Column is nullable in the DB; the entity types it as a plain string.)
         (document as { invoiceId?: string | null }).invoiceId = null;
         await manager.save(document);
-        await manager.delete(InvoiceItem, { invoice_id: invoiceId });
-        await manager.delete(Invoice, { id: invoiceId });
-        this.logger.log(`Deleted invoice ${invoiceId} and its items`);
+      }
+
+      if (invoices.length > 0) {
+        await manager.delete(InvoiceItem, { invoice_id: In(invoices.map((i) => i.id)) });
+        await manager.delete(Invoice, { document_id: documentId });
+        this.logger.log(`Deleted ${invoices.length} invoice(s) and their items for document ${documentId}`);
       }
 
       // Remaining dependents that reference the document directly
@@ -682,13 +697,21 @@ export class DocumentsService {
       });
     });
 
-    // S3 delete AFTER the DB commit; on failure the row is already gone and an
-    // orphaned object is acceptable (the reverse never is)
+    // S3 delete AFTER the DB commit; on failure the row is already gone and the
+    // object joins the retry queue (DD-1: the sweeper purges it at boot +
+    // hourly) instead of being silently orphaned. Either way the delete itself
+    // is a success — the API response must not depend on storage availability.
     try {
       await this.s3Service.deleteFile(document.s3_key);
       this.logger.log(`Deleted file from S3: ${document.s3_key}`);
     } catch (error) {
-      this.logger.error(`Failed to delete file from S3 (orphaned object): ${document.s3_key}`, error);
+      this.logger.error(
+        `Failed to delete file from S3 — queued for retryable cleanup: ${document.s3_key}`,
+        error,
+      );
+      await this.storageCleanupService.enqueue(document.s3_key);
+      // Immediate retry so a transient blip doesn't wait an hour for the sweeper.
+      await this.storageCleanupService.purgeQueued(1).catch(() => undefined);
     }
   }
 }

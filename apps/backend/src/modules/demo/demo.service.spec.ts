@@ -93,6 +93,16 @@ describe('DemoService', () => {
     expect(deletedDocs).toHaveLength(0);
   });
 
+  it('reset performs no quota calls — deleting a sample never re-opens the 1/day window', async () => {
+    // The 1/day quota is a Redis fixed-window counter that only createSample
+    // increments; the reset path must stay a pure delete so a sample can't be
+    // cycled by deleting it. The quota mock has no reset/decrement surface at
+    // all — any quota interaction from the reset path would fail this test.
+    const { service, assertCanCreateSample } = makeService(['s1']);
+    await service.resetSample('u1');
+    expect(assertCanCreateSample).not.toHaveBeenCalled();
+  });
+
   it('hasSample reflects stored samples', async () => {
     const { service: withSample } = makeService(['s1']);
     const { service: withoutSample } = makeService([]);
