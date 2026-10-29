@@ -40,7 +40,8 @@ export class DocumentsController {
   // Demo-preview hardening: uploads and reprocesses trigger the full
   // OCR + LLM pipeline (queue job, storage write, GLM tokens), so they get a
   // much stricter per-IP budget than the 120/min global limit.
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  // PD-R3 (public-demo audit): 5/min/IP (was 10).
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('upload')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -102,7 +103,9 @@ export class DocumentsController {
     return this.documentsService.validateDocument(id, user.id, dto.fields, dto.items);
   }
 
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  // PD-R3 (public-demo audit): 5/min/IP (was 10) — same pipeline-cost reason
+  // as the upload budget above.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post(':id/reprocess')
   async reprocessDocument(@Param('id') id: string, @CurrentUser() user: User) {
     return this.documentsService.reprocessDocument(id, user.id);

@@ -10,7 +10,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Anthropic-inspired warm, earthy palette.
+        // Warm, earthy palette.
         // Values live as CSS variables in globals.css (:root + .dark) so all
         // utilities switch automatically with the `dark` class (next-themes).
         // RGB triplets + <alpha-value> keep opacity modifiers (bg-card/50, etc.).
@@ -28,7 +28,7 @@ const config: Config = {
         ring: 'rgb(var(--ring) / <alpha-value>)',
       },
       fontFamily: {
-        // Elegant serif for headings, clean sans for body - Anthropic style
+        // Elegant serif for headings, clean sans for body
         serif: ['"Source Serif 4"', '"Noto Serif"', 'Georgia', 'serif'],
         sans: ['"Inter"', '"SF Pro Display"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         mono: ['"SF Mono"', 'Monaco', 'monospace'],

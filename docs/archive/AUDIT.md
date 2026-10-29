@@ -33,7 +33,7 @@ classify 1ms keyword-only, confidence 90% → auto-accept; TLS strict via pinned
 **Auditor verdict 2026-09-23: PASS, merge approved, no blockers.** Independently
 verified by the auditor: 87/87 jest, tsc green both apps, `git diff --check` clean,
 H-8 CA fingerprint re-checked live against the pooler chain (exact match).
-For this wave the user substituted codex with a GLM auditor session (doclos-6d);
+For this wave the user substituted the external auditor with a GLM auditor session (doclos-6d);
 same standing process otherwise. Finding I-1 fixed pre-merge (`b0793e0`).
 Merged --no-ff to main and pushed (2026-09-23).
 
@@ -78,13 +78,13 @@ validation + helmet, both migrations applied to dev DB. NOT pushed to origin.
 - One finding = one commit, reference the finding ID (`P0-1`, `P1-3`, …) in the commit message.
 - After each finding: `cd apps/backend && npx tsc --noEmit` and same for `apps/frontend` must pass. Backend must still boot (`pnpm start:dev`) before committing.
 - Do not rename public API response fields unless the finding says so — the frontend depends on them.
-- **Auditor (2026-09-22, standing):** the user runs **codex** as an independent auditor. Before any merge, codex reviews the branch diff; blockers are closed pre-merge (auditor PASS required, same as waves 1–2). New findings discovered during any work are appended here with the next free ID (`H-x`, then `I-x`, …) instead of being fixed drive-by.
+- **Auditor (2026-09-22, standing):** the user runs an independent external auditor as a standing gate. Before any merge, the auditor reviews the branch diff; blockers are closed pre-merge (auditor PASS required, same as waves 1–2). New findings discovered during any work are appended here with the next free ID (`H-x`, then `I-x`, …) instead of being fixed drive-by.
 
 ---
 
 ## Wave 3 — Hardening / latency (2026-09-22, branch `fix/hardening-glm-tls`)
 
-Trigger: "обработка длится очень долго" + codex brief (`AUDIT` file in repo root).
+Trigger: "обработка длится очень долго" + the audit brief (`AUDIT` file in repo root).
 Live baseline measured 2026-09-22 14:22–14:25: classification + extraction ~3 min for a
 text-PDF, with glm-4.7-flash 429s burning retry budget and reasoning tokens.
 
@@ -139,7 +139,7 @@ adjudicates UNKNOWN keyword results; rule-based result remains the final fallbac
 ClassificationResult format unchanged. **Accept:** classifier unit tests; live log
 "classified as invoice by keywords (LLM call skipped)". ✅ `e92611b`
 
-### H-5. Fixed 3s "rate limit buffer" before every extraction (codex brief #3)
+### H-5. Fixed 3s "rate limit buffer" before every extraction (audit brief #3)
 `document.processor.ts` slept 3s before each extraction call — taxed 100% of
 documents to guard 0%. **Fix:** removed; rate limiting is AiService's job (H-1).
 ✅ `9063719`
@@ -150,7 +150,7 @@ documents to guard 0%. **Fix:** removed; rate limiting is AiService's job (H-1).
 concurrency-safe), `onModuleDestroy` termination, recycle after a wedged recognize.
 ✅ `acb1f97`
 
-### H-7. No per-stage timing diagnostics (codex brief #6)
+### H-7. No per-stage timing diagnostics (audit brief #6)
 **Fix:** one summary line per document: download / ocr / classify / extract+persist /
 total (durations only, no content). Live: `download: 397ms, ocr: 100ms, classify: 1ms,
 extract+persist: 16688ms, total: 17691ms`. ✅ `c825429`
@@ -174,7 +174,7 @@ the current .env (fallback configured). **Fix:** single-model 429 retries apply
 the same jittered backoff as the 5xx path; guard test asserts the >= 4.2s gap.
 ✅ `b0793e0`
 
-### Codex brief reconciliation
+### Audit brief reconciliation
 - #1 (model) → H-3 rev 2 (glm-4-flash doesn't exist — replaced with glm-4.5-flash +
   thinking off). #2 (rule-based classify) → H-4. #3 (delays) → H-5. #4 (one extraction
   request) → verified: one main extraction call + separate confidence-assessment call
@@ -303,4 +303,4 @@ Same file, `normalizeExtraction` :136-143 — `parseFloat("1.200,50".replace(/[^
 - Export/search services are properly user-scoped; Excel styling is solid.
 - Typecheck pipeline, correct FK-teardown pattern in delete/reprocess (well-documented), GLM retry/backoff — all in good shape.
 - `README.md` has an uncommitted one-line fix by the main agent — leave it alone, commit it separately.
-- CLAUDE.md drift: project-structure tree is mangled (frontend missing) and claims "Zod for request validation" (backend uses class-validator). Low priority doc fix.
+- Config drift: project-structure tree is mangled (frontend missing) and claims "Zod for request validation" (backend uses class-validator). Low priority doc fix.

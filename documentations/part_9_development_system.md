@@ -1,19 +1,19 @@
-# PART 9 — CLAUDE CODE DEVELOPMENT SYSTEM
+# PART 9 — DEVELOPMENT SYSTEM
 
-This document defines the workflow and development system for generating the Doclos project using Claude Code.
+This document defines the workflow and development system for generating the Doclos project using the agent system.
 
 Goals:
 
 • automate backend, frontend, AI pipeline code generation
 • maintain session memory and progress tracking
-• provide Claude with modular instructions
+• provide the agent with modular instructions
 • enable reproducible and structured code output
 
 ---
 
-# PROJECT STRUCTURE FOR CLAUDE
+# PROJECT STRUCTURE
 
-Claude will read the documentation files (Parts 1–8) and generate code based on the modular structure:
+the agent will read the documentation files (Parts 1–8) and generate code based on the modular structure:
 
 ```
 root/
@@ -31,7 +31,7 @@ root/
  └─ README.md
 ```
 
-Claude reads files sequentially and outputs code files into the corresponding folders.
+the agent reads files sequentially and outputs code files into the corresponding folders.
 
 ---
 
@@ -39,7 +39,7 @@ Claude reads files sequentially and outputs code files into the corresponding fo
 
 1. **Task Queue**
 
-- Claude receives modular tasks, e.g., generate backend API controllers for documents.
+- the agent receives modular tasks, e.g., generate backend API controllers for documents.
 - Each task has input, expected output, and constraints.
 
 2. **Execution Order**
@@ -59,7 +59,7 @@ Claude reads files sequentially and outputs code files into the corresponding fo
 
 # PROMPT TEMPLATES
 
-Claude receives standardized prompts for generating code:
+the agent receives standardized prompts for generating code:
 
 Example:
 
@@ -80,7 +80,7 @@ Similar templates exist for frontend pages, AI pipeline modules, and workers.
 
 # MEMORY SYSTEM
 
-Claude will maintain a **memory file** (claude_memory.json) to track progress:
+the agent will maintain a **memory file** (memory.json) to track progress:
 
 Structure:
 
@@ -92,8 +92,8 @@ Structure:
 }
 ```
 
-- At the end of each session, Claude updates this file.
-- At start of new session, Claude reads it to resume where it left off.
+- At the end of each session, the agent updates this file.
+- At start of new session, the agent reads it to resume where it left off.
 - Ensures continuity and avoids duplicate work.
 
 ---
@@ -114,7 +114,7 @@ This loop continues until all tasks are complete.
 
 # TEST GENERATION
 
-- Claude generates unit and integration tests alongside code
+- the agent generates unit and integration tests alongside code
 - Test files stored in `/tests/` folder
 - Coverage reports generated automatically
 
@@ -122,7 +122,7 @@ This loop continues until all tasks are complete.
 
 # ERROR HANDLING
 
-- If a task fails due to missing context, Claude flags it and moves on
+- If a task fails due to missing context, the agent flags it and moves on
 - Memory file records failed tasks for retry
 - Optional human intervention for ambiguous modules
 
@@ -139,7 +139,7 @@ This loop continues until all tasks are complete.
 
 # INTEGRATION WITH CI/CD
 
-- Claude can be triggered via CI pipeline
+- the agent can be triggered via CI pipeline
 - Generates code into staging branch
 - Automated tests run post-generation
 - Merge to main only if all tests pass
@@ -158,5 +158,5 @@ This loop continues until all tasks are complete.
 END OF PART 9
 
 With this, the full documentation set for Doclos is complete.
-Claude Code can now read Parts 1–9 and generate a full production-ready project including backend, frontend, AI workers, export system, security modules, and infrastructure deployment scripts.
+the agent system can now read Parts 1–9 and generate a full production-ready project including backend, frontend, AI workers, export system, security modules, and infrastructure deployment scripts.
 
