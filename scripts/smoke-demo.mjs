@@ -248,16 +248,25 @@ async function main() {
     if (response.status !== 200) boom('document delete', `status ${response.status}`);
     ok('document delete', `DELETE /documents/:id → 200`);
 
+    // call() returns a raw fetch Response — response.body is a readable
+    // stream, not the parsed payload, so every JSON assertion must read the
+    // body explicitly (the bodyless `response.body?.x` checks here passed or
+    // failed spuriously).
     response = await call('A', 'GET', `${API}/documents`);
-    if ((response.body?.data ?? []).some((d) => d.id === globalThis.__sampleDocId)) {
+    if (response.status !== 200) boom('document delete applied', `list status ${response.status}`);
+    const listAfterDelete = await response.json();
+    if ((listAfterDelete.data ?? []).some((d) => d.id === globalThis.__sampleDocId)) {
       boom('document delete', 'document still listed after delete');
     }
     ok('document delete applied', 'sample gone from the list');
 
     response = await call('A', 'DELETE', `${API}/demo/sample`);
     if (response.status !== 200) boom('sample reset (idempotent)', `status ${response.status}`);
-    if (typeof response.body?.deleted !== 'number') boom('sample reset (idempotent)', 'no deleted count');
-    ok('sample reset (idempotent)', `deleted: ${response.body.deleted}`);
+    const resetBody = await response.json();
+    if (typeof resetBody.deleted !== 'number') {
+      boom('sample reset (idempotent)', 'no numeric deleted count');
+    }
+    ok('sample reset (idempotent)', `deleted: ${resetBody.deleted}`);
 
     response = await call('A', 'POST', `${API}/demo/sample`);
     if (response.status !== 429) {
