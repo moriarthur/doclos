@@ -240,6 +240,32 @@ async function main() {
     ok('Excel export', `${size} bytes`);
   }
 
+  // 10a. Deletion paths (DD-1): the normal per-document delete must work for
+  // the sample in ANY status, the reset stays idempotent afterwards, and —
+  // critically — deleting the sample does NOT re-open the 1/day quota.
+  {
+    let response = await call('A', 'DELETE', `${API}/documents/${globalThis.__sampleDocId}`);
+    if (response.status !== 200) boom('document delete', `status ${response.status}`);
+    ok('document delete', `DELETE /documents/:id → 200`);
+
+    response = await call('A', 'GET', `${API}/documents`);
+    if ((response.body?.data ?? []).some((d) => d.id === globalThis.__sampleDocId)) {
+      boom('document delete', 'document still listed after delete');
+    }
+    ok('document delete applied', 'sample gone from the list');
+
+    response = await call('A', 'DELETE', `${API}/demo/sample`);
+    if (response.status !== 200) boom('sample reset (idempotent)', `status ${response.status}`);
+    if (typeof response.body?.deleted !== 'number') boom('sample reset (idempotent)', 'no deleted count');
+    ok('sample reset (idempotent)', `deleted: ${response.body.deleted}`);
+
+    response = await call('A', 'POST', `${API}/demo/sample`);
+    if (response.status !== 429) {
+      boom('quota survives deletion', `second sample same day → ${response.status} (expected 429)`);
+    }
+    ok('quota survives deletion', '1/day still enforced after reset');
+  }
+
   // 11. Logout (server-side revocation — PD-A2)
   {
     const response = await call('A', 'POST', `${API}/auth/logout`);

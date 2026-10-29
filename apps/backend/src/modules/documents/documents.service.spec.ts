@@ -1,5 +1,8 @@
-import { BadRequestException, UnsupportedMediaTypeException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnsupportedMediaTypeException } from '@nestjs/common';
+import { FindOperator } from 'typeorm';
 import { DocumentsService } from './documents.service';
+import { Invoice } from './entities/invoice.entity';
+import { InvoiceItem } from './entities/invoice-item.entity';
 import { MAX_UPLOAD_BYTES } from './upload-constraints';
 
 // PD-U5 / Phase 3.11: upload admission — magic bytes, size cap, MIME
@@ -110,5 +113,120 @@ describe('DocumentsService.uploadDocument validation', () => {
     // The document row must not advertise a live job.
     expect(saved[0].status).toBe('error');
     expect(s3Upload).toHaveBeenCalledTimes(1);
+  });
+});
+
+// DD-1 (deployed-demo 500): the delete order contract. Invoices must be
+// collected by document_id — not via the documents.invoiceId pointer alone —
+// so an orphaned invoice (pointer already NULL, row alive after a crashed
+// reprocess) can never FK-block the document delete again. Repository-mocked:
+// the real-FK proof lives in documents.service.integration.spec.ts.
+describe('DocumentsService.deleteDocument (DD-1)', () => {
+  const makeDeleteService = (
+    over: {
+      document?: Record<string, unknown> | null;
+      invoices?: Array<{ id: string }>;
+      deleteFile?: () => Promise<void>;
+    } = {},
+  ) => {
+    // `in` check, not ?? — an explicit null document (the 404 case) must win.
+    const document =
+      'document' in over && over.document !== undefined
+        ? over.document
+        : {
+            id: 'doc-1',
+            user_id: 'u1',
+            invoiceId: 'inv-1',
+            s3_key: 'k',
+            original_filename: 'f.pdf',
+            status: 'parsed',
+          };
+    const manager = {
+      find: jest.fn(async () => over.invoices ?? [{ id: 'inv-1' }]),
+      save: jest.fn(async (e: object) => e),
+      delete: jest.fn(async () => undefined),
+    };
+    // Typed view of the calls — jest infers a zero-arg tuple from the impl.
+    const deleteCalls = manager.delete.mock.calls as unknown as Array<[unknown, unknown]>;
+    const deleteFile = over.deleteFile ?? jest.fn(async () => undefined);
+    const enqueue = jest.fn(async () => undefined);
+    const purgeQueued = jest.fn(async () => 0);
+    const service = Object.create(DocumentsService.prototype) as DocumentsService;
+    Object.defineProperty(service, 'documentsRepository', {
+      value: { findOne: jest.fn(async () => document) },
+    });
+    Object.defineProperty(service, 'dataSource', {
+      value: {
+        transaction: async (cb: (m: unknown) => Promise<void>) => cb(manager),
+      },
+    });
+    Object.defineProperty(service, 's3Service', { value: { deleteFile } });
+    Object.defineProperty(service, 'storageCleanupService', { value: { enqueue, purgeQueued } });
+    Object.defineProperty(service, 'logger', { value: { log: jest.fn(), error: jest.fn() } });
+    return { service, manager, deleteCalls, deleteFile, enqueue, purgeQueued, document };
+  };
+
+  it('deletes invoices by document_id even when the invoiceId pointer is NULL (orphan safety)', async () => {
+    const { service, manager, deleteCalls } = makeDeleteService({
+      document: {
+        id: 'doc-1',
+        user_id: 'u1',
+        invoiceId: null,
+        s3_key: 'k',
+        original_filename: 'f.pdf',
+        status: 'error',
+      },
+      invoices: [{ id: 'inv-orphan' }],
+    });
+
+    await expect(service.deleteDocument('doc-1', 'u1')).resolves.toBeUndefined();
+
+    expect(manager.find).toHaveBeenCalledWith(Invoice, {
+      where: { document_id: 'doc-1' },
+      select: ['id'],
+    });
+    expect(manager.delete).toHaveBeenCalledWith(Invoice, { document_id: 'doc-1' });
+    // In() surfaces as a FindOperator — assert on its payload.
+    const itemDelete = deleteCalls.find(([entity]) => entity === InvoiceItem)?.[1] as
+      | { invoice_id: FindOperator<string> }
+      | undefined;
+    expect(itemDelete?.invoice_id).toBeInstanceOf(FindOperator);
+    expect(itemDelete?.invoice_id.value).toEqual(['inv-orphan']);
+    // Pointer already NULL → no pointless document UPDATE inside the transaction
+    // (the only other save is the audit log insert).
+    expect(manager.save).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'doc-1' }));
+  });
+
+  it('clears the invoiceId pointer before deleting invoices when it is set', async () => {
+    const { service, manager, deleteCalls, document } = makeDeleteService();
+
+    await service.deleteDocument('doc-1', 'u1');
+
+    expect((document as { invoiceId?: string | null }).invoiceId).toBeNull();
+    expect(manager.save).toHaveBeenCalledWith(document);
+    const itemDelete = deleteCalls.find(([entity]) => entity === InvoiceItem)?.[1] as
+      | { invoice_id: FindOperator<string> }
+      | undefined;
+    expect(itemDelete?.invoice_id.value).toEqual(['inv-1']);
+    expect(manager.delete).toHaveBeenCalledWith(Invoice, { document_id: 'doc-1' });
+  });
+
+  it('returns success and queues retryable cleanup when the storage delete fails', async () => {
+    const deleteFile = jest.fn(async () => {
+      throw new Error('r2 down');
+    });
+    const { service, enqueue, purgeQueued } = makeDeleteService({ deleteFile });
+
+    // The DB graph is already committed — a storage outage must not 500 the API.
+    await expect(service.deleteDocument('doc-1', 'u1')).resolves.toBeUndefined();
+    expect(enqueue).toHaveBeenCalledWith('k');
+    expect(purgeQueued).toHaveBeenCalledWith(1);
+  });
+
+  it('404s for a document the caller does not own', async () => {
+    const { service } = makeDeleteService({ document: null });
+    await expect(service.deleteDocument('doc-1', 'u1')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

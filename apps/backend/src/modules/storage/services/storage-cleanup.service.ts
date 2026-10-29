@@ -35,6 +35,21 @@ export class StorageCleanupService implements OnApplicationBootstrap, OnModuleDe
   }
 
   /**
+   * Queue a storage key for retryable deletion (DD-1: document deletes whose
+   * R2 delete failed after the DB commit). INSERT ... OR IGNORE — the unique
+   * s3_key index makes re-enqueues idempotent; the sweeper owns the rest.
+   */
+  async enqueue(s3Key: string): Promise<void> {
+    await this.pendingRepository
+      .createQueryBuilder()
+      .insert()
+      .into(PendingStorageDeletion)
+      .values({ s3_key: s3Key })
+      .orIgnore()
+      .execute();
+  }
+
+  /**
    * Attempt up to `limit` queued deletions. Returns how many objects were
    * removed from R2.
    */
