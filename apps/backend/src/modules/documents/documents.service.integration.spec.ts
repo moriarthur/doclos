@@ -6,7 +6,7 @@
 // Runs only when TEST_DATABASE_URL points at a throwaway database (migrations
 // are applied automatically, the baseline is idempotent). Without the variable
 // the whole suite self-skips, so plain `pnpm test` stays green everywhere.
-import { DataSource, DataSourceOptions } from 'typeorm';
+import { DataSource, DataSourceOptions, QueryRunner } from 'typeorm';
 import { dataSourceOptions } from '../../database/data-source';
 import { User } from '../auth/entities/user.entity';
 import { Customer } from './entities/customer.entity';
@@ -26,6 +26,8 @@ const d = TEST_DATABASE_URL ? describe : describe.skip;
 
 d('DocumentsService.deleteDocument (integration, DD-1)', () => {
   let ds: DataSource;
+  // Holds the advisory lock for the whole suite — see beforeAll.
+  let lockRunner: QueryRunner;
   let service: DocumentsService;
   let s3DeleteFile: jest.Mock;
 
@@ -64,6 +66,16 @@ d('DocumentsService.deleteDocument (integration, DD-1)', () => {
     } as DataSourceOptions;
     ds = new DataSource(options);
     await ds.initialize();
+    // Serialize the DB integration suites: jest runs spec files in parallel
+    // workers against this one database, and both suites drive the shared
+    // pending_storage_deletions retry table (purgeQueued scans it globally, so
+    // one suite's purge can delete another suite's rows mid-assertion —
+    // observed as a ~1-in-5 flake once the second integration suite landed).
+    // The session-level advisory lock makes the runs mutually exclusive; a
+    // crashed worker releases it implicitly by disconnecting. The lock rides a
+    // dedicated query runner so acquire and unlock use the SAME pooled connection.
+    lockRunner = ds.createQueryRunner();
+    await lockRunner.query(`SELECT pg_advisory_lock(hashtext('doclos-backend-integration'))`);
     await ds.runMigrations(); // idempotent — the baseline skips applied steps
     // Deterministic retry-queue tests: older runs leave rows behind, and
     // purgeQueued() works from the oldest row.
@@ -72,6 +84,8 @@ d('DocumentsService.deleteDocument (integration, DD-1)', () => {
   });
 
   afterAll(async () => {
+    await lockRunner?.query(`SELECT pg_advisory_unlock(hashtext('doclos-backend-integration'))`);
+    await lockRunner?.release();
     await ds?.destroy();
   });
 

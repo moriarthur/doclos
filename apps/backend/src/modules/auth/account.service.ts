@@ -63,6 +63,21 @@ export class AccountService {
         const invoiceIds = invoices.map((i) => i.id);
 
         if (invoiceIds.length > 0) {
+          // DD-3 (retention 500): the FKs are circular (documents."invoiceId" ->
+          // invoices.id via FK_998c6b9d2d3f298243299a14d72, invoices.document_id ->
+          // documents.id), so the invoices can only be deleted after the
+          // documents."invoiceId" pointers are cleared — same rule the
+          // single-document path follows (DocumentsService.deleteDocument).
+          // Without this, every account holding an extracted invoice
+          // FK-violates here (23503) and the retention sweep retries it forever.
+          // The column is nullable in the DB but the entity types it as a plain
+          // optional string, and TypeORM's update-partial type excludes null —
+          // the cast only satisfies the compiler; the runtime value IS null.
+          await manager.update(
+            Document,
+            { user_id: userId },
+            { invoiceId: null as unknown as string },
+          );
           await manager.delete(InvoiceItem, { invoice_id: In(invoiceIds) });
           await manager.delete(Invoice, { id: In(invoiceIds) });
         }
