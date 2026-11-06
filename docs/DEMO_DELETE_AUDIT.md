@@ -8,6 +8,11 @@
 > Follow-up (2026-10-29, after the PR #2 merge): DD-3 — the same FK class of
 > defect in the account-deletion/retention path, found in the deployed
 > backend's logs.
+> Follow-up (2026-11-06): DD-4 — none of the smoke journeys ever called
+> `DELETE /api/v1/account`, so the DD-3 path had no deployed coverage at all
+> (which is why DD-3 surfaced only in the production logs). DD-5 — a Low
+> robustness nit in the same script, documented but intentionally not fixed
+> in the DD-4 commit.
 
 ## Findings
 
@@ -16,6 +21,8 @@
 | DD-1 | H | `deleteDocument` collected the invoice to delete **only via `documents.invoiceId`**. An **orphan invoice** (row in `invoices` with `document_id` pointing at the document while the pointer is already `NULL`) is invisible to it — the `documents` delete then FK-violates (`23503` on `FK_04c08bd4d32a782db66084f7197`, `invoices.document_id → documents.id`) and **every** delete attempt of that document 500s, on both `DELETE /documents/:id` and `DELETE /demo/sample`. Additionally, a failed R2 delete after the DB commit was only logged — the object was silently orphaned with no retry. | `documents.service.ts`, `storage-cleanup.service.ts` |
 | DD-2 | M | Root producer of the orphan: the processor's previous-run cleanup (reprocess path) ran **non-transactionally** — `save(document with invoiceId=NULL)` → items delete → invoice delete. A process death between those statements (Render restart/deploy mid-reprocess) leaves exactly the DD-1 orphan behind. | `document.processor.ts` |
 | DD-3 | H | `AccountService.deleteAccount` (also the **entire demo retention path** — `DemoRetentionService` calls it per account) deleted the invoices **before clearing `documents."invoiceId"`**. The circular FK (`FK_998c6b9d2d3f298243299a14d72`, `documents."invoiceId" → invoices.id`, `ON DELETE NO ACTION`) FK-violated (`23503` on `update or delete on table "invoices" … on table "documents"`) for every account holding an extracted invoice: the transaction rolled back, `DELETE /account` 500ed, and the retention sweep re-logged the failure for the same accounts on every run — they could never be purged. The DD-1 ordering fix covered only the per-document delete. | `account.service.ts` |
+| DD-4 | M | Coverage gap: `scripts/smoke-demo.mjs` exercised registration, the pipeline, the per-document delete and the reset — but never `DELETE /api/v1/account`. The account-wide teardown (self-service deletion AND the retention sweep — one code path) had zero deployed coverage, so the DD-3 regression shipped green. | `scripts/smoke-demo.mjs` |
+| DD-5 | Low | In the smoke script every `await response.json()` sits after a passing status check; a 2xx response with a non-JSON body (proxy error page, HTML) throws an unlabeled `SyntaxError` — the run crashes with a bare message instead of a labeled `FAIL` step. Cosmetic robustness only; every JSON assertion itself is correct. Open — deliberately not fixed in the DD-4 commit. | `scripts/smoke-demo.mjs` |
 
 ## Fix
 
@@ -40,6 +47,17 @@
   `document_id`), invoice-less documents and every document status. Tenant
   isolation, the `pending_storage_deletions` retry queue and quota semantics
   are unchanged; no schema change, so no migration.
+- **DD-4**: the smoke journey now deletes the account that still owns the
+  fully processed sample with its extracted invoice — the exact DD-3 tenant
+  shape — then asserts the old session is dead (refresh → 401; API → 401,
+  both guaranteed by `JwtStrategy.validate()`/`refreshTokens()` re-checking
+  user existence plus the transactional session wipe). The per-document
+  teardown (DD-1), reset, quota and logout/revocation checks moved to the
+  surviving user B, who loads their own sample first — also proving the
+  pipeline keeps working for another tenant after a deletion. Backend code is
+  untouched by this fix; no new rate budgets are exceeded in a single run
+  (sample posts per run: 2 of the 2/h/IP budget; the second run within an
+  hour already trips the 3/h/IP registration budget, unchanged).
 
 ## Regression coverage
 
@@ -60,7 +78,11 @@
 - `document.processor.spec.ts`: cleanup runs transactionally in FK-safe order.
 - `demo.service.spec.ts`: reset performs no quota calls.
 - `scripts/smoke-demo.mjs`: post-deploy smoke now covers the per-document
-  delete, idempotent reset, and the quota-survives-deletion invariant.
+  delete, idempotent reset, and the quota-survives-deletion invariant — plus,
+  since DD-4, the full account-deletion path (`DELETE /account` against a
+  tenant still holding a processed, invoice-linked sample; refresh and API
+  rejection of the old session) and a survivor-tenant pipeline run
+  (user B's own sample) after that deletion.
 
 ## Verification
 
@@ -75,3 +97,12 @@ fails with the production error verbatim (23503 on
 consecutive runs; the two DB suites now serialize on a Postgres advisory lock,
 which removed a ~1-in-5 cross-suite flake on the shared retry table),
 clean-DB migration gate applied twice, `nest build` green.
+
+DD-4 (2026-11-06): local only so far — `node --check` on the updated script;
+every expected status/response shape verified statically against the current
+backend contract (`AccountController` → 200 `{ message, storage_objects_queued }`;
+`JwtStrategy.validate()` and `refreshTokens()` both 401 after the user row /
+session rows are gone; CSRF double-submit handled by the script's cookie jar).
+A live smoke run against the deployed environment has NOT happened yet — it
+must be run explicitly once Render serves the current main; until then DD-3
+has no deployed end-to-end proof (only the local integration suites).
