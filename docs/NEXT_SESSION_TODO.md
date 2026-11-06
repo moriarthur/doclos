@@ -32,12 +32,19 @@
   - Supabase, Upstash Redis, Cloudflare R2 and Z.ai Standard API configured.
 - The local `codex_audit` file stays untracked and out of commits.
 
-## Verified locally (2026-11-06, on `work/verify-dd3-smoke-fixes`)
+## Verified locally (2026-11-06)
 
-- Backend `tsc --noEmit`, eslint, `nest build`: green.
+On `work/verify-dd3-smoke-fixes`:
+
+- Backend `tsc --noEmit`, eslint, `nest build`: green (run before the RLS-1
+  merge; `tsc --noEmit` re-run green after the rebase, see below).
 - Jest with `TEST_DATABASE_URL` against a throwaway local Postgres (clean DB,
-  migrations applied by the suites): 195/195 tests, 22/22 suites, including
-  11 integration tests.
+  migrations applied by the suites):
+  - **195/195 tests, 22 suites** (11 integration) — the original run on this
+    branch **before** the RLS-1 merge/rebase.
+  - **205/205 tests, 23 suites** — re-run on this branch (597dd3f tree)
+    **after** the rebase onto e7960ed, so the RLS migration spec is included;
+    `tsc --noEmit` green in the same run.
 - DD-3 regression proof: with the fix reverted in the working tree (not
   committed), 4/5 account-deletion integration tests fail with the production
   error verbatim (23503 on `FK_998c6b9d2d3f298243299a14d72`); with the fix,
@@ -55,6 +62,12 @@
   verified statically — live-session refresh → 200 (rotation), the pinned
   copy → 200 on `GET /documents` pre-deletion, → 401 on refresh and API
   post-deletion via `callWithCookies()` (never absorbs responses).
+
+On `fix/rls-internal-tables` (a766e97, pre-merge, recorded in the RLS-1
+report — not attributed to this branch):
+
+- **205/205 tests, 23 suites** incl. integration, plus clean-DB double
+  migrate, revert scope, restricted-role refusal and a live boot check.
 
 ## Not verified (do not assume)
 
