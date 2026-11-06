@@ -15,6 +15,9 @@
 > in the DD-4 commit. DD-6 — same day, auditor review of the DD-4 commit:
 > its post-deletion 401 checks read the live cookie jar and could 401 for
 > the wrong reason; fixed by replaying a pinned, proven-live cookie copy.
+> Deployed smoke (2026-11-06, main c1534db): all steps passed — the DD-3
+> account-deletion path is covered end-to-end on the deployed demo (see
+> Verification). The retention sweep itself was not observed there.
 
 ## Findings
 
@@ -114,17 +117,32 @@ consecutive runs; the two DB suites now serialize on a Postgres advisory lock,
 which removed a ~1-in-5 cross-suite flake on the shared retry table),
 clean-DB migration gate applied twice, `nest build` green.
 
-DD-4 (2026-11-06): local only so far — `node --check` on the updated script;
-every expected status/response shape verified statically against the current
+DD-4 (2026-11-06, local): `node --check` on the updated script; every
+expected status/response shape verified statically against the current
 backend contract (`AccountController` → 200 `{ message, storage_objects_queued }`;
 `JwtStrategy.validate()` and `refreshTokens()` both 401 after the user row /
 session rows are gone; CSRF double-submit handled by the script's cookie jar).
-A live smoke run against the deployed environment has NOT happened yet — it
-must be run explicitly once Render serves the current main; until then DD-3
-has no deployed end-to-end proof (only the local integration suites).
 
-DD-6 (2026-11-06): local only so far — `node --check` green; the control
-pairs verified statically against the current contract (live-session refresh
-→ 200 by `refreshTokens()` rotation; the pinned copy → 200 pre-deletion by
+DD-6 (2026-11-06, local): `node --check` green; the control pairs verified
+statically against the current contract (live-session refresh → 200 by
+`refreshTokens()` rotation; the pinned copy → 200 pre-deletion by
 `JwtStrategy.validate()`, → 401 post-deletion once the user/session rows are
-gone). The DD-4 limitation stands: no live run yet.
+gone).
+
+Deployed smoke (2026-11-06, main c1534db, after the PR #6 merge):
+`All smoke steps passed.` against the deployed frontend.
+`/healthz` and `/readyz` green (postgres, redis, storage all `ok`); the full
+journey — two isolated users, tenant isolation, GLM pipeline, R2 download,
+Excel export — green. The DD-3 path ran end-to-end on the deployed demo:
+`DELETE /account` returned 200 for the account still holding the processed,
+invoice-linked sample, and the DD-6 pinned pre-deletion cookies answered 200
+on refresh and API right before the deletion and 401 on both after it —
+server-side session invalidation proven live, not an emptied jar. The
+surviving tenant then processed its own sample through the pipeline and the
+per-document delete, idempotent reset, quota-survives-deletion and
+logout/revocation checks all held. No credentials, cookies, emails or
+document IDs were recorded. **Scope note:** this run exercised the
+self-service `DELETE /account` entry (the same `AccountService.deleteAccount`
+the retention sweep calls); the sweep's own behavior on the deployed backend
+was not observed and its logs were not reviewed — the sweep is verified only
+by the unit/integration suites.

@@ -1,30 +1,36 @@
 # Next Session TODO
 
-## Current state (updated 2026-11-06)
+## Current state (updated 2026-11-06, after the deployed smoke)
 
-- Public demo hardening merged into `main`; PRs #1–#5 all merged:
+- Public demo hardening merged into `main`; PRs #1–#6 all merged:
   - #3 (`fix/account-deletion-fk-order`, fe1abe5): DD-3 — account deletion /
     retention clears `documents."invoiceId"` before deleting invoices.
   - #4 (`fix/smoke-reset-json-body`, e12de1a): smoke script reads JSON bodies
     explicitly in the delete-path assertions.
   - #5 (`fix/rls-internal-tables`, a766e97): RLS-1 — row-level security
     enabled on `refresh_sessions` and `pending_storage_deletions`.
-- `origin/main` = e7960ed (merge of #5) contains the DD-3 and smoke fixes as
-  separate commits; both original branches stay published.
-- Working branch `work/verify-dd3-smoke-fixes` — rebased onto current
-  `origin/main` (e7960ed), 5 commits ahead:
-  - `10dbb6a` — session TODO status update (bookkeeping).
-  - `a910a3d` — DD-4: the smoke journey covers `DELETE /account` against a
-    tenant still holding a processed, invoice-linked sample, plus old-session
-    rejection and a survivor-tenant pipeline run (user B). Backend untouched.
-  - `ff5838b` — session TODO status update (bookkeeping).
-  - `a242cfa` — DD-6 (auditor finding on DD-4): post-deletion 401s are now
-    proven with a pinned, proven-live pre-deletion cookie copy (plus live
-    controls), not via the live jar. Backend untouched.
-  - `83f30d7` — session TODO status update (bookkeeping).
+  - #6 (`work/verify-dd3-smoke-fixes`, merge c1534db): DD-4 (`a910a3d`) — the
+    smoke journey covers `DELETE /account` against a tenant still holding a
+    processed, invoice-linked sample; DD-6 (`a242cfa`) — post-deletion 401s
+    are proven with a pinned, proven-live pre-deletion cookie copy. Backend
+    untouched by both.
+- `main` = c1534db. Local main is updated to it; the working branch from the
+  previous sessions landed as PR #6.
+- **Deployed smoke PASSED (2026-11-06, main c1534db)** against
+  `https://doclos-frontend.onrender.com` — `All smoke steps passed.`:
+  - `/healthz` and `/readyz` green; postgres, redis, storage all `ok`.
+  - Registration + login of two isolated users, tenant isolation, GLM
+    pipeline, R2 download and Excel export — green.
+  - Account deletion (DD-3 path): `DELETE /account` against a tenant still
+    holding a processed, invoice-linked sample → 200; the pinned
+    pre-deletion cookies answered 200 on refresh and API before the deletion
+    and 401 on both after it (DD-6 proof live).
+  - The surviving user processed their own sample through the pipeline;
+    per-document delete, idempotent reset, quota-survives-deletion, logout
+    and revoked-session rejection — green.
 - Deployed environment (confirmed):
-  - Render backend runs from `main` at e7960ed; frontend live.
-  - `/healthz` and `/readyz` green.
+  - Render backend runs from `main`; frontend live at
+    `https://doclos-frontend.onrender.com`.
   - The RLS migration `EnableRlsOnInternalTables` (1793923200000) was applied
     to the Supabase production database via `pnpm db:migrate`; the Supabase
     Advisor warnings for `refresh_sessions` and `pending_storage_deletions`
@@ -32,7 +38,7 @@
   - Supabase, Upstash Redis, Cloudflare R2 and Z.ai Standard API configured.
 - The local `codex_audit` file stays untracked and out of commits.
 
-## Verified locally (2026-11-06)
+## Verified locally (2026-11-06, before the merge)
 
 On `work/verify-dd3-smoke-fixes`:
 
@@ -71,18 +77,17 @@ report — not attributed to this branch):
 
 ## Not verified (do not assume)
 
-- **No live smoke run yet** — the deployed environment was not touched by the
-  smoke; running it needs explicit confirmation.
-- The deployed smoke still runs the pre-DD-4 script: DD-4/DD-6 live only on
-  `work/verify-dd3-smoke-fixes`, which is **not pushed or merged**. Until
-  this branch lands on `main`, a deployed smoke cannot cover the
-  account-deletion path.
-- The earlier "full deployed smoke passed" note predates the smoke-script fix:
-  its delete/reset assertions were unreliable, and the smoke never called
-  `DELETE /account`, so DD-3 was never covered by any smoke run — consistent
-  with DD-3 surfacing in the production logs only after that run.
-- DD-3's deployed end-to-end proof therefore remains pending until the
-  updated smoke runs against the deployed environment.
+- **The retention sweep has not been directly verified.** The deployed smoke
+  exercised the self-service `DELETE /account` path (the same
+  `AccountService.deleteAccount` the sweep calls), but the retention sweep
+  logs on the deployed backend were NOT reviewed — do not claim the sweep
+  itself was observed.
+- The earlier "full deployed smoke passed" note predates the smoke-script
+  fix: its delete/reset assertions were unreliable, and before 2026-11-06 the
+  smoke had never called `DELETE /account` — consistent with DD-3 surfacing
+  in the production logs only after that earlier run. The 2026-11-06 run
+  above is the first one with correct assertions and account-deletion
+  coverage.
 
 ## Open findings (reported, not fixed — audit-first)
 
@@ -94,14 +99,8 @@ report — not attributed to this branch):
 
 ## Next session
 
-- [ ] Decide whether to push/merge `work/verify-dd3-smoke-fixes`
-      (a910a3d + a242cfa) so the deployed smoke includes the DD-4/DD-6
-      account-deletion coverage.
-- [ ] After that lands, run `scripts/smoke-demo.mjs` against the deployed
-      frontend with explicit confirmation (consumes demo quota; creates
-      temporary accounts; the run includes one account deletion).
-- [ ] After the deployed run, check backend logs: no 23503/FK errors from the
-      retention sweep anymore.
+- [ ] Review deployed backend logs for the retention sweep: no 23503/FK
+      errors anymore — the one deployed check the smoke could not cover.
 - [ ] Decide on fixing DD-5 (labeled failure for non-JSON bodies) — its own
       commit if approved.
 - [ ] Decide whether to add a custom domain.
@@ -123,4 +122,4 @@ report — not attributed to this branch):
 - Render Free services sleep after inactivity; the first request can be slow.
 - Resetting a synthetic sample does not reset the `1 sample/day/user` quota.
 - The smoke test consumes demo quota and creates temporary test
-  accounts/documents; it now also deletes one account (user A) mid-journey.
+  accounts/documents; it also deletes one account (user A) mid-journey.
