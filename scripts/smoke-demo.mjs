@@ -80,6 +80,29 @@ async function call(userKey, method, url, { json } = {}) {
   return response;
 }
 
+// DD-6: same request shape as call(), but the Cookie header is built from a
+// PINNED snapshot and the response never touches the jar or the snapshot —
+// used to prove server-side session invalidation with a cookie copy whose
+// liveness was proven immediately before the destructive step.
+async function callWithCookies(cookies, method, url, { json } = {}) {
+  const headers = { 'user-agent': 'doclos-smoke/1.0' };
+  if (cookies.size > 0) {
+    headers.cookie = [...cookies.entries()].map(([name, value]) => `${name}=${value}`).join('; ');
+  }
+  if (json !== undefined) headers['content-type'] = 'application/json';
+  // PD-A3: double-submit CSRF, echoed from the pinned copy.
+  const csrf = cookies.get('csrf_token');
+  if (method !== 'GET' && method !== 'HEAD' && csrf) {
+    headers['x-csrf-token'] = csrf;
+  }
+  return fetch(url, {
+    method,
+    headers,
+    body: json !== undefined ? JSON.stringify(json) : undefined,
+    redirect: 'manual',
+  });
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // --- smoke journey ----------------------------------------------------------
@@ -240,11 +263,123 @@ async function main() {
     ok('Excel export', `${size} bytes`);
   }
 
-  // 10a. Deletion paths (DD-1): the normal per-document delete must work for
-  // the sample in ANY status, the reset stays idempotent afterwards, and —
-  // critically — deleting the sample does NOT re-open the 1/day quota.
+  // 10a. Account deletion (DD-4 coverage of the DD-3 path): user A still owns
+  // the fully processed sample with its extracted invoice — exactly the
+  // tenant shape that FK-violated (23503 on FK_998c6b9d2d3f298243299a14d72)
+  // before the fix. DELETE /account is the self-service entry; the retention
+  // sweep rides the same AccountService.deleteAccount path, so a green step
+  // here exercises both.
+  //
+  // DD-6: the 401 assertions below must not depend on what the deletion
+  // response does to the cookie jar — if it ever cleared A's cookies via
+  // Set-Cookie, jar-driven calls would 401 for the wrong reason and prove
+  // nothing. Instead, a pinned snapshot of A's cookies (access + refresh +
+  // csrf) that was proven live immediately BEFORE the deletion is replayed
+  // AFTER it via callWithCookies(); the same copy answering 200 pre-deletion
+  // and 401 post-deletion is the server-side invalidation proof.
   {
-    let response = await call('A', 'DELETE', `${API}/documents/${globalThis.__sampleDocId}`);
+    // Control 1 (refresh path): a live session refreshes fine. Refresh
+    // ROTATES A's cookies (PD-A2), so this runs BEFORE the snapshot is taken
+    // — the snapshot must hold the rotation's still-live session, not a
+    // token that a later rotation would revoke.
+    const liveRefresh = await call('A', 'POST', `${API}/auth/refresh`);
+    if (liveRefresh.status !== 200) {
+      boom('account deletion (DD-3)', `refresh control → ${liveRefresh.status} (expected 200)`);
+    }
+    ok('account deletion (DD-3)', 'refresh with the live session → 200');
+
+    // Pin A's cookies exactly as they are now (post-rotation, all live).
+    const staleCookies = new Map(jar.get('A'));
+
+    // Control 2 (API path): the exact pinned copy opens the API right before
+    // the deletion. GET mutates nothing, so the pre/post pair is airtight.
+    const liveList = await callWithCookies(staleCookies, 'GET', `${API}/documents`);
+    if (liveList.status !== 200) {
+      boom(
+        'account deletion (DD-3)',
+        `API control with the pinned copy → ${liveList.status} (expected 200)`,
+      );
+    }
+    ok('account deletion (DD-3)', 'API with the pinned cookie copy → 200');
+
+    const response = await call('A', 'DELETE', `${API}/account`);
+    if (response.status !== 200) boom('account deletion (DD-3)', `status ${response.status}`);
+    const body = await response.json();
+    if (!body.message) boom('account deletion (DD-3)', 'no message in body');
+    if (typeof body.storage_objects_queued !== 'number' || body.storage_objects_queued < 1) {
+      boom(
+        'account deletion (DD-3)',
+        `storage_objects_queued ${JSON.stringify(body.storage_objects_queued)} (expected a number ≥ 1)`,
+      );
+    }
+    ok('account deletion (DD-3)', `200, ${body.storage_objects_queued} storage object(s) queued`);
+
+    // The pinned copy (never updated from responses) must now be rejected:
+    // refresh sessions were deleted inside the deletion transaction and
+    // refreshTokens() re-checks user existence, so a non-401 here could only
+    // mean the deletion left the session (and user) server-side intact.
+    const refreshAfterDelete = await callWithCookies(staleCookies, 'POST', `${API}/auth/refresh`);
+    if (refreshAfterDelete.status !== 401) {
+      boom(
+        'account deletion (DD-3)',
+        `refresh with the pinned pre-deletion copy → ${refreshAfterDelete.status} (expected 401)`,
+      );
+    }
+    ok('account deletion (DD-3)', 'refresh with the pinned pre-deletion copy → 401');
+
+    // JwtStrategy.validate() looks the caller up — the same pinned access
+    // cookie that answered 200 above must no longer open the API.
+    const listAfterDelete = await callWithCookies(staleCookies, 'GET', `${API}/documents`);
+    if (listAfterDelete.status !== 401) {
+      boom(
+        'account deletion (DD-3)',
+        `documents with the pinned pre-deletion copy → ${listAfterDelete.status} (expected 401)`,
+      );
+    }
+    ok('account deletion (DD-3)', 'documents with the pinned pre-deletion copy → 401');
+  }
+
+  // 10b. The surviving user B loads their own sample (their own 1/day quota) —
+  // also proving the pipeline keeps working for another tenant after A's
+  // deletion. B takes over the teardown checks below.
+  {
+    const response = await call('B', 'POST', `${API}/demo/sample`);
+    if (response.status === 429) {
+      boom('synthetic sample (B)', 'rate-limited — rerun the smoke later or raise budgets');
+    }
+    if (response.status !== 201) boom('synthetic sample (B)', `status ${response.status}`);
+    const body = await response.json();
+    if (!body.document_id) boom('synthetic sample (B)', 'no document_id');
+    globalThis.__sampleDocIdB = body.document_id;
+    ok('synthetic sample queued (B)', `document ${body.document_id}`);
+  }
+
+  // 10c. B's processing completes (second tenant through the real pipeline).
+  {
+    const deadline = Date.now() + 180_000;
+    let status = 'processing';
+    while (Date.now() < deadline) {
+      await sleep(4000);
+      const response = await call('B', 'GET', `${API}/documents/${globalThis.__sampleDocIdB}`);
+      if (response.status !== 200) boom('processing (B)', `detail status ${response.status}`);
+      const body = await response.json();
+      status = body.status;
+      if (status !== 'processing') break;
+    }
+    if (status === 'processing') boom('processing (B)', 'timed out after 180s');
+    if (status === 'error') boom('processing (B)', 'document landed in error state');
+    if (!['parsed', 'needs_validation', 'validated'].includes(status)) {
+      boom('processing (B)', `unexpected status ${status}`);
+    }
+    ok('processing completes (B)', `final status: ${status}`);
+  }
+
+  // 10d. Deletion paths (DD-1), on B's tenant: the normal per-document delete
+  // must work for the sample in ANY status, the reset stays idempotent
+  // afterwards, and — critically — deleting the sample does NOT re-open the
+  // 1/day quota.
+  {
+    let response = await call('B', 'DELETE', `${API}/documents/${globalThis.__sampleDocIdB}`);
     if (response.status !== 200) boom('document delete', `status ${response.status}`);
     ok('document delete', `DELETE /documents/:id → 200`);
 
@@ -252,15 +387,15 @@ async function main() {
     // stream, not the parsed payload, so every JSON assertion must read the
     // body explicitly (the bodyless `response.body?.x` checks here passed or
     // failed spuriously).
-    response = await call('A', 'GET', `${API}/documents`);
+    response = await call('B', 'GET', `${API}/documents`);
     if (response.status !== 200) boom('document delete applied', `list status ${response.status}`);
-    const listAfterDelete = await response.json();
-    if ((listAfterDelete.data ?? []).some((d) => d.id === globalThis.__sampleDocId)) {
+    const listAfterDocDelete = await response.json();
+    if ((listAfterDocDelete.data ?? []).some((d) => d.id === globalThis.__sampleDocIdB)) {
       boom('document delete', 'document still listed after delete');
     }
     ok('document delete applied', 'sample gone from the list');
 
-    response = await call('A', 'DELETE', `${API}/demo/sample`);
+    response = await call('B', 'DELETE', `${API}/demo/sample`);
     if (response.status !== 200) boom('sample reset (idempotent)', `status ${response.status}`);
     const resetBody = await response.json();
     if (typeof resetBody.deleted !== 'number') {
@@ -268,16 +403,16 @@ async function main() {
     }
     ok('sample reset (idempotent)', `deleted: ${resetBody.deleted}`);
 
-    response = await call('A', 'POST', `${API}/demo/sample`);
+    response = await call('B', 'POST', `${API}/demo/sample`);
     if (response.status !== 429) {
       boom('quota survives deletion', `second sample same day → ${response.status} (expected 429)`);
     }
     ok('quota survives deletion', '1/day still enforced after reset');
   }
 
-  // 11. Logout (server-side revocation — PD-A2)
+  // 11. Logout (server-side revocation — PD-A2), user B.
   {
-    const response = await call('A', 'POST', `${API}/auth/logout`);
+    const response = await call('B', 'POST', `${API}/auth/logout`);
     if (response.status !== 200) boom('logout', `status ${response.status}`);
     ok('logout');
   }
@@ -287,14 +422,14 @@ async function main() {
     // Remaining cookies were cleared by logout; force-keep nothing: the jar
     // already dropped them. Prove the refresh path is closed with whatever
     // the browser would still hold: nothing.
-    const response = await call('A', 'POST', `${API}/auth/refresh`);
+    const response = await call('B', 'POST', `${API}/auth/refresh`);
     if (response.status !== 401) {
       boom('revoked session rejection', `refresh after logout → ${response.status} (expected 401)`);
     }
     ok('revoked session rejection', 'refresh after logout → 401');
 
     // The cleared access cookie must no longer open the API either.
-    const afterLogout = await call('A', 'GET', `${API}/documents`);
+    const afterLogout = await call('B', 'GET', `${API}/documents`);
     if (afterLogout.status !== 401) {
       boom('revoked session rejection', `documents after logout → ${afterLogout.status} (expected 401)`);
     }

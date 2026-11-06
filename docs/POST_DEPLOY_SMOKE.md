@@ -11,8 +11,14 @@ Frontend load → `/healthz` → `/readyz` → registration (two isolated users,
 uniform response without token material) → login (HttpOnly cookies) →
 synthetic sample through the real pipeline → **tenant isolation** (user B
 sees none of user A's documents) → processing completion → document detail
-with a presigned URL → original file download → Excel export → logout →
-**revoked-session rejection** (refresh + API after logout → 401).
+with a presigned URL → original file download → Excel export → **account
+deletion** (user A deletes the account while it still owns the processed,
+invoice-linked sample — the FK path behind the retention sweep; a pinned
+pre-deletion cookie copy, proven live seconds earlier, must then get 401 on
+refresh and on the API) → user B loads their own
+sample through the pipeline → per-document delete + idempotent reset +
+quota-survives-deletion → logout → **revoked-session rejection** (refresh +
+API after logout → 401).
 
 Random credentials are generated in-memory and never printed; output shows
 step names, statuses and document IDs only.
@@ -45,6 +51,6 @@ check the R2 env vars. Neither endpoint prints any values by design.
 
 ## Rate-limit awareness
 
-The smoke run consumes budget (registration 3/h/IP, sample 1/day/user).
-Re-running it within an hour will hit 429s — that's the protection working;
-wait or lift budgets consciously.
+The smoke run consumes budget (registration 3/h/IP, one sample per user —
+1/day/user each). Re-running it within an hour will hit 429s — that's the
+protection working; wait or lift budgets consciously.
