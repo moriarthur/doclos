@@ -15,6 +15,15 @@
   - `9c7b3e4` — DD-4: the smoke journey covers `DELETE /account` against a
     tenant still holding a processed, invoice-linked sample, plus old-session
     rejection and a survivor-tenant pipeline run (user B). Backend untouched.
+  - `79c1861` — DD-6 (auditor finding on DD-4): post-deletion 401s are now
+    proven with a pinned, proven-live pre-deletion cookie copy (plus live
+    controls), not via the live jar. Backend untouched.
+- Note: the working directory was briefly on `fix/rls-internal-tables`
+  (clean, = `origin/main`); this work resumed on
+  `work/verify-dd3-smoke-fixes`. Two untracked files from the RLS work
+  stream (`enable-rls-internal-tables.migration.spec.ts`,
+  `1793923200000-EnableRlsOnInternalTables.ts`) and the local `codex_audit`
+  remain untouched and uncommitted.
 - Render backend/frontend: live. Supabase, Upstash Redis, Cloudflare R2 and
   Z.ai Standard API are configured. `/healthz` and `/readyz` passed earlier.
 - Migrations applied successfully on the deployed database.
@@ -38,6 +47,10 @@
   calls; a single run stays within the sample/registration rate budgets (2 of
   2/h/IP sample posts; second run within an hour already trips registration,
   unchanged).
+- DD-6 hardening (commit 79c1861): `node --check` green; the control pairs
+  verified statically — live-session refresh → 200 (rotation), the pinned
+  copy → 200 on `GET /documents` pre-deletion, → 401 on refresh and API
+  post-deletion via `callWithCookies()` (never absorbs responses).
 
 ## Not verified (do not assume)
 
