@@ -2,31 +2,35 @@
 
 ## Current state (updated 2026-11-06)
 
-- Public demo hardening merged into `main`; PRs #1–#4 all merged:
+- Public demo hardening merged into `main`; PRs #1–#5 all merged:
   - #3 (`fix/account-deletion-fk-order`, fe1abe5): DD-3 — account deletion /
     retention clears `documents."invoiceId"` before deleting invoices.
   - #4 (`fix/smoke-reset-json-body`, e12de1a): smoke script reads JSON bodies
     explicitly in the delete-path assertions.
-- `origin/main` = 62a75d1 contains both fixes as separate commits (no history
-  rewrite; both original branches stay published).
-- Working branch `work/verify-dd3-smoke-fixes` (based on current
-  `origin/main`) now carries:
-  - `890d70b` — session TODO status update (bookkeeping).
-  - `9c7b3e4` — DD-4: the smoke journey covers `DELETE /account` against a
+  - #5 (`fix/rls-internal-tables`, a766e97): RLS-1 — row-level security
+    enabled on `refresh_sessions` and `pending_storage_deletions`.
+- `origin/main` = e7960ed (merge of #5) contains the DD-3 and smoke fixes as
+  separate commits; both original branches stay published.
+- Working branch `work/verify-dd3-smoke-fixes` — rebased onto current
+  `origin/main` (e7960ed), 5 commits ahead:
+  - `10dbb6a` — session TODO status update (bookkeeping).
+  - `a910a3d` — DD-4: the smoke journey covers `DELETE /account` against a
     tenant still holding a processed, invoice-linked sample, plus old-session
     rejection and a survivor-tenant pipeline run (user B). Backend untouched.
-  - `79c1861` — DD-6 (auditor finding on DD-4): post-deletion 401s are now
+  - `ff5838b` — session TODO status update (bookkeeping).
+  - `a242cfa` — DD-6 (auditor finding on DD-4): post-deletion 401s are now
     proven with a pinned, proven-live pre-deletion cookie copy (plus live
     controls), not via the live jar. Backend untouched.
-- Note: the working directory was briefly on `fix/rls-internal-tables`
-  (clean, = `origin/main`); this work resumed on
-  `work/verify-dd3-smoke-fixes`. Two untracked files from the RLS work
-  stream (`enable-rls-internal-tables.migration.spec.ts`,
-  `1793923200000-EnableRlsOnInternalTables.ts`) and the local `codex_audit`
-  remain untouched and uncommitted.
-- Render backend/frontend: live. Supabase, Upstash Redis, Cloudflare R2 and
-  Z.ai Standard API are configured. `/healthz` and `/readyz` passed earlier.
-- Migrations applied successfully on the deployed database.
+  - `83f30d7` — session TODO status update (bookkeeping).
+- Deployed environment (confirmed):
+  - Render backend runs from `main` at e7960ed; frontend live.
+  - `/healthz` and `/readyz` green.
+  - The RLS migration `EnableRlsOnInternalTables` (1793923200000) was applied
+    to the Supabase production database via `pnpm db:migrate`; the Supabase
+    Advisor warnings for `refresh_sessions` and `pending_storage_deletions`
+    are gone.
+  - Supabase, Upstash Redis, Cloudflare R2 and Z.ai Standard API configured.
+- The local `codex_audit` file stays untracked and out of commits.
 
 ## Verified locally (2026-11-06, on `work/verify-dd3-smoke-fixes`)
 
@@ -38,7 +42,7 @@
   committed), 4/5 account-deletion integration tests fail with the production
   error verbatim (23503 on `FK_998c6b9d2d3f298243299a14d72`); with the fix,
   green again.
-- DD-4 smoke coverage (commit 9c7b3e4): `node --check` green; every asserted
+- DD-4 smoke coverage (commit a910a3d): `node --check` green; every asserted
   status/response shape checked statically against the current backend
   contract — `AccountController` answers 200
   `{ message, storage_objects_queued }`; `JwtStrategy.validate()` and
@@ -47,24 +51,25 @@
   calls; a single run stays within the sample/registration rate budgets (2 of
   2/h/IP sample posts; second run within an hour already trips registration,
   unchanged).
-- DD-6 hardening (commit 79c1861): `node --check` green; the control pairs
+- DD-6 hardening (commit a242cfa): `node --check` green; the control pairs
   verified statically — live-session refresh → 200 (rotation), the pinned
   copy → 200 on `GET /documents` pre-deletion, → 401 on refresh and API
   post-deletion via `callWithCookies()` (never absorbs responses).
 
 ## Not verified (do not assume)
 
-- No live smoke run this session — the deployed environment was untouched, as
-  instructed; running it needs explicit confirmation.
-- Whether the Render backend has actually deployed `origin/main` (with DD-3 +
-  the smoke fix) is unconfirmed from here.
+- **No live smoke run yet** — the deployed environment was not touched by the
+  smoke; running it needs explicit confirmation.
+- The deployed smoke still runs the pre-DD-4 script: DD-4/DD-6 live only on
+  `work/verify-dd3-smoke-fixes`, which is **not pushed or merged**. Until
+  this branch lands on `main`, a deployed smoke cannot cover the
+  account-deletion path.
 - The earlier "full deployed smoke passed" note predates the smoke-script fix:
   its delete/reset assertions were unreliable, and the smoke never called
   `DELETE /account`, so DD-3 was never covered by any smoke run — consistent
   with DD-3 surfacing in the production logs only after that run.
-- DD-3's deployed end-to-end proof is still pending until the updated smoke
-  runs against the deployed environment (branch `work/verify-dd3-smoke-fixes`
-  or a merge of it must be served there first).
+- DD-3's deployed end-to-end proof therefore remains pending until the
+  updated smoke runs against the deployed environment.
 
 ## Open findings (reported, not fixed — audit-first)
 
@@ -76,12 +81,12 @@
 
 ## Next session
 
-- [ ] Confirm Render deployed `origin/main`; decide whether to merge/push
-      `work/verify-dd3-smoke-fixes` (890d70b + 9c7b3e4) so the deployed smoke
-      includes the DD-4 account-deletion coverage.
-- [ ] With explicit confirmation, run `scripts/smoke-demo.mjs` against the
-      deployed frontend (consumes demo quota; creates temporary accounts; the
-      run now includes one account deletion).
+- [ ] Decide whether to push/merge `work/verify-dd3-smoke-fixes`
+      (a910a3d + a242cfa) so the deployed smoke includes the DD-4/DD-6
+      account-deletion coverage.
+- [ ] After that lands, run `scripts/smoke-demo.mjs` against the deployed
+      frontend with explicit confirmation (consumes demo quota; creates
+      temporary accounts; the run includes one account deletion).
 - [ ] After the deployed run, check backend logs: no 23503/FK errors from the
       retention sweep anymore.
 - [ ] Decide on fixing DD-5 (labeled failure for non-JSON bodies) — its own
