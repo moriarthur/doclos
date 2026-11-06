@@ -1,5 +1,13 @@
 # Public Demo Preview — Technical Audit & Hardening Plan
 
+> **CLOSED (historical, 2026-11-06):** the hardening wave planned here was
+> implemented and merged (branch `feat/public-demo-hardening`, 2026-10-15),
+> and the deployed smoke passed on 2026-11-06 — see
+> `docs/NEXT_SESSION_TODO.md`. Follow-up delete-path findings live in
+> `docs/DEMO_DELETE_AUDIT.md` (DD-1…DD-6; DD-5 still open). Kept for
+> reference in `docs/archive/` — do not append new findings here; start a
+> fresh checklist document (doc map: `docs/README.md`).
+
 > Branch: `feat/public-demo-hardening` · Audit date: 2026-10-15
 > Goal: any visitor from GitHub can register an isolated account and safely
 > process a synthetic document. **No shared demo login** — this replaces the
