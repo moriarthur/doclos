@@ -164,36 +164,45 @@ for the post-deploy verification.
 
 ## Example Usage
 
-### Register a user
+Auth is cookie-based: register/login responses carry no token material —
+login sets HttpOnly session cookies, and every state-changing call needs the
+CSRF double-submit header (`X-CSRF-Token` echoing the `csrf_token` cookie).
+`scripts/smoke-demo.mjs` implements the full journey as a reference.
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/auth/register \
-  -H "Content-Type: application/json" \
+BASE=http://localhost:3001/api/v1
+
+# CSRF bootstrap: GET sets the csrf_token cookie (and echoes the token)
+curl -c cookies.txt -sS "$BASE/auth/csrf"
+CSRF=$(awk '$6 == "csrf_token" {print $7}' cookies.txt)
+
+# Register a user — uniform response whether or not the email exists
+curl -b cookies.txt -X POST "$BASE/auth/register" \
+  -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF" \
   -d '{
     "email": "user@example.com",
     "password": "SecurePassword123!",
     "name": "Test User"
   }'
-```
 
-### Login
-
-```bash
-curl -X POST http://localhost:3001/api/v1/auth/login \
-  -H "Content-Type: application/json" \
+# Login — sets HttpOnly cookies; the body carries user_id only.
+# Login rotates the csrf cookie — re-read it before the next state-changing call.
+curl -c cookies.txt -b cookies.txt -X POST "$BASE/auth/login" \
+  -H "Content-Type: application/json" -H "X-CSRF-Token: $CSRF" \
   -d '{
     "email": "user@example.com",
     "password": "SecurePassword123!"
   }'
-```
+CSRF=$(awk '$6 == "csrf_token" {print $7}' cookies.txt)
 
-### Upload a document
-
-```bash
-curl -X POST http://localhost:3001/api/v1/documents/upload \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+# Upload a document — cookie session + CSRF header
+curl -b cookies.txt -X POST "$BASE/documents/upload" \
+  -H "X-CSRF-Token: $CSRF" \
   -F "file=@/path/to/document.pdf"
 ```
+
+`cookies.txt` holds live session credentials — keep it out of commits and
+delete it when done.
 
 ## Project Structure
 
@@ -220,7 +229,7 @@ The core demo workflow is implemented and covered by backend tests:
 - ✅ Turborepo monorepo structure
 - ✅ NestJS backend (API on :3001)
 - ✅ PostgreSQL (Supabase) + Redis (local Docker by default)
-- ✅ Authentication (JWT register/login/refresh)
+- ✅ Authentication (register/login/refresh — HttpOnly cookie sessions with rotation, reuse detection and server-side logout)
 - ✅ Document upload API
 - ✅ Document processing queue (BullMQ)
 - ✅ OCR (Tesseract.js, German + English) for images and scanned/mixed PDFs
@@ -238,7 +247,9 @@ The following are intentionally outside the MVP:
 1. CSV/JSON export (Excel is implemented)
 2. OAuth (Google/Microsoft)
 3. Cloud-OCR fallback for difficult handwriting or very poor scans
-4. Account-wide GDPR erasure endpoint
+
+Account-wide deletion (`DELETE /api/v1/account`) is implemented and covered
+by the smoke journey — see `docs/DEMO_DELETE_AUDIT.md`.
 
 ## Demo privacy, retention & imprint (placeholders)
 

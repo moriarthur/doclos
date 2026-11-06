@@ -40,7 +40,7 @@ This is a **public MVP demo preview**, not a production service:
 - **Upload only synthetic or non-confidential documents.** Anything you upload may be processed by an external AI provider (Z.ai/GLM) and stored on cloud infrastructure.
 - Each account is isolated per user; **demo data may be deleted automatically** (retention sweep for inactive accounts, `DEMO_RETENTION_DAYS`).
 - **Delete your account anytime**: log in → Profile → *Delete account* (frontend control ships with the demo preview; the API endpoint is `DELETE /api/v1/account`). This erases your documents, extractions, jobs and storage objects.
-- **Privacy notice / retention / imprint**: placeholder sections live in [QUICK_START.md](./QUICK_START.md#demo-privacy-retention-imprint) until legal entities are in place. This demo is "DSGVO-ready", not DSGVO-certified — no contract, no AVV, no certified deletion concept yet.
+- **Privacy notice / retention / imprint**: placeholder sections live in [QUICK_START.md](./QUICK_START.md#demo-privacy-retention--imprint-placeholders) until legal entities are in place. This demo is "DSGVO-ready", not DSGVO-certified — no contract, no AVV, no certified deletion concept yet.
 
 ## Architecture
 
@@ -120,16 +120,25 @@ and PR.
 
 ## Documentation
 
-Full architecture documentation available in [`documentations/`](./documentations/):
+Architecture documentation (the original pre-build design spec) is available
+in [`documentations/`](./documentations/):
 
-1. AI Document Automation — Concept & Pipeline
-2. AI Pipeline — Detailed Processing Flow
-3. API Specification
-4. Frontend Architecture
-5. Excel Export System
-6. Security & DSGVO
-7. Infrastructure & Deployment
-8. Development System
+| File | Covers |
+|---|---|
+| `ai_document_automation_documentation part 1.md` | Concept & pipeline |
+| `part_3_ai_pipeline.md` | AI pipeline — detailed processing flow |
+| `part_4_api_specification.md` | API specification |
+| `part_5_frontend_architecture.md` | Frontend architecture |
+| `part_6_excel_export_system.md` | Excel export system |
+| `part_7_security_gdpr.md` | Security & DSGVO |
+| `part_8_infrastructure_deployment.md` | Infrastructure & deployment |
+| `part_9_development_system.md` | Development system |
+
+These are design-time documents — see
+[`documentations/DISCLAIMER.md`](./documentations/DISCLAIMER.md) for where
+the implementation diverges (the code is the source of truth). For runbooks,
+audits and current status, start from the map in
+[`docs/README.md`](./docs/README.md).
 
 ## License
 

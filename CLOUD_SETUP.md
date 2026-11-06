@@ -197,38 +197,17 @@ Liveness probe (public, for platform health checks): `http://localhost:3001/heal
 
 ## Testing the API
 
-### 1. Register a User
+Auth is cookie-based (HttpOnly session cookies; register/login responses
+carry no token material). State-changing calls additionally need the CSRF
+double-submit header: bootstrap the `csrf_token` cookie via
+`GET /api/v1/auth/csrf`, then echo it in `X-CSRF-Token`.
 
-```bash
-curl -X POST http://localhost:3001/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "SecurePassword123!",
-    "name": "Test User"
-  }'
-```
+Copy-paste examples (register → login → upload with a cookie jar):
+[QUICK_START.md, "Example Usage"](./QUICK_START.md#example-usage).
 
-### 2. Login
-
-```bash
-curl -X POST http://localhost:3001/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "SecurePassword123!"
-  }'
-```
-
-Save the `access_token` from the response for the next requests.
-
-### 3. Upload a Document
-
-```bash
-curl -X POST http://localhost:3001/api/v1/documents/upload \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
-  -F "file=@/path/to/document.pdf"
-```
+To verify the whole journey end-to-end (registration, pipeline, isolation,
+deletion), run the post-deploy smoke — see
+[docs/POST_DEPLOY_SMOKE.md](./docs/POST_DEPLOY_SMOKE.md).
 
 ---
 
@@ -284,8 +263,8 @@ If document processing fails:
 1. **Set up cloud accounts** - Sign up for Supabase, Upstash, and Cloudflare R2
 2. **Configure .env file** - Add your credentials
 3. **Start the backend** - Run `pnpm run start:dev` in apps/backend
-4. **Test the API** - Try the example requests above
-5. **Build the frontend** - Install Next.js and connect to the backend
+4. **Test the API** - Try the examples in QUICK_START.md
+5. **Start the frontend** - Run `pnpm run dev` in apps/frontend (UI on :3000)
 
 ---
 
