@@ -13,8 +13,9 @@ synthetic sample through the real pipeline → **tenant isolation** (user B
 sees none of user A's documents) → processing completion → document detail
 with a presigned URL → original file download → Excel export → **account
 deletion** (user A deletes the account while it still owns the processed,
-invoice-linked sample — the FK path behind the retention sweep; the old
-session must then get 401 on refresh and on the API) → user B loads their own
+invoice-linked sample — the FK path behind the retention sweep; a pinned
+pre-deletion cookie copy, proven live seconds earlier, must then get 401 on
+refresh and on the API) → user B loads their own
 sample through the pipeline → per-document delete + idempotent reset +
 quota-survives-deletion → logout → **revoked-session rejection** (refresh +
 API after logout → 401).

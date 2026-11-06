@@ -12,7 +12,9 @@
 > `DELETE /api/v1/account`, so the DD-3 path had no deployed coverage at all
 > (which is why DD-3 surfaced only in the production logs). DD-5 — a Low
 > robustness nit in the same script, documented but intentionally not fixed
-> in the DD-4 commit.
+> in the DD-4 commit. DD-6 — same day, auditor review of the DD-4 commit:
+> its post-deletion 401 checks read the live cookie jar and could 401 for
+> the wrong reason; fixed by replaying a pinned, proven-live cookie copy.
 
 ## Findings
 
@@ -23,6 +25,7 @@
 | DD-3 | H | `AccountService.deleteAccount` (also the **entire demo retention path** — `DemoRetentionService` calls it per account) deleted the invoices **before clearing `documents."invoiceId"`**. The circular FK (`FK_998c6b9d2d3f298243299a14d72`, `documents."invoiceId" → invoices.id`, `ON DELETE NO ACTION`) FK-violated (`23503` on `update or delete on table "invoices" … on table "documents"`) for every account holding an extracted invoice: the transaction rolled back, `DELETE /account` 500ed, and the retention sweep re-logged the failure for the same accounts on every run — they could never be purged. The DD-1 ordering fix covered only the per-document delete. | `account.service.ts` |
 | DD-4 | M | Coverage gap: `scripts/smoke-demo.mjs` exercised registration, the pipeline, the per-document delete and the reset — but never `DELETE /api/v1/account`. The account-wide teardown (self-service deletion AND the retention sweep — one code path) had zero deployed coverage, so the DD-3 regression shipped green. | `scripts/smoke-demo.mjs` |
 | DD-5 | Low | In the smoke script every `await response.json()` sits after a passing status check; a 2xx response with a non-JSON body (proxy error page, HTML) throws an unlabeled `SyntaxError` — the run crashes with a bare message instead of a labeled `FAIL` step. Cosmetic robustness only; every JSON assertion itself is correct. Open — deliberately not fixed in the DD-4 commit. | `scripts/smoke-demo.mjs` |
+| DD-6 | M | The DD-4 post-deletion checks (`refresh → 401`, `GET /documents → 401`) drove requests through the live cookie jar. `call()` rewrites the jar from every response, so if `DELETE /account` ever returned `Set-Cookie` clearers, the jar would be empty and both requests would 401 **because no credentials were sent** — the run would look green while proving nothing about server-side revocation. Today's `AccountController` sends no `Set-Cookie`, so the original DD-4 run passed for the right reason by coincidence of the current response shape; the coverage must not depend on that. | `scripts/smoke-demo.mjs` |
 
 ## Fix
 
@@ -49,15 +52,28 @@
   are unchanged; no schema change, so no migration.
 - **DD-4**: the smoke journey now deletes the account that still owns the
   fully processed sample with its extracted invoice — the exact DD-3 tenant
-  shape — then asserts the old session is dead (refresh → 401; API → 401,
-  both guaranteed by `JwtStrategy.validate()`/`refreshTokens()` re-checking
-  user existence plus the transactional session wipe). The per-document
-  teardown (DD-1), reset, quota and logout/revocation checks moved to the
-  surviving user B, who loads their own sample first — also proving the
-  pipeline keeps working for another tenant after a deletion. Backend code is
-  untouched by this fix; no new rate budgets are exceeded in a single run
-  (sample posts per run: 2 of the 2/h/IP budget; the second run within an
-  hour already trips the 3/h/IP registration budget, unchanged).
+  shape — then proves the old session dead server-side (as hardened by DD-6
+  below). The per-document teardown (DD-1), reset, quota and
+  logout/revocation checks moved to the surviving user B, who loads their own
+  sample first — also proving the pipeline keeps working for another tenant
+  after a deletion. Backend code is untouched by this fix; no new rate
+  budgets are exceeded in a single run (sample posts per run: 2 of the
+  2/h/IP budget; the second run within an hour already trips the 3/h/IP
+  registration budget, unchanged; the DD-6 refresh control adds one call to
+  the 10/min/IP auth budget, far under the limit).
+- **DD-6**: the post-deletion 401 assertions no longer ride the live jar.
+  Before `DELETE /account`, the script (a) refreshes with the live session —
+  expecting 200, which also rotates A's cookies so the snapshot taken next
+  holds the rotation's still-live session, and (b) snapshots A's cookies
+  (access + refresh + csrf) and proves that exact copy opens the API with a
+  200 — the required "a valid session gets non-401" control. After the
+  deletion, the pinned copy is replayed via the new `callWithCookies()`
+  helper, which builds the header from the snapshot and never absorbs
+  responses: refresh → 401 and `GET /documents` → 401. Since the identical
+  copy answered 200 seconds earlier, the 401s can only come from the server
+  invalidating the deleted account's session (`refreshTokens()` session
+  lookup + user-existence re-check; `JwtStrategy.validate()` user lookup) —
+  not from missing client-side credentials.
 
 ## Regression coverage
 
@@ -81,8 +97,8 @@
   delete, idempotent reset, and the quota-survives-deletion invariant — plus,
   since DD-4, the full account-deletion path (`DELETE /account` against a
   tenant still holding a processed, invoice-linked sample; refresh and API
-  rejection of the old session) and a survivor-tenant pipeline run
-  (user B's own sample) after that deletion.
+  rejection of a pinned, proven-live pre-deletion cookie copy — DD-6) and a
+  survivor-tenant pipeline run (user B's own sample) after that deletion.
 
 ## Verification
 
@@ -106,3 +122,9 @@ session rows are gone; CSRF double-submit handled by the script's cookie jar).
 A live smoke run against the deployed environment has NOT happened yet — it
 must be run explicitly once Render serves the current main; until then DD-3
 has no deployed end-to-end proof (only the local integration suites).
+
+DD-6 (2026-11-06): local only so far — `node --check` green; the control
+pairs verified statically against the current contract (live-session refresh
+→ 200 by `refreshTokens()` rotation; the pinned copy → 200 pre-deletion by
+`JwtStrategy.validate()`, → 401 post-deletion once the user/session rows are
+gone). The DD-4 limitation stands: no live run yet.

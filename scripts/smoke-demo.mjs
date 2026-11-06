@@ -80,6 +80,29 @@ async function call(userKey, method, url, { json } = {}) {
   return response;
 }
 
+// DD-6: same request shape as call(), but the Cookie header is built from a
+// PINNED snapshot and the response never touches the jar or the snapshot —
+// used to prove server-side session invalidation with a cookie copy whose
+// liveness was proven immediately before the destructive step.
+async function callWithCookies(cookies, method, url, { json } = {}) {
+  const headers = { 'user-agent': 'doclos-smoke/1.0' };
+  if (cookies.size > 0) {
+    headers.cookie = [...cookies.entries()].map(([name, value]) => `${name}=${value}`).join('; ');
+  }
+  if (json !== undefined) headers['content-type'] = 'application/json';
+  // PD-A3: double-submit CSRF, echoed from the pinned copy.
+  const csrf = cookies.get('csrf_token');
+  if (method !== 'GET' && method !== 'HEAD' && csrf) {
+    headers['x-csrf-token'] = csrf;
+  }
+  return fetch(url, {
+    method,
+    headers,
+    body: json !== undefined ? JSON.stringify(json) : undefined,
+    redirect: 'manual',
+  });
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // --- smoke journey ----------------------------------------------------------
@@ -246,7 +269,39 @@ async function main() {
   // before the fix. DELETE /account is the self-service entry; the retention
   // sweep rides the same AccountService.deleteAccount path, so a green step
   // here exercises both.
+  //
+  // DD-6: the 401 assertions below must not depend on what the deletion
+  // response does to the cookie jar — if it ever cleared A's cookies via
+  // Set-Cookie, jar-driven calls would 401 for the wrong reason and prove
+  // nothing. Instead, a pinned snapshot of A's cookies (access + refresh +
+  // csrf) that was proven live immediately BEFORE the deletion is replayed
+  // AFTER it via callWithCookies(); the same copy answering 200 pre-deletion
+  // and 401 post-deletion is the server-side invalidation proof.
   {
+    // Control 1 (refresh path): a live session refreshes fine. Refresh
+    // ROTATES A's cookies (PD-A2), so this runs BEFORE the snapshot is taken
+    // — the snapshot must hold the rotation's still-live session, not a
+    // token that a later rotation would revoke.
+    const liveRefresh = await call('A', 'POST', `${API}/auth/refresh`);
+    if (liveRefresh.status !== 200) {
+      boom('account deletion (DD-3)', `refresh control → ${liveRefresh.status} (expected 200)`);
+    }
+    ok('account deletion (DD-3)', 'refresh with the live session → 200');
+
+    // Pin A's cookies exactly as they are now (post-rotation, all live).
+    const staleCookies = new Map(jar.get('A'));
+
+    // Control 2 (API path): the exact pinned copy opens the API right before
+    // the deletion. GET mutates nothing, so the pre/post pair is airtight.
+    const liveList = await callWithCookies(staleCookies, 'GET', `${API}/documents`);
+    if (liveList.status !== 200) {
+      boom(
+        'account deletion (DD-3)',
+        `API control with the pinned copy → ${liveList.status} (expected 200)`,
+      );
+    }
+    ok('account deletion (DD-3)', 'API with the pinned cookie copy → 200');
+
     const response = await call('A', 'DELETE', `${API}/account`);
     if (response.status !== 200) boom('account deletion (DD-3)', `status ${response.status}`);
     const body = await response.json();
@@ -259,27 +314,29 @@ async function main() {
     }
     ok('account deletion (DD-3)', `200, ${body.storage_objects_queued} storage object(s) queued`);
 
-    // The old session must be dead: refresh sessions were deleted inside the
-    // deletion transaction, and refreshTokens() re-checks user existence.
-    const refreshAfterDelete = await call('A', 'POST', `${API}/auth/refresh`);
+    // The pinned copy (never updated from responses) must now be rejected:
+    // refresh sessions were deleted inside the deletion transaction and
+    // refreshTokens() re-checks user existence, so a non-401 here could only
+    // mean the deletion left the session (and user) server-side intact.
+    const refreshAfterDelete = await callWithCookies(staleCookies, 'POST', `${API}/auth/refresh`);
     if (refreshAfterDelete.status !== 401) {
       boom(
         'account deletion (DD-3)',
-        `refresh with the old session → ${refreshAfterDelete.status} (expected 401)`,
+        `refresh with the pinned pre-deletion copy → ${refreshAfterDelete.status} (expected 401)`,
       );
     }
-    ok('account deletion (DD-3)', 'refresh with the old session → 401');
+    ok('account deletion (DD-3)', 'refresh with the pinned pre-deletion copy → 401');
 
-    // JwtStrategy.validate() looks the caller up — the stale access cookie
-    // must no longer open the API either.
-    const listAfterDelete = await call('A', 'GET', `${API}/documents`);
+    // JwtStrategy.validate() looks the caller up — the same pinned access
+    // cookie that answered 200 above must no longer open the API.
+    const listAfterDelete = await callWithCookies(staleCookies, 'GET', `${API}/documents`);
     if (listAfterDelete.status !== 401) {
       boom(
         'account deletion (DD-3)',
-        `documents with the old session → ${listAfterDelete.status} (expected 401)`,
+        `documents with the pinned pre-deletion copy → ${listAfterDelete.status} (expected 401)`,
       );
     }
-    ok('account deletion (DD-3)', 'documents with the old session → 401');
+    ok('account deletion (DD-3)', 'documents with the pinned pre-deletion copy → 401');
   }
 
   // 10b. The surviving user B loads their own sample (their own 1/day quota) —
