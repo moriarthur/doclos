@@ -59,6 +59,24 @@ jobs:
         env:
           DATABASE_URL: postgresql://doclos:ci@localhost:5432/doclos_ci
 
+      # RLS-2: after a clean replay every public base table must have
+      # row-level security enabled — the property that keeps the Supabase
+      # Data API (PostgREST, anon key) default-deny with zero policies.
+      # Fails listing any table that slipped through without RLS.
+      - name: Assert RLS lockdown on every public table (RLS-2)
+        run: |
+          OFFENDING=$(docker exec pg psql -U doclos -d doclos_ci -tAc \
+            "SELECT string_agg(c.relname, ', ' ORDER BY c.relname)
+               FROM pg_class c
+               JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relkind = 'r'
+                AND NOT c.relrowsecurity")
+          if [ -n "$OFFENDING" ]; then
+            echo "::error::RLS-2 property violated — public tables without row-level security: $OFFENDING"
+            exit 1
+          fi
+          echo "RLS lockdown verified on every public base table."
+
   backend:
     name: Backend — typecheck, lint, tests, build
     runs-on: ubuntu-latest
