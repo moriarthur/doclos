@@ -1,8 +1,8 @@
 # Next Session TODO
 
-## Current state (updated 2026-11-06, after the deployed smoke)
+## Current state (updated 2026-11-07, after RLS-2 reached production)
 
-- Public demo hardening merged into `main`; PRs #1–#6 all merged:
+- Public demo hardening merged into `main`; PRs #1–#9 all merged:
   - #3 (`fix/account-deletion-fk-order`, fe1abe5): DD-3 — account deletion /
     retention clears `documents."invoiceId"` before deleting invoices.
   - #4 (`fix/smoke-reset-json-body`, e12de1a): smoke script reads JSON bodies
@@ -14,10 +14,20 @@
     processed, invoice-linked sample; DD-6 (`a242cfa`) — post-deletion 401s
     are proven with a pinned, proven-live pre-deletion cookie copy. Backend
     untouched by both.
-- `main` = c1534db. Local main is updated to it; the working branch from the
-  previous sessions landed as PR #6.
-- **Deployed smoke PASSED (2026-11-06, main c1534db)** against
-  `https://doclos-frontend.onrender.com` — `All smoke steps passed.`:
+  - #9 (`fix/rls-2-clean-db-rls`, 6f35c21, merge 98126f5): RLS-2 — the
+    migration chain now ENABLEs row-level security on EVERY public base
+    table (idempotent, same role preflight, no policies, no grants,
+    deliberately irreversible `down()`). Closes the clean-replay gap: a
+    fresh database used to end with RLS on only 2 of 11 public tables — the
+    other 9 were reachable through the Supabase Data API (PostgREST, anon
+    key) subject to grants alone; the full lockdown existed only where the
+    one-off `enable-rls.cjs` had been run. The CI `migrations` job now
+    asserts the property (zero public tables without RLS) after a clean
+    double migrate.
+- `main` = 98126f5.
+- **Deployed smoke PASSED (2026-11-06, main c1534db; last confirmed
+  deployed run before RLS-2 reached production)** against
+  `https://doclos-frontend.onrender.com`:
   - `/healthz` and `/readyz` green; postgres, redis, storage all `ok`.
   - Registration + login of two isolated users, tenant isolation, GLM
     pipeline, R2 download and Excel export — green.
@@ -35,6 +45,14 @@
     to the Supabase production database via `pnpm db:migrate`; the Supabase
     Advisor warnings for `refresh_sessions` and `pending_storage_deletions`
     are gone.
+  - RLS-2 deployed (PR #9, 2026-11-07): `EnableRlsOnAllPublicTables`
+    (1794806400000) was applied manually with `pnpm db:migrate` after merge;
+    the backend is on Render Free and has no pre-deploy command.
+    ALL 11 public tables now have row-level security enabled
+    (`relrowsecurity = true`, `relforcerowsecurity = false` — intentional:
+    the app connects as the owning/BYPASSRLS role and never uses the Data
+    API), with zero policies and no grant changes. Supabase Advisor is
+    clean — no `rls_disabled_in_public` warnings remain.
   - Supabase, Upstash Redis, Cloudflare R2 and Z.ai Standard API configured.
 - The local `codex_audit` file stays untracked and out of commits.
 
@@ -75,13 +93,25 @@ report — not attributed to this branch):
 - **205/205 tests, 23 suites** incl. integration, plus clean-DB double
   migrate, revert scope, restricted-role refusal and a live boot check.
 
+On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
+
+- **215/215 tests, 24 suites** incl. integration (205 prior + 10 new unit
+  checks pinning the RLS-2 SQL contract); `tsc --noEmit` and eslint green.
+- Disposable Postgres 16: clean replay → RLS on **11/11** public tables
+  (double migrate, second pass no-op); replaying the same migration on a
+  script-protected (production-like) database → no-op, state unchanged;
+  forced `migration:revert` on the protected DB throws before any DDL and
+  leaves RLS 11/11 with the migrations ledger intact; grants untouched (77
+  `role_table_grants` rows before/after).
+
 ## Not verified (do not assume)
 
-- **The retention sweep has not been directly verified.** The deployed smoke
-  exercised the self-service `DELETE /account` path (the same
-  `AccountService.deleteAccount` the sweep calls), but the retention sweep
-  logs on the deployed backend were NOT reviewed — do not claim the sweep
-  itself was observed.
+- **The retention sweep has not been directly verified.** The deployed logs
+  show the sweep is enabled (switched on), but there is NO record of an
+  actual sweep run or its result — do not claim the sweep itself was
+  observed. The deployed smoke exercised the shared self-service
+  `DELETE /account` path (the same `AccountService.deleteAccount` the sweep
+  calls), which is not the same thing.
 - The earlier "full deployed smoke passed" note predates the smoke-script
   fix: its delete/reset assertions were unreliable, and before 2026-11-06 the
   smoke had never called `DELETE /account` — consistent with DD-3 surfacing
@@ -95,12 +125,12 @@ report — not attributed to this branch):
   passing status check throws an unlabeled `SyntaxError` on a non-JSON 2xx
   body (proxy/HTML error page) — the run crashes bare instead of printing a
   labeled FAIL. Cosmetic; documented in `docs/DEMO_DELETE_AUDIT.md`,
-  deliberately not fixed in the DD-4 commit.
+  deliberately not fixed in the DD-4 commit. Still open as of 2026-11-07.
 
 ## Next session
 
-- [ ] Review deployed backend logs for the retention sweep: no 23503/FK
-      errors anymore — the one deployed check the smoke could not cover.
+- [ ] Retention sweep: enabled in the deployed logs, but no sweep run or
+      its result has been recorded yet — capture one next session.
 - [ ] Decide on fixing DD-5 (labeled failure for non-JSON bodies) — its own
       commit if approved.
 - [ ] Decide whether to add a custom domain.
