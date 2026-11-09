@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Repository } from 'typeorm';
+import { IsNull, LessThan, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { AccountService } from '../auth/account.service';
 
@@ -8,9 +8,15 @@ import { AccountService } from '../auth/account.service';
 //
 // On a public demo deployment, signups accumulate forever unless something
 // reaps them. DEMO_RETENTION_DAYS (integer ≥ 1) enables a daily sweep that
-// fully deletes accounts whose last login is older than the window — using
+// fully deletes accounts older than the window — using
 // the exact account-deletion path (transactional rows + storage retry
 // queue), so retention can never leave half-deleted tenants.
+//
+// PD-D4: the window ages from last_login, but registration never sets it
+// (only a successful login does), so a never-logged-in account has
+// last_login NULL and `NULL < cutoff` is never true — abandoned signups
+// used to be invisible to the sweep forever. Such accounts now age from
+// created_at instead (NOT NULL, set by the database on INSERT).
 //
 // OFF by default: local development and any non-demo deployment keep every
 // account. Document the recommended demo value (14) in .env.example. There
@@ -61,8 +67,14 @@ export class DemoRetentionService implements OnApplicationBootstrap, OnModuleDes
     if (days === null) return 0;
     const cutoff = new Date(Date.now() - days * 24 * 3_600_000);
 
+    // PD-D4: two candidate shapes — stale last_login (logged-in accounts) OR
+    // last_login NULL with an old created_at (never-logged-in accounts).
+    // TypeORM treats an array of where-conditions as OR between the groups.
     const inactive = await this.usersRepository.find({
-      where: { last_login: LessThan(cutoff) },
+      where: [
+        { last_login: LessThan(cutoff) },
+        { last_login: IsNull(), created_at: LessThan(cutoff) },
+      ],
       select: ['id'],
       take: DemoRetentionService.MAX_PURGE_PER_RUN,
     });
