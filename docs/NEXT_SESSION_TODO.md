@@ -1,8 +1,8 @@
 # Next Session TODO
 
-## Current state (updated 2026-11-07, after RLS-2 reached production)
+## Current state (updated 2026-11-10, after PD-D4 reached production)
 
-- Public demo hardening merged into `main`; PRs #1–#9 all merged:
+- Public demo hardening merged into `main`; PRs #1–#11 all merged:
   - #3 (`fix/account-deletion-fk-order`, fe1abe5): DD-3 — account deletion /
     retention clears `documents."invoiceId"` before deleting invoices.
   - #4 (`fix/smoke-reset-json-body`, e12de1a): smoke script reads JSON bodies
@@ -24,7 +24,10 @@
     one-off `enable-rls.cjs` had been run. The CI `migrations` job now
     asserts the property (zero public tables without RLS) after a clean
     double migrate.
-- `main` = 98126f5.
+  - #11 (`fix/retention-null-last-login`, merge b3472e1): PD-D4 — the
+    retention sweep also selects never-logged-in accounts (`last_login`
+    NULL ages from `created_at`); deployed, production result below.
+- `main` = b3472e1.
 - **Deployed smoke PASSED (2026-11-06, main c1534db; last confirmed
   deployed run before RLS-2 reached production)** against
   `https://doclos-frontend.onrender.com`:
@@ -53,6 +56,11 @@
     the app connects as the owning/BYPASSRLS role and never uses the Data
     API), with zero policies and no grant changes. Supabase Advisor is
     clean — no `rls_disabled_in_public` warnings remain.
+  - PD-D4 deployed (PR #11, merge b3472e1; production check 2026-11-10):
+    `DEMO_RETENTION_DAYS=14`. The first sweep after the backend start
+    purged 10 inactive accounts and successfully deleted 2 linked R2
+    files; the observed log fragment contained no errors. Only this
+    post-startup run is confirmed — see "Not verified".
   - Supabase, Upstash Redis, Cloudflare R2 and Z.ai Standard API configured.
 - The local `codex_audit` file stays untracked and out of commits.
 
@@ -106,12 +114,11 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
 
 ## Not verified (do not assume)
 
-- **The retention sweep has not been directly verified.** The deployed logs
-  show the sweep is enabled (switched on), but there is NO record of an
-  actual sweep run or its result — do not claim the sweep itself was
-  observed. The deployed smoke exercised the shared self-service
-  `DELETE /account` path (the same `AccountService.deleteAccount` the sweep
-  calls), which is not the same thing.
+- **Only the first, post-startup retention sweep run is verified**
+  (2026-11-10, purged 10 inactive accounts — see the deployed section
+  above). The recurring 24-hour interval and later cold-boot runs have
+  NOT been observed — do not claim the periodic sweep runs or succeeds
+  until one such run is recorded.
 - The earlier "full deployed smoke passed" note predates the smoke-script
   fix: its delete/reset assertions were unreliable, and before 2026-11-06 the
   smoke had never called `DELETE /account` — consistent with DD-3 surfacing
@@ -126,20 +133,12 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
   body (proxy/HTML error page) — the run crashes bare instead of printing a
   labeled FAIL. Cosmetic; documented in `docs/DEMO_DELETE_AUDIT.md`,
   deliberately not fixed in the DD-4 commit. Still open as of 2026-11-07.
-- PD-D4 (found 2026-11-09, retention audit): accounts that registered but
-  never logged in were invisible to the retention sweep forever — the
-  candidate filter compared `last_login < cutoff` only, and SQL
-  `NULL < cutoff` is never true, while registration never sets `last_login`.
-  **Fixed on branch `fix/retention-null-last-login`** (never-logged-in
-  accounts now age from `created_at`; unit + integration tests added) — not
-  yet reviewed, merged or deployed; production still runs the old behavior.
 
 ## Next session
 
-- [ ] Codex review + merge `fix/retention-null-last-login` (PD-D4), then
-      deploy so the sweep actually reaps never-logged-in demo signups.
-- [ ] Retention sweep: enabled in the deployed logs, but no sweep run or
-      its result has been recorded yet — capture one next session.
+- [ ] Retention sweep: the first post-startup run is confirmed (2026-11-10,
+      purged 10 inactive accounts) — capture a recurring-interval or
+      later cold-boot run to verify the periodic path too.
 - [ ] Decide on fixing DD-5 (labeled failure for non-JSON bodies) — its own
       commit if approved.
 - [ ] Decide whether to add a custom domain.
