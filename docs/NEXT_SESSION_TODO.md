@@ -126,9 +126,18 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
   body (proxy/HTML error page) — the run crashes bare instead of printing a
   labeled FAIL. Cosmetic; documented in `docs/DEMO_DELETE_AUDIT.md`,
   deliberately not fixed in the DD-4 commit. Still open as of 2026-11-07.
+- PD-D4 (found 2026-11-09, retention audit): accounts that registered but
+  never logged in were invisible to the retention sweep forever — the
+  candidate filter compared `last_login < cutoff` only, and SQL
+  `NULL < cutoff` is never true, while registration never sets `last_login`.
+  **Fixed on branch `fix/retention-null-last-login`** (never-logged-in
+  accounts now age from `created_at`; unit + integration tests added) — not
+  yet reviewed, merged or deployed; production still runs the old behavior.
 
 ## Next session
 
+- [ ] Codex review + merge `fix/retention-null-last-login` (PD-D4), then
+      deploy so the sweep actually reaps never-logged-in demo signups.
 - [ ] Retention sweep: enabled in the deployed logs, but no sweep run or
       its result has been recorded yet — capture one next session.
 - [ ] Decide on fixing DD-5 (labeled failure for non-JSON bodies) — its own
