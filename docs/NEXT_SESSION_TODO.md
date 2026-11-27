@@ -136,6 +136,11 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
 
 ## Next session
 
+- [ ] MF wave (`docs/MVP_FOLLOWUP_AUDIT.md`, opened 2026-11-28): MF-1
+      duplicate-registration race fix, MF-2 uptime workflow — see the audit
+      doc for scope and recorded decisions.
+- [ ] TODO-1 (deferred, not planned): no "forgot password" path on the
+      login form — needs an email-sending infrastructure decision first.
 - [ ] Retention sweep: the first post-startup run is confirmed (2026-11-10,
       purged 10 inactive accounts) — capture a recurring-interval or
       later cold-boot run to verify the periodic path too.
