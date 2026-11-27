@@ -1,0 +1,71 @@
+# Scheduled smoke checks against the deployed public demo (Render Free).
+# A failing run triggers GitHub's "first failure after success" email —
+# production outages surface in the Actions tab instead of only when a
+# visitor hits them. Side benefit: pinging every 30 min keeps the Render
+# free tier from spinning down — in theory. In practice GitHub's scheduler
+# delays these runs by hours at times, so the keep-awake effect is partial;
+# the retry below absorbs the cold starts that follow from that.
+# Pure curl — no checkout, no secrets, no env vars.
+name: Uptime
+
+on:
+  schedule:
+    # Every 30 minutes, off the :00/:30 marks to dodge cron congestion.
+    - cron: "11,41 * * * *"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Frontend
+        # The middleware 307-redirects anonymous visitors from / to /login,
+        # so follow redirects and assert the final 200 + page title. Single
+        # attempt: once warm this answers fast; the frontend is also a
+        # Render Free service, so a cold start can occasionally fail this
+        # step on its own (kept simple — the backend retries cover the
+        # wake-up case that matters most).
+        run: |
+          code=$(curl -sSL -o /tmp/fe.html -w '%{http_code}' --max-time 60 https://doclos-frontend.onrender.com/)
+          echo "frontend: $code"
+          [ "$code" = "200" ]
+          grep -q "Doclos" /tmp/fe.html
+
+      - name: Backend liveness
+        # GitHub's scheduled runs are routinely delayed by hours, so the
+        # service is usually spun down (Render sleeps after 15 idle min) and
+        # the first hit is a cold start that can outlive one request. The
+        # hit itself wakes the service — retry before declaring an outage,
+        # so emails fire only for persistent failures.
+        run: |
+          ok=0
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /tmp/be-health.json -w '%{http_code}' --max-time 120 https://doclos-backend.onrender.com/healthz) || true
+            echo "backend liveness attempt $attempt: $code"
+            if [ "$code" = "200" ] && grep -q '"status":"ok"' /tmp/be-health.json; then
+              ok=1
+              break
+            fi
+            [ "$attempt" = 3 ] || sleep 30
+          done
+          [ "$ok" = 1 ]
+
+      - name: Backend readiness
+        # /readyz answers 200 only when every dependency reports ok (503
+        # "degraded" otherwise); the response carries no secrets, just the
+        # per-dependency ok/fail map. Same retry rationale as liveness.
+        run: |
+          ok=0
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /tmp/be-ready.json -w '%{http_code}' --max-time 120 https://doclos-backend.onrender.com/readyz) || true
+            echo "backend readiness attempt $attempt: $code"
+            if [ "$code" = "200" ] \
+              && grep -q '"postgres":"ok"' /tmp/be-ready.json \
+              && grep -q '"redis":"ok"' /tmp/be-ready.json \
+              && grep -q '"storage":"ok"' /tmp/be-ready.json; then
+              ok=1
+              break
+            fi
+            [ "$attempt" = 3 ] || sleep 30
+          done
+          [ "$ok" = 1 ]

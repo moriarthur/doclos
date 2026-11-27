@@ -136,9 +136,16 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
 
 ## Next session
 
+- [ ] **URGENT (2026-11-28): deployed backend is DOWN** — direct
+      `/healthz` and the frontend's same-origin `/api/v1` proxy both fail
+      while the frontend answers; check the Render dashboard (instance-hours
+      budget / manual restart) before anything else. Details in
+      `docs/MVP_FOLLOWUP_AUDIT.md` (MF-2 status).
 - [ ] MF wave (`docs/MVP_FOLLOWUP_AUDIT.md`, opened 2026-11-28): MF-1
       duplicate-registration race fix, MF-2 uptime workflow — see the audit
-      doc for scope and recorded decisions.
+      doc for scope and recorded decisions. After the backend is back up,
+      run the uptime workflow once via `workflow_dispatch` to close the
+      MF-2 acceptance criterion.
 - [ ] TODO-1 (deferred, not planned): no "forgot password" path on the
       login form — needs an email-sending infrastructure decision first.
 - [ ] Retention sweep: the first post-startup run is confirmed (2026-11-10,

@@ -56,6 +56,20 @@ deployed demo; steps assert `/healthz`, `/readyz` and the frontend page
 content; no secrets in the workflow; failing endpoint → red run (verified
 logic, not by breaking production).
 
+**Status 2026-11-28 (review pass):** workflow merged into the branch after
+review (assertion fragments verified against
+`apps/backend/src/modules/health/health.controller.ts`; the frontend step
+follows the middleware's 307 for anonymous visitors). The dispatch-verification
+criterion is **blocked by a live production incident**: at review time the
+deployed backend answered neither direct `https://doclos-backend.onrender.com/healthz`
+(240 s and 150 s holds, 0 bytes) nor through the frontend's same-origin
+`/api/v1` proxy (500 after the ~30 s upstream timeout), while the frontend
+itself answered 200 — i.e. the backend service is down or suspended, not
+merely cold-starting. Prime suspect: Render Free instance-hour exhaustion or
+a dashboard-level suspension; requires the Render dashboard (no CLI access
+from this machine). The incident is itself the argument for MF-2: without
+the workflow nobody is notified of exactly this class of outage.
+
 ### TODO-1 (unplanned) — no "forgot password" path on the login form
 
 The login window has no password-recovery entry point. Explicitly deferred by
