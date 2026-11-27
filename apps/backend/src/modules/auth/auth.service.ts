@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, IsNull } from 'typeorm';
+import { Repository, LessThan, IsNull, QueryFailedError } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { User } from './entities/user.entity';
@@ -32,6 +32,32 @@ export function parseDurationMs(raw: string): number {
     d: 24 * 3_600_000,
   };
   return n * unitMs[m[2]];
+}
+
+// MF-1 (follow-up audit): the users.email unique constraint, as written by the
+// baseline migration (1700000000000-BaselineSchema) — the same deterministic
+// UQ_<hash> name TypeORM generates for the entity's `@Column({ unique: true })`.
+// Matching the exact constraint scopes the race fallback in register() to THIS
+// insert; a 23505 from any other constraint still surfaces untouched.
+const USERS_EMAIL_UNIQUE_CONSTRAINT = 'UQ_97672ac88f789774dd47f7c8be3';
+
+/**
+ * MF-1: true when the rejection is the Postgres unique-violation (23505) on
+ * the users.email constraint — i.e. this insert lost the concurrent-
+ * registration race.
+ *
+ * Property path verified against the installed typeorm 0.3.30
+ * (error/QueryFailedError.js): the constructor copies every own property of
+ * the driver error except `name` onto the QueryFailedError itself, so `code`
+ * and `constraint` are readable directly; `driverError.*` is the declared
+ * path (see QueryFailedError.d.ts) and is kept as a fallback.
+ */
+function isUsersEmailUniqueViolation(err: unknown): boolean {
+  if (!(err instanceof QueryFailedError)) return false;
+  const driver = err.driverError as { code?: unknown; constraint?: unknown } | undefined;
+  const code = (err as { code?: unknown }).code ?? driver?.code;
+  const constraint = (err as { constraint?: unknown }).constraint ?? driver?.constraint;
+  return code === '23505' && constraint === USERS_EMAIL_UNIQUE_CONSTRAINT;
 }
 
 @Injectable()
@@ -73,7 +99,21 @@ export class AuthService {
       name: dto.name,
       password_hash,
     });
-    await this.usersRepository.save(user);
+    // MF-1 (follow-up audit): the existence check above is not atomic — two
+    // concurrent registrations can both pass it, and the loser's insert dies
+    // on the users.email unique constraint. PD-A4 allows only the uniform
+    // response, so the race loser answers exactly like a winner (and like a
+    // duplicate caught by the guard): same 201, same body, nothing new to
+    // enumerate on. Only this insert's unique violation is absorbed; every
+    // other failure propagates untouched.
+    try {
+      await this.usersRepository.save(user);
+    } catch (err) {
+      if (isUsersEmailUniqueViolation(err)) {
+        return { message: REGISTER_SUCCESS_MESSAGE };
+      }
+      throw err;
+    }
 
     return { message: REGISTER_SUCCESS_MESSAGE };
   }

@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
-import { AuthService } from './auth.service';
+import { QueryFailedError } from 'typeorm';
+import { AuthService, REGISTER_SUCCESS_MESSAGE } from './auth.service';
 
 // PD-A2 (public-demo audit): refresh sessions — rotation, reuse detection,
 // revocation. Repos and JwtService are mocked; sessions live in a Map keyed
@@ -234,6 +235,104 @@ describe('AuthService refresh sessions', () => {
       });
       expect(duplicate).toEqual(fresh);
       expect(duplicate.message).toContain('You can now log in');
+    });
+  });
+
+  // MF-1: the findOne existence guard is not atomic — two concurrent
+  // registrations can both pass it, and the loser's INSERT dies on the
+  // users.email unique constraint (pg 23505). The catch path must absorb that
+  // one error into the uniform PD-A4 body; everything else rethrows.
+  describe('MF-1: duplicate-registration race (lost insert)', () => {
+    const emailConstraint = 'UQ_97672ac88f789774dd47f7c8be3';
+
+    // A genuine QueryFailedError, built the way typeorm 0.3.30 builds it in
+    // production: the driver's pg error object (severity, code, detail,
+    // schema, table, constraint…) wrapped as driverError — the constructor
+    // then copies those properties onto the QueryFailedError itself. That is
+    // the exact shape a losing INSERT rejects with, not a hand-rolled mock.
+    const makeUniqueViolation = (constraint: string) => {
+      const driverError = Object.assign(
+        new Error(`duplicate key value violates unique constraint "${constraint}"`),
+        {
+          length: 218,
+          severity: 'ERROR',
+          code: '23505',
+          detail: 'Key (email)=(taken@x.com) already exists.',
+          schema: 'public',
+          table: 'users',
+          constraint,
+          file: 'nbtinsert.c',
+          line: '441',
+          routine: '_bt_check_unique',
+        },
+      );
+      return new QueryFailedError('INSERT INTO "users"("email", "name", "password_hash") VALUES ($1, $2, $3)', [], driverError);
+    };
+
+    const makeRaceService = (saveError: Error) => {
+      const { service } = makeHarness();
+      let lookups = 0;
+      const save = jest.fn(async () => {
+        throw saveError;
+      });
+      Object.defineProperty(service, 'usersRepository', {
+        configurable: true,
+        value: {
+          findOne: async ({ where }: { where: { id?: string; email?: string } }) => {
+            lookups += 1;
+            // First lookup = the register() guard inside the race window: the
+            // concurrent row is committed but not yet visible, so the guard
+            // misses it and register() proceeds to the doomed INSERT.
+            if (lookups === 1) return null;
+            return where.email === 'taken@x.com' ? { id: 'u-race', email: 'taken@x.com' } : null;
+          },
+          create: (x: Record<string, unknown>) => ({ id: 'u-new', ...x }),
+          save,
+        },
+      });
+      return { service, save };
+    };
+
+    it('the race loser answers the uniform success body instead of the 23505', async () => {
+      const { service, save } = makeRaceService(makeUniqueViolation(emailConstraint));
+      const result = await service.register({
+        email: 'Taken@x.com',
+        password: 'long-enough-password',
+        name: 'R',
+      });
+      // The insert path was really taken (the guard missed) and save really
+      // threw the genuine QueryFailedError before the catch absorbed it.
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ message: REGISTER_SUCCESS_MESSAGE });
+    });
+
+    it('a unique violation on ANY OTHER constraint is rethrown untouched', async () => {
+      const other = makeUniqueViolation('UQ_refresh_sessions_token_hash');
+      const { service } = makeRaceService(other);
+      await expect(
+        service.register({ email: 'Taken@x.com', password: 'long-enough-password', name: 'R' }),
+      ).rejects.toBe(other);
+    });
+
+    it('failures that are not unique violations propagate untouched', async () => {
+      const boom = new Error('connection terminated unexpectedly');
+      const { service } = makeRaceService(boom);
+      await expect(
+        service.register({ email: 'Taken@x.com', password: 'long-enough-password', name: 'R' }),
+      ).rejects.toBe(boom);
+    });
+
+    it('detection still works when the pg properties live only on driverError', async () => {
+      const violation = makeUniqueViolation(emailConstraint);
+      // Simulates a typeorm without the driver-property copy: only the
+      // declared driverError path carries code/constraint.
+      const withProps = violation as unknown as Record<string, unknown>;
+      delete withProps.code;
+      delete withProps.constraint;
+      const { service } = makeRaceService(violation);
+      await expect(
+        service.register({ email: 'Taken@x.com', password: 'long-enough-password', name: 'R' }),
+      ).resolves.toEqual({ message: REGISTER_SUCCESS_MESSAGE });
     });
   });
 });
