@@ -10,10 +10,16 @@
   stored correctly the whole time; quantity/unit_price/invoice total
   rendered only because their keys happened to match. Item keys now mirror
   the entity columns; a repository-mocked contract test pins the exact
-  per-item key set. **Acceptance on the deployed demo is PENDING**: after
-  the Render deploy, load a fresh sample and confirm the line item shows
-  `960,00` and the unit `Std.` (the frontend needed no change). New
-  backend test baseline: **27 suites / 234 tests** on a clean throwaway DB
+  per-item key set. **Acceptance CONFIRMED on the deployed demo
+  (2026-11-28, user-verified)**: a fresh sample renders `€960.00`,
+  `€1,260.00`, `€440.00` with `Std.` units. Two follow-up UI nits from the
+  same session, also fixed on `main` (`88fab5a`, frontend-only, tsc +
+  eslint + `next build` green): the header status badge could sit
+  off-center while processing (title falls back to the long demo filename
+  until extraction completes; `leading-none` on the h1 keeps the badge on
+  the glyphs' visual center in every state) and the Line Items grand total
+  dropped its serif `text-lg` styling to match the table's numeric cells.
+  New backend test baseline: **27 suites / 234 tests** on a clean throwaway DB
   (the older 215/24 figure is stale). The finding has NO audit ID — never
   label it DD-5 (that ID belongs to the smoke finding).
 - **DD-5 FIXED (2026-11-28, `032e6a5`)** — every JSON parse in
@@ -72,8 +78,12 @@
   - #11 (`fix/retention-null-last-login`, merge b3472e1): PD-D4 — the
     retention sweep also selects never-logged-in accounts (`last_login`
     NULL ages from `created_at`); deployed, production result below.
-- `main` = `e95da1e` (2026-11-28: extraction display fix + DD-5, merged
-  --no-ff from `work/detail-items-dd5`).
+- `main` = `88fab5a` (2026-11-28: extraction display fix + DD-5 merged
+  --no-ff from `work/detail-items-dd5`, docs closure, then the two UI
+  fixes — all direct-to-main without PRs per the lead's session decision:
+  CI triggers on the main push, so small verified fixes skip the PR page;
+  PRs remain for multi-finding waves). Both deploys verified live
+  post-push: `/readyz` all-ok, frontend 200 with redirect chain.
 - **Deployed smoke PASSED (2026-11-06, main c1534db; last confirmed
   deployed run before RLS-2 reached production)** against
   `https://doclos-frontend.onrender.com`:
@@ -199,7 +209,9 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
       the smoke script.
 - [ ] Decide whether to add a custom domain.
 - [ ] Confirm the 14-day demo retention setting remains intentional.
-- [ ] Schedule periodic rotation of Z.ai, R2, JWT and Redis credentials.
+- [ ] Schedule periodic rotation of Z.ai, R2, JWT and Redis credentials —
+      next planned rotation ≈ late February 2027 (90 days after the
+      2026-11-28 rotation).
 - [ ] Review R2 bucket contents and remove only confirmed obsolete test
       objects, if desired.
 - [ ] Consider upgrading the backend from Render Free if cold starts or
