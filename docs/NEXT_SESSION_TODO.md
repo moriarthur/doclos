@@ -1,8 +1,15 @@
 # Next Session TODO
 
-## Current state (updated 2026-11-28, after the MF wave closed)
+## Current state (updated 2026-11-28, after the MF wave and secrets rotation)
 
-- Public demo hardening merged into `main`; PRs #1–#13 all merged.
+- **All compromised secrets are rotated (2026-11-28) — see
+  `docs/SECRETS_ROTATION.md` rotation log.** JWT, GLM (international Z.ai,
+  Standard API key), R2 keys and the Supabase DB password are dead-and-
+  replaced; every leaked value from the pre-2026-09-22 history is now
+  unusable. Verified live: auth, full synthetic pipeline (`parsed`), R2
+  read (presigned + streamed) and write (fresh-account upload), `/readyz`
+  all-ok. Upstash Redis deliberately skipped (never leaked).
+- Public demo hardening merged into `main`; PRs #1–#14 all merged.
   The MF wave (2026-11-28, `docs/MVP_FOLLOWUP_AUDIT.md`) is closed:
   MF-1 — the duplicate-registration race returns the uniform PD-A4 body
   instead of 500 (4b68990); MF-2 — the scheduled uptime smoke
@@ -11,7 +18,7 @@
   deployed backend went down because the Supabase free-tier project
   auto-paused after ~a week idle (`tenant/user not found` at the pooler);
   it was restored from the Supabase dashboard and the backend
-  self-recovered — `/healthz` and `/readyz` green, no secrets rotated.
+  self-recovered — `/healthz` and `/readyz` green.
   - #3 (`fix/account-deletion-fk-order`, fe1abe5): DD-3 — account deletion /
     retention clears `documents."invoiceId"` before deleting invoices.
   - #4 (`fix/smoke-reset-json-body`, e12de1a): smoke script reads JSON bodies
@@ -145,11 +152,27 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
 
 ## Next session
 
+- [ ] **Extraction display (new finding 2026-11-28):** in the processed
+      synthetic sample the line item's `line_total` (960 for "8 × 120") does
+      not render, while quantity, unit_price and the invoice total do.
+      Determine whether the model omits the field, `cleanItems` drops it, or
+      the frontend invoice card hides it (confidence gate?). Its own
+      investigation before any fix.
+- [ ] **Keep-alive hardening (decision pending):** the GH Actions uptime
+      workflow monitors honestly but wakes unreliably (GitHub delays runs —
+      observed live 2026-11-28 when a visitor hit a sleeping frontend). A
+      hard keep-alive needs an external pinger (cron-job.org / UptimeRobot,
+      every 5 min), but two Render Free services awake 24/7 may exceed the
+      monthly instance-hour budget — check the Render dashboard usage meter
+      before committing to pinging both; options: ping backend only, ping
+      both, or stay as is.
 - [ ] TODO-1 (deferred, not planned): no "forgot password" path on the
       login form — needs an email-sending infrastructure decision first.
 - [ ] Retention sweep: the first post-startup run is confirmed (2026-11-10,
       purged 10 inactive accounts) — capture a recurring-interval or
-      later cold-boot run to verify the periodic path too.
+      later cold-boot run to verify the periodic path too. With the uptime
+      pings keeping the backend awake this should now fire on the 24-hour
+      interval; check the logs after a day of uptime.
 - [ ] Decide on fixing DD-5 (labeled failure for non-JSON bodies) — its own
       commit if approved.
 - [ ] Decide whether to add a custom domain.

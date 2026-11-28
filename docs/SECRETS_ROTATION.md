@@ -2,11 +2,28 @@
 
 > Why: while the repo was public, real credentials were committed and are in
 > git history. They are considered compromised **regardless of any later
-> cleanup**. Rotate everything below **before** the first production deploy.
-> This document intentionally contains no secret values — only where each
-> secret lives and how to rotate it.
+> cleanup**. **Status: the full rotation was carried out on 2026-11-28 — see
+> the log below. Every value leaked before 2026-09-22 is dead.** This
+> document intentionally contains no secret values — only where each secret
+> lives and how to rotate it.
 
-## Rotate before first production deploy
+## Rotation log (2026-11-28)
+
+| Credential | When | How verified |
+|------------|------|--------------|
+| `JWT_SECRET` | 2026-11-28 | register/login/documents 200 on the new secret; stale refresh → 401; account deletion 200 |
+| `GLM_API_KEY` (Z.ai / international, Standard API type) | 2026-11-28 | synthetic sample processed to `parsed` in the deployed pipeline (classify + extract green) |
+| `S3_ACCESS_KEY_ID` + `S3_SECRET_ACCESS_KEY` (R2) | 2026-11-28 | presigned URL signed by the new secret accepted by R2; streamed download `%PDF`; write proven by a fresh account uploading the synthetic sample |
+| Supabase DB password (`DATABASE_URL`) | 2026-11-28 | local `SELECT 1` with the new password; deployed `/readyz` postgres ok after Render env update |
+| Upstash Redis (`REDIS_URL`) | skipped | credentials were created after the repo went private and never entered git history (verified via history search); rotate optionally |
+
+Notes: the old R2 token and old GLM key were deleted from their consoles
+after the green verifications; all sessions were invalidated once by the
+JWT rotation (expected). During the same session the deployed backend also
+survived a Supabase free-tier auto-pause incident (restored from the
+dashboard; password not affected by the restore itself).
+
+## Original runbook (kept for the next rotation)
 
 | Secret | Where it is used | How to rotate | Notes |
 |--------|------------------|---------------|-------|
