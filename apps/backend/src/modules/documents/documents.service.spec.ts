@@ -230,3 +230,118 @@ describe('DocumentsService.deleteDocument (DD-1)', () => {
     );
   });
 });
+
+// getDocument item contract regression (extraction display finding,
+// 2026-11-28). The endpoint used to rename the entity's line_total to
+// total_price on the wire and drop unit entirely, so the client's
+// InvoiceItemDto (unit, line_total) rendered line totals as '-' and every
+// unit as its default label. The keys must mirror the entity columns
+// exactly. Repository-mocked: a pure wire-shape pin, no DB involved.
+describe('DocumentsService.getDocument item contract', () => {
+  const makeItems = (): InvoiceItem[] =>
+    [
+      {
+        id: '11111111-1111-4111-8111-111111111001',
+        invoice_id: 'inv-1',
+        description: 'Beratung',
+        quantity: 2,
+        unit: 'Std.',
+        unit_price: 50,
+        line_total: 100,
+        created_at: new Date('2026-11-01T00:00:00Z'),
+        updated_at: new Date('2026-11-01T00:00:00Z'),
+      },
+      {
+        id: '11111111-1111-4111-8111-111111111002',
+        invoice_id: 'inv-1',
+        description: 'Material',
+        quantity: 3,
+        unit: null,
+        unit_price: 4.5,
+        line_total: null,
+        created_at: new Date('2026-11-01T00:00:01Z'),
+        updated_at: new Date('2026-11-01T00:00:01Z'),
+      },
+    ] as InvoiceItem[];
+
+  const makeGetService = (over: { document?: Record<string, unknown> | null } = {}) => {
+    const document =
+      'document' in over && over.document !== undefined
+        ? over.document
+        : {
+            id: 'doc-1',
+            user_id: 'u1',
+            type: 'invoice',
+            status: 'parsed',
+            s3_key: 'k',
+            original_filename: 'invoice.pdf',
+            extraction_confidence: 0.9,
+            extraction_issues: [],
+            metadata: {},
+            invoice: { id: 'inv-1', invoice_number: 'RE-1', amount_total: '120.00', currency: 'EUR' },
+          };
+    const getOne = jest.fn(async () => document);
+    // Explicit annotation — the jest.fn()s returning queryBuilder make the
+    // type self-referential, which TS otherwise refuses to infer.
+    const queryBuilder: {
+      leftJoinAndSelect: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      getOne: () => Promise<unknown>;
+    } = {
+      leftJoinAndSelect: jest.fn(() => queryBuilder),
+      where: jest.fn(() => queryBuilder),
+      andWhere: jest.fn(() => queryBuilder),
+      getOne,
+    };
+    const service = Object.create(DocumentsService.prototype) as DocumentsService;
+    Object.defineProperty(service, 'documentsRepository', {
+      value: { createQueryBuilder: jest.fn(() => queryBuilder) },
+    });
+    Object.defineProperty(service, 's3Service', {
+      value: { getSignedUrl: jest.fn(async () => 'https://signed.example/k') },
+    });
+    Object.defineProperty(service, 'fieldExtractionsRepository', {
+      value: { find: jest.fn(async () => []) },
+    });
+    Object.defineProperty(service, 'invoiceItemsRepository', {
+      value: { find: jest.fn(async () => makeItems()) },
+    });
+    Object.defineProperty(service, 'logger', { value: { debug: jest.fn(), error: jest.fn() } });
+    return { service, document };
+  };
+
+  it('exposes exactly the entity-column keys per item — unit + line_total, no total_price', async () => {
+    const { service } = makeGetService();
+    const result = await service.getDocument('doc-1', 'u1');
+
+    const items = result.invoice!.items;
+    expect(items).toHaveLength(2);
+    for (const item of items) {
+      expect(Object.keys(item).sort()).toEqual([
+        'description',
+        'line_total',
+        'quantity',
+        'unit',
+        'unit_price',
+      ]);
+      expect(item).not.toHaveProperty('total_price');
+    }
+    // Values are carried through from the entity columns untouched.
+    expect(items[0]).toMatchObject({
+      description: 'Beratung',
+      quantity: 2,
+      unit: 'Std.',
+      unit_price: 50,
+      line_total: 100,
+    });
+    // Null unit/line_total stay null with the key present — the client falls
+    // back to its default unit label and shows '-' for the total.
+    expect(items[1]).toMatchObject({ unit: null, line_total: null });
+  });
+
+  it('404s for a document the caller does not own (unchanged behaviour)', async () => {
+    const { service } = makeGetService({ document: null });
+    await expect(service.getDocument('doc-1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
