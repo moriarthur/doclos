@@ -1,9 +1,10 @@
 # MVP Follow-up Audit (MF wave)
 
-> Opened: 2026-11-28. Lead review after the PD/DD waves closed (PRs #1–#12,
-> `main` e3e9500). Source: user-reported observations plus a lead pass over the
-> auth flow and deployment docs. Follows the audit-first discipline: findings
-> are recorded here before any fix; one finding = one commit referencing its ID.
+> Opened: 2026-11-28, **closed: 2026-11-28 (PR #13, merge 23ae1bc)**. Lead
+> review after the PD/DD waves closed (PRs #1–#12, `main` e3e9500). Source:
+> user-reported observations plus a lead pass over the auth flow and
+> deployment docs. Followed the audit-first discipline: findings were
+> recorded here before any fix; one finding = one commit referencing its ID.
 
 ## Findings
 
@@ -32,6 +33,10 @@ window return that same uniform response instead of 500:
 Acceptance criteria: backend `tsc --noEmit` green; full Jest suite green;
 duplicate-insert path returns 201 uniform body; normal registration,
 login, and account-deletion suites unaffected.
+
+**Closed 2026-11-28:** fix merged in PR #13 (commit 4b68990); full Jest on a
+throwaway database 27 suites / 232 tests green; the integration suite drives
+the genuine 23505 against the real migrated schema.
 
 ### MF-2 (Low, ops) — Render Free cold starts; no production uptime check
 
@@ -78,6 +83,12 @@ project; if the restore flow resets the DB password, `DATABASE_URL` must
 be updated on Render and locally). The incident is itself the argument
 for MF-2: without the workflow nobody is notified of exactly this class
 of outage.
+
+**Closed 2026-11-28:** workflow merged in PR #13 (commit 49d4707); after the
+Supabase project was restored and the backend self-recovered, the first
+`workflow_dispatch` run on `main` passed all three steps green in 45 s (run
+46086432840). The pings every 30 minutes now double as light activity for
+the Supabase project, reducing the auto-pause risk that caused the outage.
 
 ### TODO-1 (unplanned) — no "forgot password" path on the login form
 

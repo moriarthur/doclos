@@ -1,8 +1,17 @@
 # Next Session TODO
 
-## Current state (updated 2026-11-10, after PD-D4 reached production)
+## Current state (updated 2026-11-28, after the MF wave closed)
 
-- Public demo hardening merged into `main`; PRs #1–#11 all merged:
+- Public demo hardening merged into `main`; PRs #1–#13 all merged.
+  The MF wave (2026-11-28, `docs/MVP_FOLLOWUP_AUDIT.md`) is closed:
+  MF-1 — the duplicate-registration race returns the uniform PD-A4 body
+  instead of 500 (4b68990); MF-2 — the scheduled uptime smoke
+  (`.github/workflows/uptime.yml`) is live on `main`, first
+  `workflow_dispatch` run green in 45 s (46086432840). The same day the
+  deployed backend went down because the Supabase free-tier project
+  auto-paused after ~a week idle (`tenant/user not found` at the pooler);
+  it was restored from the Supabase dashboard and the backend
+  self-recovered — `/healthz` and `/readyz` green, no secrets rotated.
   - #3 (`fix/account-deletion-fk-order`, fe1abe5): DD-3 — account deletion /
     retention clears `documents."invoiceId"` before deleting invoices.
   - #4 (`fix/smoke-reset-json-body`, e12de1a): smoke script reads JSON bodies
@@ -27,7 +36,7 @@
   - #11 (`fix/retention-null-last-login`, merge b3472e1): PD-D4 — the
     retention sweep also selects never-logged-in accounts (`last_login`
     NULL ages from `created_at`); deployed, production result below.
-- `main` = b3472e1.
+- `main` = 23ae1bc.
 - **Deployed smoke PASSED (2026-11-06, main c1534db; last confirmed
   deployed run before RLS-2 reached production)** against
   `https://doclos-frontend.onrender.com`:
@@ -136,19 +145,6 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
 
 ## Next session
 
-- [ ] **URGENT (2026-11-28): deployed backend is DOWN** — root cause
-      confirmed: the Supabase project (ref dkyauhncczoyvmoftbhy) is
-      unreachable at the pooler (`tenant/user not found`), fitting the
-      free-tier inactivity auto-pause ~a week after the last production
-      activity on 2026-11-10. Restore in progress on 2026-11-28; if the
-      restore flow reset the DB password, `DATABASE_URL` must be updated
-      on Render (and locally) before the backend can boot. Details in
-      `docs/MVP_FOLLOWUP_AUDIT.md` (MF-2 status).
-- [ ] MF wave (`docs/MVP_FOLLOWUP_AUDIT.md`, opened 2026-11-28): MF-1
-      duplicate-registration race fix, MF-2 uptime workflow — see the audit
-      doc for scope and recorded decisions. After the backend is back up,
-      run the uptime workflow once via `workflow_dispatch` to close the
-      MF-2 acceptance criterion.
 - [ ] TODO-1 (deferred, not planned): no "forgot password" path on the
       login form — needs an email-sending infrastructure decision first.
 - [ ] Retention sweep: the first post-startup run is confirmed (2026-11-10,
@@ -173,6 +169,11 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
 ## Known behavior
 
 - Render Free services sleep after inactivity; the first request can be slow.
+- The Supabase free-tier project auto-pauses after ~a week of inactivity —
+  the pooler then answers `tenant/user not found` and the backend
+  crash-loops at boot (happened 2026-11-10 → 2026-11-28). The uptime
+  workflow's pings now double as keep-alive activity, but after any future
+  pause the recovery is a Supabase dashboard restore.
 - Resetting a synthetic sample does not reset the `1 sample/day/user` quota.
 - The smoke test consumes demo quota and creates temporary test
   accounts/documents; it also deletes one account (user A) mid-journey.
