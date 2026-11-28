@@ -1,7 +1,36 @@
 # Next Session TODO
 
-## Current state (updated 2026-11-28, after the MF wave and secrets rotation)
+## Current state (updated 2026-11-28, evening: extraction display + DD-5 fixed, keep-alive decided)
 
+- **Extraction display finding FIXED (2026-11-28, `bf62bd1`, main
+  `e95da1e`; merged without codex/PR by lead decision — CI runs on the
+  main push too).** Root cause: `GET /documents/:id` renamed the item's
+  `line_total` to `total_price` on the wire and dropped `unit`, while the
+  frontend `InvoiceItemDto` reads `line_total`/`unit` — the values were
+  stored correctly the whole time; quantity/unit_price/invoice total
+  rendered only because their keys happened to match. Item keys now mirror
+  the entity columns; a repository-mocked contract test pins the exact
+  per-item key set. **Acceptance on the deployed demo is PENDING**: after
+  the Render deploy, load a fresh sample and confirm the line item shows
+  `960,00` and the unit `Std.` (the frontend needed no change). New
+  backend test baseline: **27 suites / 234 tests** on a clean throwaway DB
+  (the older 215/24 figure is stale). The finding has NO audit ID — never
+  label it DD-5 (that ID belongs to the smoke finding).
+- **DD-5 FIXED (2026-11-28, `032e6a5`)** — every JSON parse in
+  `scripts/smoke-demo.mjs` goes through `readJson()`, which fails labeled
+  (step, status, body snippet) on non-JSON 2xx bodies; `node --check`
+  green, happy-path parsing unchanged.
+- **Keep-alive DECIDED: stay as is.** Render dashboard (Billing → Monthly
+  Included Usage): 750 free instance-hours/month shared by THREE active
+  services (doclos-frontend, doclos-backend, konfequem-backend); burn
+  ≈ 23.3 h/day = both doclos services at ~50% duty-cycle from the 30-min
+  GH pings; 630.13/750 on Nov 28 → month ends ≈ 698, fits. 750 h ≈ exactly
+  ONE service awake 24/7, so an external 5-min pinger (backend-only
+  ~720 h) leaves zero budget for any frontend monitoring — rejected. The
+  GH 30-min cadence already keeps `/readyz` hitting Postgres twice an hour
+  (Supabase auto-pause stays solved). The real cold-start fix is upgrading
+  the backend to Starter (~$7/mo) — revisit only if cold starts bother
+  visitors.
 - **All compromised secrets are rotated (2026-11-28) — see
   `docs/SECRETS_ROTATION.md` rotation log.** JWT, GLM (international Z.ai,
   Standard API key), R2 keys and the Supabase DB password are dead-and-
@@ -43,7 +72,8 @@
   - #11 (`fix/retention-null-last-login`, merge b3472e1): PD-D4 — the
     retention sweep also selects never-logged-in accounts (`last_login`
     NULL ages from `created_at`); deployed, production result below.
-- `main` = 23ae1bc.
+- `main` = `e95da1e` (2026-11-28: extraction display fix + DD-5, merged
+  --no-ff from `work/detail-items-dd5`).
 - **Deployed smoke PASSED (2026-11-06, main c1534db; last confirmed
   deployed run before RLS-2 reached production)** against
   `https://doclos-frontend.onrender.com`:
@@ -144,28 +174,20 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
 
 ## Open findings (reported, not fixed — audit-first)
 
-- DD-5 (Low, `scripts/smoke-demo.mjs`): `await response.json()` after a
-  passing status check throws an unlabeled `SyntaxError` on a non-JSON 2xx
-  body (proxy/HTML error page) — the run crashes bare instead of printing a
-  labeled FAIL. Cosmetic; documented in `docs/DEMO_DELETE_AUDIT.md`,
-  deliberately not fixed in the DD-4 commit. Still open as of 2026-11-07.
+- ~~DD-5 (Low, `scripts/smoke-demo.mjs`)~~ — FIXED 2026-11-28 (`032e6a5`,
+  merged in `e95da1e`); see `docs/DEMO_DELETE_AUDIT.md`. The DD wave has no
+  open findings left.
 
 ## Next session
 
-- [ ] **Extraction display (new finding 2026-11-28):** in the processed
-      synthetic sample the line item's `line_total` (960 for "8 × 120") does
-      not render, while quantity, unit_price and the invoice total do.
-      Determine whether the model omits the field, `cleanItems` drops it, or
-      the frontend invoice card hides it (confidence gate?). Its own
-      investigation before any fix.
-- [ ] **Keep-alive hardening (decision pending):** the GH Actions uptime
-      workflow monitors honestly but wakes unreliably (GitHub delays runs —
-      observed live 2026-11-28 when a visitor hit a sleeping frontend). A
-      hard keep-alive needs an external pinger (cron-job.org / UptimeRobot,
-      every 5 min), but two Render Free services awake 24/7 may exceed the
-      monthly instance-hour budget — check the Render dashboard usage meter
-      before committing to pinging both; options: ping backend only, ping
-      both, or stay as is.
+- [ ] **Extraction display acceptance (fix merged, deploy check pending):**
+      the key-mismatch fix (`bf62bd1`) is on `main` (`e95da1e`); after the
+      Render deploy, load a fresh synthetic sample and confirm the line
+      item renders `960,00` and the unit `Std.`.
+- [x] **Keep-alive (decided 2026-11-28): stay as is** — see the Current
+      state block for the instance-hours math (750 h ≈ one always-awake
+      service; external pinger rejected; the Starter upgrade remains the
+      real cold-start fix).
 - [ ] TODO-1 (deferred, not planned): no "forgot password" path on the
       login form — needs an email-sending infrastructure decision first.
 - [ ] Retention sweep: the first post-startup run is confirmed (2026-11-10,
@@ -173,8 +195,8 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
       later cold-boot run to verify the periodic path too. With the uptime
       pings keeping the backend awake this should now fire on the 24-hour
       interval; check the logs after a day of uptime.
-- [ ] Decide on fixing DD-5 (labeled failure for non-JSON bodies) — its own
-      commit if approved.
+- [x] DD-5 fixed (2026-11-28, `032e6a5`) — labeled `readJson()` helper in
+      the smoke script.
 - [ ] Decide whether to add a custom domain.
 - [ ] Confirm the 14-day demo retention setting remains intentional.
 - [ ] Schedule periodic rotation of Z.ai, R2, JWT and Redis credentials.
