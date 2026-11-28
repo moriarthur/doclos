@@ -274,7 +274,8 @@ export class DocumentsService {
       return acc;
     }, {} as Record<string, { value: string; confidence: number }>);
 
-    // Get invoice line items (invoices only) — map line_total → total_price for the client
+    // Get invoice line items (invoices only) — item keys mirror the entity
+    // columns, which is exactly the shape the client's InvoiceItemDto expects
     const invoiceItems = document.invoice
       ? await this.invoiceItemsRepository.find({
           where: { invoice_id: document.invoice.id },
@@ -317,12 +318,15 @@ export class DocumentsService {
             supplier_address: document.invoice.supplier_address
               ? { value: document.invoice.supplier_address, confidence: extractionMap['supplier_address']?.confidence }
               : extractionMap['supplier_address'],
-            // Line items — map line_total → total_price; unit is not extracted, client defaults to 'Stk'
+            // Line items — keys mirror the InvoiceItem entity columns (the
+            // client's InvoiceItemDto contract). unit may be null when the
+            // document states none; the client then shows its default label.
             items: invoiceItems.map((item) => ({
               description: item.description,
               quantity: item.quantity,
+              unit: item.unit,
               unit_price: item.unit_price,
-              total_price: item.line_total,
+              line_total: item.line_total,
             })),
           }
         : undefined,
