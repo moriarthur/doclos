@@ -136,6 +136,21 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
 
 ## Next session
 
+- [ ] **URGENT (2026-11-28): deployed backend is DOWN** — root cause
+      confirmed: the Supabase project (ref dkyauhncczoyvmoftbhy) is
+      unreachable at the pooler (`tenant/user not found`), fitting the
+      free-tier inactivity auto-pause ~a week after the last production
+      activity on 2026-11-10. Restore in progress on 2026-11-28; if the
+      restore flow reset the DB password, `DATABASE_URL` must be updated
+      on Render (and locally) before the backend can boot. Details in
+      `docs/MVP_FOLLOWUP_AUDIT.md` (MF-2 status).
+- [ ] MF wave (`docs/MVP_FOLLOWUP_AUDIT.md`, opened 2026-11-28): MF-1
+      duplicate-registration race fix, MF-2 uptime workflow — see the audit
+      doc for scope and recorded decisions. After the backend is back up,
+      run the uptime workflow once via `workflow_dispatch` to close the
+      MF-2 acceptance criterion.
+- [ ] TODO-1 (deferred, not planned): no "forgot password" path on the
+      login form — needs an email-sending infrastructure decision first.
 - [ ] Retention sweep: the first post-startup run is confirmed (2026-11-10,
       purged 10 inactive accounts) — capture a recurring-interval or
       later cold-boot run to verify the periodic path too.

@@ -126,3 +126,22 @@ decision).
 - Logs: request lines carry method/path/status/duration + correlation ID only;
   provider error bodies are redacted. Render log streams are safe to share on
   that basis — still, treat them as internal.
+
+## 5. Uptime monitoring
+
+`.github/workflows/uptime.yml` pings the deployed demo on a schedule (every
+30 min, off the :00/:30 marks) and on manual `workflow_dispatch`:
+
+- **Frontend** `https://doclos-frontend.onrender.com/` — follows the middleware's
+  anonymous redirect to `/login`, asserts HTTP 200 + the "Doclos" page title.
+- **Backend liveness** `https://doclos-backend.onrender.com/healthz` — 200 with
+  `"status":"ok"`.
+- **Backend readiness** `…/readyz` — 200 with `postgres`, `redis`, and `storage`
+  all reporting `"ok"` (the response carries no secrets).
+
+Backend steps retry up to 3 times (`sleep 30` between attempts) because a
+Render Free cold start outlives one request — the hit itself wakes the
+service. A failing run sends GitHub's "first failure after success" email.
+Honest caveat: GitHub's scheduler delays scheduled runs by hours at times,
+so the keep-awake side effect is partial — the primary value is production
+monitoring, not reliably patching over the 15-minute idle spin-down.
