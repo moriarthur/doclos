@@ -510,7 +510,7 @@ export default function DocumentDetailPage() {
                   {t('eyebrow')}
                 </p>
                 <div className="flex items-center gap-3 flex-wrap min-w-0">
-                  <h1 className="font-serif text-3xl font-bold text-brand truncate min-w-0">
+                  <h1 className="font-serif text-3xl leading-none font-bold text-brand truncate min-w-0">
                     {invoiceData
                       ? getFieldValue('supplier_name', invoiceData?.supplier_name) || tCommon('docPlaceholder')
                       : tDocType(document.type) || document.original_filename || tCommon('docPlaceholder')}
@@ -1127,7 +1127,7 @@ export default function DocumentDetailPage() {
                               >
                                 {t('grandTotal')}
                               </td>
-                              <td className="py-3 px-3 text-right font-serif font-semibold text-lg text-foreground">
+                              <td className="py-3 px-3 text-right font-semibold text-foreground">
                                 {getFieldValue('amount_total', invoiceData?.amount_total)
                                   ? formatAmount(
                                       Number(
