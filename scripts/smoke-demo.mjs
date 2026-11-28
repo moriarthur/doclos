@@ -26,6 +26,17 @@ const boom = (name, detail = '') => {
   console.error(`  FAIL ${name}${detail ? ` — ${detail}` : ''}`);
   process.exit(1);
 };
+// DD-5: a 2xx with a non-JSON body (proxy/HTML error page) must fail as a
+// labeled FAIL, not as a bare SyntaxError from response.json().
+async function readJson(response, label) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const snippet = text.slice(0, 120) || '(empty body)';
+    throw new Error(`  FAIL ${label} — non-JSON body (status ${response.status}): ${snippet}`);
+  }
+}
 
 // --- minimal cookie jar ----------------------------------------------------
 const jar = new Map(); // userKey -> Map<cookieName, value>
@@ -130,7 +141,7 @@ async function main() {
   {
     const response = await fetch(`${process.env.BACKEND_ORIGIN || 'http://localhost:3001'}/healthz`);
     if (response.status !== 200) boom('backend /healthz', `status ${response.status}`);
-    const body = await response.json();
+    const body = await readJson(response, 'backend /healthz');
     if (body.status !== 'ok') boom('backend /healthz', `body ${JSON.stringify(body)}`);
     ok('backend /healthz');
   }
@@ -139,7 +150,7 @@ async function main() {
   {
     const response = await fetch(`${process.env.BACKEND_ORIGIN || 'http://localhost:3001'}/readyz`);
     if (response.status !== 200) boom('backend /readyz', `status ${response.status}`);
-    const body = await response.json();
+    const body = await readJson(response, 'backend /readyz');
     for (const dep of ['postgres', 'redis', 'storage']) {
       if (body.checks?.[dep] !== 'ok') boom('backend /readyz', `${dep} not ok`);
     }
@@ -158,7 +169,7 @@ async function main() {
     if (csrfResponse.status !== 200) boom('CSRF bootstrap', `status ${csrfResponse.status}`);
     const response = await call(label, 'POST', `${API}/auth/register`, { json: user });
     if (response.status !== 201) boom('registration', `status ${response.status}`);
-    const body = await response.json();
+    const body = await readJson(response, 'registration');
     if (!body.message) boom('registration', 'no message in body');
     if (body.access_token || body.refresh_token) {
       boom('registration', 'response leaks token material (PD-A1 violation)');
@@ -187,7 +198,7 @@ async function main() {
       boom('synthetic sample', 'rate-limited — rerun the smoke later or raise budgets');
     }
     if (response.status !== 201) boom('synthetic sample', `status ${response.status}`);
-    const body = await response.json();
+    const body = await readJson(response, 'synthetic sample');
     if (!body.document_id) boom('synthetic sample', 'no document_id');
     globalThis.__sampleDocId = body.document_id;
     ok('synthetic sample queued', `document ${body.document_id}`);
@@ -196,7 +207,7 @@ async function main() {
   {
     const response = await call('B', 'GET', `${API}/documents`);
     if (response.status !== 200) boom('document list (B)', `status ${response.status}`);
-    const body = await response.json();
+    const body = await readJson(response, 'document list (B)');
     const ids = (body.data ?? []).map((d) => d.id);
     if (ids.includes(globalThis.__sampleDocId)) {
       boom('tenant isolation', 'user B can see user A’s document (IDOR!)');
@@ -213,7 +224,7 @@ async function main() {
       await sleep(4000);
       const response = await call('A', 'GET', `${API}/documents/${globalThis.__sampleDocId}`);
       if (response.status !== 200) boom('processing', `detail status ${response.status}`);
-      const body = await response.json();
+      const body = await readJson(response, 'processing');
       status = body.status;
       detail = body;
       if (status !== 'processing') break;
@@ -233,7 +244,7 @@ async function main() {
   {
     const response = await call('A', 'GET', `${API}/documents/${globalThis.__sampleDocId}`);
     if (response.status !== 200) boom('document detail', `status ${response.status}`);
-    const body = await response.json();
+    const body = await readJson(response, 'document detail');
     if (!body.file_url) boom('document detail', 'no file_url');
     if (!/expired|Expires|X-Amz-Expires|sig=|token=|GoogleAccessId/i.test(body.file_url)) {
       // R2/AWS presigned URLs always carry an expiry parameter; if none is
@@ -304,7 +315,7 @@ async function main() {
 
     const response = await call('A', 'DELETE', `${API}/account`);
     if (response.status !== 200) boom('account deletion (DD-3)', `status ${response.status}`);
-    const body = await response.json();
+    const body = await readJson(response, 'account deletion (DD-3)');
     if (!body.message) boom('account deletion (DD-3)', 'no message in body');
     if (typeof body.storage_objects_queued !== 'number' || body.storage_objects_queued < 1) {
       boom(
@@ -348,7 +359,7 @@ async function main() {
       boom('synthetic sample (B)', 'rate-limited — rerun the smoke later or raise budgets');
     }
     if (response.status !== 201) boom('synthetic sample (B)', `status ${response.status}`);
-    const body = await response.json();
+    const body = await readJson(response, 'synthetic sample (B)');
     if (!body.document_id) boom('synthetic sample (B)', 'no document_id');
     globalThis.__sampleDocIdB = body.document_id;
     ok('synthetic sample queued (B)', `document ${body.document_id}`);
@@ -362,7 +373,7 @@ async function main() {
       await sleep(4000);
       const response = await call('B', 'GET', `${API}/documents/${globalThis.__sampleDocIdB}`);
       if (response.status !== 200) boom('processing (B)', `detail status ${response.status}`);
-      const body = await response.json();
+      const body = await readJson(response, 'processing (B)');
       status = body.status;
       if (status !== 'processing') break;
     }
@@ -389,7 +400,7 @@ async function main() {
     // failed spuriously).
     response = await call('B', 'GET', `${API}/documents`);
     if (response.status !== 200) boom('document delete applied', `list status ${response.status}`);
-    const listAfterDocDelete = await response.json();
+    const listAfterDocDelete = await readJson(response, 'document delete applied');
     if ((listAfterDocDelete.data ?? []).some((d) => d.id === globalThis.__sampleDocIdB)) {
       boom('document delete', 'document still listed after delete');
     }
@@ -397,7 +408,7 @@ async function main() {
 
     response = await call('B', 'DELETE', `${API}/demo/sample`);
     if (response.status !== 200) boom('sample reset (idempotent)', `status ${response.status}`);
-    const resetBody = await response.json();
+    const resetBody = await readJson(response, 'sample reset (idempotent)');
     if (typeof resetBody.deleted !== 'number') {
       boom('sample reset (idempotent)', 'no numeric deleted count');
     }
