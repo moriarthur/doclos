@@ -136,10 +136,13 @@ On `fix/rls-2-clean-db-rls` (6f35c21, pre-merge):
 
 ## Next session
 
-- [ ] **URGENT (2026-11-28): deployed backend is DOWN** — direct
-      `/healthz` and the frontend's same-origin `/api/v1` proxy both fail
-      while the frontend answers; check the Render dashboard (instance-hours
-      budget / manual restart) before anything else. Details in
+- [ ] **URGENT (2026-11-28): deployed backend is DOWN** — root cause
+      confirmed: the Supabase project (ref dkyauhncczoyvmoftbhy) is
+      unreachable at the pooler (`tenant/user not found`), fitting the
+      free-tier inactivity auto-pause ~a week after the last production
+      activity on 2026-11-10. Restore in progress on 2026-11-28; if the
+      restore flow reset the DB password, `DATABASE_URL` must be updated
+      on Render (and locally) before the backend can boot. Details in
       `docs/MVP_FOLLOWUP_AUDIT.md` (MF-2 status).
 - [ ] MF wave (`docs/MVP_FOLLOWUP_AUDIT.md`, opened 2026-11-28): MF-1
       duplicate-registration race fix, MF-2 uptime workflow — see the audit

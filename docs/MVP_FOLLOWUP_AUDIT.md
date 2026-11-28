@@ -65,10 +65,19 @@ deployed backend answered neither direct `https://doclos-backend.onrender.com/he
 (240 s and 150 s holds, 0 bytes) nor through the frontend's same-origin
 `/api/v1` proxy (500 after the ~30 s upstream timeout), while the frontend
 itself answered 200 — i.e. the backend service is down or suspended, not
-merely cold-starting. Prime suspect: Render Free instance-hour exhaustion or
-a dashboard-level suspension; requires the Render dashboard (no CLI access
-from this machine). The incident is itself the argument for MF-2: without
-the workflow nobody is notified of exactly this class of outage.
+merely cold-starting. **Root cause confirmed 2026-11-28** from the Render
+logs plus a local probe: the backend crash-loops at boot because Supabase's
+pooler answers `(ENOTFOUND) tenant/user postgres.dkyauhncczoyvmoftbhy not
+found` — the Supabase project itself is unreachable from the pooler
+(pooler host DNS/TCP fine; the local `.env`, pointing at the same ref,
+fails with the identical error, so Render's config is not at fault).
+Timeline fits the Supabase free-tier inactivity auto-pause: last confirmed
+production activity 2026-11-10, nothing has monitored the backend since —
+the exact gap MF-2 closes. Recovery is dashboard-side (restore the
+project; if the restore flow resets the DB password, `DATABASE_URL` must
+be updated on Render and locally). The incident is itself the argument
+for MF-2: without the workflow nobody is notified of exactly this class
+of outage.
 
 ### TODO-1 (unplanned) — no "forgot password" path on the login form
 
